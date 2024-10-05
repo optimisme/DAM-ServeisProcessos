@@ -13,7 +13,10 @@ import org.java_websocket.handshake.ServerHandshake;
 public class UtilsWS  extends WebSocketClient {
 
     public static UtilsWS sharedInstance = null;
+    private Consumer<String> onOpenCallBack = null;
     private Consumer<String> onMessageCallBack = null;
+    private Consumer<String> onCloseCallBack = null;
+    private Consumer<String> onErrorCallBack = null;
     private String location = "";
     private static AtomicBoolean exitRequested = new AtomicBoolean(false); // Thread safe
 
@@ -37,8 +40,29 @@ public class UtilsWS  extends WebSocketClient {
         return sharedInstance;
     }
 
+    public void onOpen (Consumer<String> callBack) {
+        this.onOpenCallBack = callBack;
+    }
+
     public void onMessage (Consumer<String> callBack) {
         this.onMessageCallBack = callBack;
+    }
+
+    public void onClose (Consumer<String> callBack) {
+        this.onCloseCallBack = callBack;
+    }
+
+    public void onError (Consumer<String> callBack) {
+        this.onErrorCallBack = callBack;
+    }
+
+    @Override
+    public void onOpen(ServerHandshake handshake) {
+        String message = "WS connected to: " + getURI();
+        System.out.println(message);
+        if (onOpenCallBack != null) {
+            onOpenCallBack.accept(message);
+        }
     }
 
     @Override
@@ -49,14 +73,12 @@ public class UtilsWS  extends WebSocketClient {
     }
 
     @Override
-    public void onOpen(ServerHandshake handshake) {
-        System.out.println("WS connected to: " + getURI());
-    }
-
-    @Override
     public void onClose(int code, String reason, boolean remote) {
-        System.out.println("WS closed connection from: " + getURI());
-
+        String message = "WS closed connection from: " + getURI();
+        System.out.println(message);
+        if (onCloseCallBack != null) {
+            onCloseCallBack.accept(message);
+        }
         if (remote) {
             reconnect();
         }
@@ -64,8 +86,12 @@ public class UtilsWS  extends WebSocketClient {
 
     @Override
     public void onError(Exception e) {
-        System.out.println("WS connection error: " + e.getMessage());
-        if (e.getMessage().contains("Connection refused") || e.getMessage().contains("Connection reset")) {
+        String message = e.getMessage();
+        System.out.println("WS connection error: " + message);
+        if (onErrorCallBack != null) {
+            onErrorCallBack.accept(message);
+        }
+        if (e.getMessage().contains("Connection reset")) {
             reconnect();
         }
     }

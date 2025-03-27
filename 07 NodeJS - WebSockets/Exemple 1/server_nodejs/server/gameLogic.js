@@ -4,7 +4,7 @@ const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
 const OBJECT_WIDTH = 0.075;
 const OBJECT_HEIGHT = 0.025;
 const SPEED = 0.2;
-const INITIAL_RADIUS = 0.05;
+const INITIAL_RADIUS = 25;
 
 const DIRECTIONS = {
     "up":         { dx: 0, dy: -1 },

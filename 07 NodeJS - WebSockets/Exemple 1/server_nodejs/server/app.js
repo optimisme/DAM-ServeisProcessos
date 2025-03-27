@@ -48,14 +48,17 @@ gameLoop.run = (fps) => {
 gameLoop.start();
 
 // Gestionar el tancament del servidor
-process.on('SIGTERM', shutDown);
-process.on('SIGINT', shutDown);
-
+let shuttingDown = false;
+['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
+  process.once(signal, shutDown);
+});
 function shutDown() {
-    console.log('Rebuda senyal de tancament, aturant el servidor...');
-    httpServer.close(() => {
-        ws.end();
-        gameLoop.stop();
-        process.exit(0);
-    });
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log('Rebuda senyal de tancament, aturant el servidor...');
+  httpServer.close(() => {
+    ws.end();
+    gameLoop.stop();
+    process.exit(0);
+  });
 }

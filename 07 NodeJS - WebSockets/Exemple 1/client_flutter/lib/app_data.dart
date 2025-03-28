@@ -17,15 +17,20 @@ class AppData extends ChangeNotifier {
   final Duration _reconnectDelay = Duration(seconds: 3);
 
   // Atributs per gestionar el joc
+  Map<String, dynamic> gameData = {};     // Dades de 'game_data.json'
   Map<String, ui.Image> imagesCache = {}; // Imatges
   Map<String, dynamic> gameState = {};    // Estat rebut del servidor
   dynamic playerData;                     // Apuntador al jugador (a gameState)
-  Map<String, dynamic> gameData = {};     // Dades de 'game_data.json'
   Camera camera = Camera();
 
   AppData() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadGameData("assets/platform_game/game_data.json");
     _connectToWebSocket();
-    _loadGameData("assets/platform_game/game_data.json");
+    notifyListeners();
   }
 
   // Connectar amb el servidor (amb reintents si falla)
@@ -153,7 +158,7 @@ class AppData extends ChangeNotifier {
     return completer.future;
   }
 
-  void _loadGameData([String filePath = 'assets/platform_game/game_data.json']) async {
+  Future<void>  _loadGameData([String filePath = 'assets/platform_game/game_data.json']) async {
     try {
       final jsonString = await rootBundle.loadString(filePath);
       gameData = jsonDecode(jsonString);

@@ -31,13 +31,11 @@ class _LayoutState extends State<Layout> {
   void _onKeyEvent(KeyEvent event, AppData appData) {
     String key = event.logicalKey.keyLabel.toLowerCase();
 
-    if (key.contains(" ")) {
-      key = key.split(" ")[1];
-    } else {
-      return;
-    }
-
     if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.space) {
+        appData.sendMessage(jsonEncode({"type": "jump"}));
+        return;
+      }
       _pressedKeys.add(key);
     } else if (event is KeyUpEvent) {
       _pressedKeys.remove(key);
@@ -49,10 +47,10 @@ class _LayoutState extends State<Layout> {
   }
 
   String _getDirectionFromKeys() {
-    bool up = _pressedKeys.contains("up");
-    bool down = _pressedKeys.contains("down");
-    bool left = _pressedKeys.contains("left");
-    bool right = _pressedKeys.contains("right");
+    bool up = _pressedKeys.contains("arrow up");
+    bool down = _pressedKeys.contains("arrow down");
+    bool left = _pressedKeys.contains("arrow left");
+    bool right = _pressedKeys.contains("arrow right");
 
     if (up && left) return "upLeft";
     if (up && right) return "upRight";
@@ -74,17 +72,17 @@ class _LayoutState extends State<Layout> {
       child: SafeArea(
         child: Container(
           color: CupertinoColors.systemGrey5,
-          child: KeyboardListener(
-            focusNode: _focusNode,
+          child: Focus(
             autofocus: true,
-            onKeyEvent: (KeyEvent event) {
+            onKeyEvent: (node, event) {
               _onKeyEvent(event, appData);
+              return KeyEventResult.handled;
             },
             child: CustomPaint(
               painter: CanvasPainter(appData),
               child: Container(),
             ),
-          ),
+          )
         ),
       ),
     );

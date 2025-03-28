@@ -74,17 +74,17 @@ class _LayoutState extends State<Layout> {
       child: SafeArea(
         child: Container(
           color: CupertinoColors.systemGrey5,
-          child: KeyboardListener(
-            focusNode: _focusNode,
+          child: Focus(
             autofocus: true,
-            onKeyEvent: (KeyEvent event) {
+            onKeyEvent: (node, event) {
               _onKeyEvent(event, appData);
+              return KeyEventResult.handled;
             },
             child: CustomPaint(
               painter: CanvasPainter(appData),
               child: Container(),
             ),
-          ),
+          )
         ),
       ),
     );

@@ -110,25 +110,33 @@ class GameLogic {
     getValidPosition() {
         let x, y;
         let isValid = false;
-        while (!isValid) {
+        let attempts = 0;
+        while (!isValid && attempts < 1000) {
+            attempts++;
             x = Math.random() * (1 - OBJECT_WIDTH);
             y = Math.random() * (1 - OBJECT_HEIGHT);
             isValid = true;
-
-            this.objects.forEach(obj => {
+            for (let obj of this.objects) {
                 if (this.isCircleRectColliding(x, y, INITIAL_RADIUS, obj.x, obj.y, obj.width, obj.height)) {
                     isValid = false;
+                    break;
                 }
-            });
-
-            this.players.forEach(client => {
-                if (this.isCircleCircleColliding(x, y, INITIAL_RADIUS, client.x, client.y, client.radius)) {
-                    isValid = false;
+            }
+            if (isValid) {
+                for (let client of this.players) {
+                    if (this.isCircleCircleColliding(x, y, INITIAL_RADIUS, client.x, client.y, client.radius)) {
+                        isValid = false;
+                        break;
+                    }
                 }
-            });
+            }
+        }
+        if (!isValid) {
+            x = (1 - OBJECT_WIDTH) / 2;
+            y = (1 - OBJECT_HEIGHT) / 2;
         }
         return { x, y };
-    }
+    }    
 
     // Obtenir un color aleatori que no ha estat escollit abans
     getAvailableColor() {

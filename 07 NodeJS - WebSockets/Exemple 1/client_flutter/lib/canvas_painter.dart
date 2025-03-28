@@ -32,7 +32,10 @@ class CanvasPainter extends CustomPainter {
           (lvl) => lvl["name"] == levelName,
           orElse: () => null,
         );
-
+        if (appData.playerData != null) {
+          appData.camera.x = appData.playerData["x"].toDouble();
+          appData.camera.y = appData.playerData["y"].toDouble();
+        }
         if (level != null) {
           drawLevel(canvas, painterSize, level);
         }
@@ -102,7 +105,6 @@ class CanvasPainter extends CustomPainter {
   void drawLevel(Canvas canvas, Size painterSize, Map<String, dynamic> level) {
     final layers = level["layers"] as List<dynamic>;
     final cam = appData.camera;
-
     final double scale = painterSize.width / cam.focal;
 
     for (final layer in layers) {
@@ -112,6 +114,8 @@ class CanvasPainter extends CustomPainter {
       final double parallax = depth >= 0 ? 1.0 : 1.0 / (1.0 - depth);
       final double camX = cam.x * parallax;
       final double camY = cam.y * parallax;
+      final double layerX = (layer["x"] as num?)?.toDouble() ?? 0;
+      final double layerY = (layer["y"] as num?)?.toDouble() ?? 0;
 
       final tileMap = layer["tileMap"] as List<dynamic>;
       final tileW = (layer["tilesWidth"] as num).toDouble();
@@ -120,7 +124,7 @@ class CanvasPainter extends CustomPainter {
 
       if (!appData.imagesCache.containsKey(tileSheetPath)) continue;
       final ui.Image tileSheet = appData.imagesCache[tileSheetPath]!;
-      final tileSheetCols = (tileSheet.width / tileW).floor();
+      final int tileSheetCols = (tileSheet.width / tileW).floor();
 
       for (int row = 0; row < tileMap.length; row++) {
         final rowTiles = tileMap[row] as List<dynamic>;
@@ -128,19 +132,21 @@ class CanvasPainter extends CustomPainter {
           final int tileIndex = (rowTiles[col] as num).toInt();
           if (tileIndex < 0) continue;
 
-          final double worldX = col * tileW;
-          final double worldY = row * tileH;
-
+          final double worldX = layerX + col * tileW;
+          final double worldY = layerY + row * tileH;
           final double screenX = (worldX - camX) * scale + painterSize.width / 2;
           final double screenY = (worldY - camY) * scale + painterSize.height / 2;
-
-          final srcX = (tileIndex % tileSheetCols) * tileW;
-          final srcY = (tileIndex ~/ tileSheetCols) * tileH;
+          final double destWidth = tileW * scale;
+          final double destHeight = tileH * scale;
+          final int srcCol = tileIndex % tileSheetCols;
+          final int srcRow = tileIndex ~/ tileSheetCols;
+          final double srcX = srcCol * tileW;
+          final double srcY = srcRow * tileH;
 
           canvas.drawImageRect(
             tileSheet,
             Rect.fromLTWH(srcX, srcY, tileW, tileH),
-            Rect.fromLTWH(screenX - 1, screenY - 1, (tileW * scale) + 1, (tileH * scale) + 1),
+            Rect.fromLTWH(screenX - 1, screenY - 1, destWidth + 1, destHeight + 1),
             Paint(),
           );
         }
@@ -148,14 +154,15 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
+
   void drawPlayer(Canvas canvas, Size painterSize, Map<String, dynamic> player) {
-    print(player);
+
     final cam = appData.camera;
     final double scale = painterSize.width / cam.focal;
 
     final double px = (player["x"] as num).toDouble();
     final double py = (player["y"] as num).toDouble();
-    final double radius = (player["radius"] as num).toDouble();
+    final double radius = (player["radius"] as num).toDouble() / 2;
     final String color = player["color"];
     final String direction = player["direction"];
 

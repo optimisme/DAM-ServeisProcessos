@@ -188,7 +188,16 @@
           "color": "grey"
         }
       ],
-      "sprites": []
+      "sprites": [
+        {
+          "type": "flag",
+          "x": 275,
+          "y": 225,
+          "width": 32,
+          "height": 64,
+          "imageFile": "flag.png"
+        }
+      ]
     }
   ]
 }

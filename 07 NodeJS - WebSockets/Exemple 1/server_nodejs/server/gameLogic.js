@@ -4,6 +4,7 @@ const gameData = JSON.parse(fs.readFileSync("server/platform_game/game_data.json
 const gameLevel = gameData.levels[0];
 
 const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
+const TICK_FPS = 25;
 const FOCUS_WIDTH = 1000;
 const FOCUS_HEIGHT = 500;
 const PLAYER_RADIUS = 32;
@@ -29,6 +30,7 @@ const DIRECTIONS = {
 class GameLogic {
     constructor() {
         this.players = new Map();
+        this.tickCounter = 0;
     }
 
     // Es connecta un client/jugador
@@ -47,6 +49,7 @@ class GameLogic {
             color,
             radius: PLAYER_RADIUS
         });
+        this.flagOwnerId = "";
 
         return this.players.get(id);
     }
@@ -82,18 +85,21 @@ class GameLogic {
     // Blucle de joc (funció que s'executa contínuament)
     updateGame(fps) {
         let deltaTime = 1 / fps;
-        this.players.forEach(client => {
-            let moveVector = DIRECTIONS[client.direction];
+
+        this.tickCounter = (this.tickCounter + 1) % TICK_FPS;
+
+        this.players.forEach(player => {
+            let moveVector = DIRECTIONS[player.direction];
             if (moveVector.dx !== 0) {
-                client.speedX = moveVector.dx * HORIZONTAL_SPEED;
+                player.speedX = moveVector.dx * HORIZONTAL_SPEED;
             } else {
                 let friction = FRICTION_AIR;
-                if (client.onFloor) {
+                if (player.onFloor) {
                     friction = FRICTION_FLOOR;
                     if (gameLevel && gameLevel.zones) {
                         gameLevel.zones.forEach(zone => {
-                            let seg0start = { x: client.x, y: client.y }
-                            let seg0end = { x: client.x, y: (client.y + client.radius + 10) }
+                            let seg0start = { x: player.x, y: player.y }
+                            let seg0end = { x: player.x, y: (player.y + player.radius + 10) }
                             let seg1start = { x: zone.x, y: zone.y }
                             let seg1end = { x: zone.x + zone.width, y: zone.y }
                             if (["ice"].includes(zone.type) &&
@@ -103,22 +109,22 @@ class GameLogic {
                         });
                     }
                 }
-                if (client.speedX > 0) {
-                    client.speedX = Math.max(0, client.speedX - friction * deltaTime);
-                } else if (client.speedX < 0) {
-                    client.speedX = Math.min(0, client.speedX + friction * deltaTime);
+                if (player.speedX > 0) {
+                    player.speedX = Math.max(0, player.speedX - friction * deltaTime);
+                } else if (player.speedX < 0) {
+                    player.speedX = Math.min(0, player.speedX + friction * deltaTime);
                 }
             }
-            client.x += client.speedX * deltaTime;
+            player.x += player.speedX * deltaTime;
 
             // Vertical collision check
-            let nextY = client.y + client.speedY * deltaTime;
+            let nextY = player.y + player.speedY * deltaTime;
             let verticalCollision = false;
             let collidedZone = null;
             if (gameLevel && gameLevel.zones) {
                 gameLevel.zones.forEach(zone => {
-                    let seg0start = { x: client.x, y: client.y }
-                    let seg0end = { x: client.x, y: (nextY + client.radius) }
+                    let seg0start = { x: player.x, y: player.y }
+                    let seg0end = { x: player.x, y: (nextY + player.radius) }
                     let seg1start = { x: zone.x, y: zone.y }
                     let seg1end = { x: zone.x + zone.width, y: zone.y }
                     if (["floor", "ice"].includes(zone.type) &&
@@ -128,17 +134,24 @@ class GameLogic {
                     }
                 });
             }
-            if (verticalCollision && client.speedY >= 0) {
-                client.speedY = 0;
-                client.onFloor = true;
-                client.y = collidedZone.y - (client.radius / 2);
+            if (verticalCollision && player.speedY >= 0) {
+                player.speedY = 0;
+                player.onFloor = true;
+                player.y = collidedZone.y - (player.radius / 2);
             } else {
-                client.speedY += GRAVITY * deltaTime;
-                client.onFloor = false;
-                client.y = nextY;
-            }      
+                player.speedY += GRAVITY * deltaTime;
+                player.onFloor = false;
+                player.y = nextY;
+            }  
+            
+            // Check flag collision
+            if (this.flagOwnerId == "") {
+                let flag = gameLevel.sprites.find(sprite => sprite.type === 'flag');
+                if (flag && this.isCircleRectColliding(player.x, player.y, player.radius, flag.x, flag.y, flag.width, flag.height)) {
+                    this.flagOwnerId = player.id
+                }
+            }
         });
-        
     }
 
     // Obtenir una posició on no hi h ha ni objectes ni jugadors
@@ -151,7 +164,7 @@ class GameLogic {
     
     // Obtenir un color aleatori que no ha estat escollit abans
     getAvailableColor() {
-        let assignedColors = new Set(Array.from(this.players.values()).map(client => client.color));
+        let assignedColors = new Set(Array.from(this.players.values()).map(player => player.color));
         let availableColors = COLORS.filter(color => !assignedColors.has(color));
         return availableColors.length > 0 
           ? availableColors[Math.floor(Math.random() * availableColors.length)]
@@ -199,8 +212,10 @@ class GameLogic {
     // Retorna l'estat del joc (per enviar-lo als clients/jugadors)
     getGameState() {
         return {
+            tickCounter: this.tickCounter,
             level: "Level 0",
-            players: Array.from(this.players.values())
+            players: Array.from(this.players.values()),
+            flagOwnerId: this.flagOwnerId
         };
     }
 }

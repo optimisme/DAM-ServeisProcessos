@@ -59,7 +59,7 @@ class AppData extends ChangeNotifier {
         String? playerId = _wsHandler.socketId;
         if (playerId != null && gameState["players"] is List) {
           // Guardar les dades del propi jugador
-          playerData = _getPlayerData(playerId);
+          playerData = getPlayerData(playerId);
         }
         notifyListeners();
       }
@@ -112,7 +112,7 @@ class AppData extends ChangeNotifier {
   }
 
   // Filtrar les dades del propi jugador (fent servir l'id de player)
-  dynamic _getPlayerData(String playerId) {
+  dynamic getPlayerData(String playerId) {
     return (gameState["players"] as List).firstWhere(
       (player) => player["id"] == playerId,
       orElse: () => {},

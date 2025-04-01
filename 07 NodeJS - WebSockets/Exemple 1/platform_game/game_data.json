@@ -96,96 +96,96 @@
           "x": 255,
           "y": 385,
           "width": 160,
-          "height": 5,
-          "color": "blue"
+          "height": 15,
+          "color": "purple"
         },
         {
           "type": "ice",
           "x": 705,
           "y": 415,
           "width": 160,
-          "height": 5,
-          "color": "blue"
+          "height": 15,
+          "color": "purple"
         },
         {
           "type": "ice",
           "x": 605,
           "y": 190,
           "width": 165,
-          "height": 5,
-          "color": "blue"
+          "height": 15,
+          "color": "purple"
         },
         {
           "type": "floor",
           "x": 0,
           "y": 385,
           "width": 255,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 255,
           "y": 255,
           "width": 130,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 480,
           "y": 225,
           "width": 64,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 545,
           "y": 190,
           "width": 64,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 705,
           "y": 130,
           "width": 64,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 415,
           "y": 350,
           "width": 100,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 510,
           "y": 385,
           "width": 130,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 640,
           "y": 415,
           "width": 64,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         },
         {
           "type": "floor",
           "x": 864,
           "y": 415,
           "width": 64,
-          "height": 5,
-          "color": "grey"
+          "height": 15,
+          "color": "orange"
         }
       ],
       "sprites": [

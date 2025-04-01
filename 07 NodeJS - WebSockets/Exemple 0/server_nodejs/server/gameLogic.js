@@ -7,7 +7,7 @@ const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
 const TICK_FPS = 25;
 const FOCUS_WIDTH = 1000;
 const FOCUS_HEIGHT = 500;
-const PLAYER_RADIUS = 32;
+const PLAYER_RADIUS = 16;
 const FRICTION_FLOOR = 350;
 const FRICTION_ICE = 50;
 const MOVEMENT_SPEED = 100;
@@ -163,19 +163,65 @@ class GameLogic {
             // Check flag collision
             if (this.flagOwnerId == "") {
                 let flag = gameLevel.sprites.find(sprite => sprite.type === 'flag');
-                if (flag && this.isCircleRectColliding(player.x, player.y, player.radius, flag.x, flag.y, flag.width, flag.height)) {
-                    this.flagOwnerId = player.id;
+                if (flag) {
+                    let flgCollisionX = flag.x - flag.width / 2;
+                    let flgCollisionY = flag.y - flag.height / 2;
+                    if (this.isCircleRectColliding(
+                        player.x, player.y, (player.radius / 2), 
+                        flgCollisionX, flgCollisionY, flag.width, flag.height)) {
+                        this.flagOwnerId = player.id;
+                    }
                 }
-            }
+            }            
         });
     }
 
     // Obtenir una posició on no hi h ha ni objectes ni jugadors
+    // Obtenir una posició on no hi ha ni objectes ni jugadors
     getValidPosition() {
-        let x = FOCUS_WIDTH / 2;
-        let y = FOCUS_HEIGHT / 2;
+        // Definir els límits de posició
+        const minX = 100;
+        const minY = 100;
+        const maxX = FOCUS_WIDTH - 100;
+        const maxY = FOCUS_HEIGHT - 100;
         
-        return { x, y };
+        // Intent màxim per evitar un bucle infinit
+        const maxAttempts = 50;
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+            // Generar una posició aleatòria dins els límits
+            let x = minX + Math.random() * (maxX - minX);
+            let y = minY + Math.random() * (maxY - minY);
+            
+            // Comprovar si la posició col·lisiona amb alguna zona de pedra
+            let isValidPosition = true;
+            
+            if (gameLevel && gameLevel.zones) {
+                for (const zone of gameLevel.zones) {
+                    if (zone.type === "stone" && this.isCircleRectColliding(
+                        x, y, PLAYER_RADIUS, 
+                        zone.x, zone.y, zone.width, zone.height)) {
+                        isValidPosition = false;
+                        break;
+                    }
+                }
+            }
+            
+            // Si la posició és vàlida, retornar-la
+            if (isValidPosition) {
+                return { x, y };
+            }
+            
+            attempts++;
+        }
+        
+        // Si després de varios intents no trobem posició vàlida, tornem un punt central segur
+        // (assumint que el centre del mapa no sigui una pedra)
+        return { 
+            x: (minX + maxX) / 2, 
+            y: (minY + maxY) / 2 
+        };
     }
     
     // Obtenir un color aleatori que no ha estat escollit abans
@@ -189,20 +235,14 @@ class GameLogic {
 
     // Detectar si un cercle i un rectangle es sobreposen
     isCircleRectColliding(cx, cy, r, rx, ry, rw, rh) {
+        const effectiveRadius = r;
         let closestX = Math.max(rx, Math.min(cx, rx + rw));
         let closestY = Math.max(ry, Math.min(cy, ry + rh));
         let dx = cx - closestX;
         let dy = cy - closestY;
-        return (dx * dx + dy * dy) <= (r * r);
+        return (dx * dx + dy * dy) <= (effectiveRadius * effectiveRadius);
     }
-
-    // Detectar si dos cercles es sobreposen
-    isCircleCircleColliding(x1, y1, r1, x2, y2, r2) {
-        let dx = x1 - x2;
-        let dy = y1 - y2;
-        return (dx * dx + dy * dy) <= ((r1 + r2) * (r1 + r2));
-    }
-
+    
     // Retorna l'estat del joc (per enviar-lo als clients/jugadors)
     getGameState() {
         return {

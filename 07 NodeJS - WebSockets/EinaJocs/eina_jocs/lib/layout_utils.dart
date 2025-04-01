@@ -55,6 +55,14 @@ class LayoutUtils {
     }
 
     if (drawGrid) {
+      final textStyle = TextStyle(
+        color: Colors.black,
+        fontSize: 10,
+      );
+      final textPainter = TextPainter(
+        textDirection: TextDirection.ltr,
+      );
+
       final gridPaint = Paint()
         ..color = Colors.black
         ..strokeWidth = 1
@@ -63,11 +71,31 @@ class LayoutUtils {
       for (int row = 0; row <= rows; row++) {
         double y = row * tileHeight;
         canvas.drawLine(Offset(0, y), Offset(tilemapWidth, y), gridPaint);
+
+        // Draw row number at the left
+        if (row < rows) {
+          textPainter.text = TextSpan(
+            text: '$y',
+            style: textStyle,
+          );
+          textPainter.layout();
+          textPainter.paint(canvas, Offset(0, y));
+        }
       }
 
       for (int col = 0; col <= cols; col++) {
         double x = col * tileWidth;
         canvas.drawLine(Offset(x, 0), Offset(x, tilemapHeight), gridPaint);
+
+        // Draw column number at the top
+        if (col < cols) {
+          textPainter.text = TextSpan(
+            text: '$x',
+            style: textStyle,
+          );
+          textPainter.layout();
+          textPainter.paint(canvas, Offset(x, 0));
+        }
       }
     }
 

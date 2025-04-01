@@ -276,7 +276,7 @@ class CanvasPainter extends CustomPainter {
     final camData = _getCameraAndScale(painterSize);
     final scale = camData['scale'];
 
-    final double radius = (player["radius"] as num).toDouble() / 2;
+    final double radius = (player["radius"] as num).toDouble();
     final String color = player["color"];
     final String direction = player["direction"];
 

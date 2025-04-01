@@ -135,7 +135,7 @@ class CanvasPainter extends CustomPainter {
       case "gray":
         return Colors.grey;
       case "green":
-        return Colors.green;
+        return const ui.Color.fromARGB(255, 0, 121, 4);
       case "blue":
         return Colors.blue;
       case "orange":
@@ -276,7 +276,7 @@ class CanvasPainter extends CustomPainter {
     final camData = _getCameraAndScale(painterSize);
     final scale = camData['scale'];
 
-    final double radius = (player["radius"] as num).toDouble() / 2;
+    final double radius = (player["radius"] as num).toDouble();
     final String color = player["color"];
     final String direction = player["direction"];
 

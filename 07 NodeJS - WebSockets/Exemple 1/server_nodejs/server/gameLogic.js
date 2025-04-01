@@ -7,7 +7,7 @@ const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
 const TICK_FPS = 25;
 const FOCUS_WIDTH = 1000;
 const FOCUS_HEIGHT = 500;
-const PLAYER_RADIUS = 32;
+const PLAYER_RADIUS = 16;
 const FRICTION_FLOOR = 350;
 const FRICTION_ICE = 50;
 const FRICTION_AIR = 5;
@@ -137,7 +137,7 @@ class GameLogic {
             if (verticalCollision && player.speedY >= 0) {
                 player.speedY = 0;
                 player.onFloor = true;
-                player.y = collidedZone.y - (player.radius / 2);
+                player.y = collidedZone.y - player.radius;
             } else {
                 player.speedY += GRAVITY * deltaTime;
                 player.onFloor = false;

@@ -192,7 +192,7 @@
         {
           "type": "flag",
           "x": 275,
-          "y": 225,
+          "y": 192,
           "width": 32,
           "height": 64,
           "imageFile": "flag.png"

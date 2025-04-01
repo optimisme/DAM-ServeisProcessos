@@ -247,8 +247,8 @@ class CanvasPainter extends CustomPainter {
         spriteImg,
         Rect.fromLTWH(srcX, 0, flagSprite["width"].toDouble(), flagSprite["height"].toDouble()),
         Rect.fromLTWH(
-          screenPos.dx - destWidth / 2,
-          screenPos.dy - destHeight / 2,
+          screenPos.dx,
+          screenPos.dy,
           destWidth,
           destHeight,
         ),

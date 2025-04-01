@@ -14,7 +14,6 @@ class Layout extends StatefulWidget {
 }
 
 class _LayoutState extends State<Layout> {
-  final FocusNode _focusNode = FocusNode();
   final Set<String> _pressedKeys = {};
 
   @override

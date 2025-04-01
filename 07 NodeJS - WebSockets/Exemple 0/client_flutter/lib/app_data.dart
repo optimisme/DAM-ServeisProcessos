@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'camera.dart';
 import 'utils_websockets.dart';
 
 class AppData extends ChangeNotifier {
@@ -16,12 +17,20 @@ class AppData extends ChangeNotifier {
   final Duration _reconnectDelay = Duration(seconds: 3);
 
   // Atributs per gestionar el joc
-  Map<String, ui.Image> imagesCache = {};
-  Map<String, dynamic> gameState = {};
-  dynamic playerData;
+  Map<String, dynamic> gameData = {};     // Dades de 'game_data.json'
+  Map<String, ui.Image> imagesCache = {}; // Imatges
+  Map<String, dynamic> gameState = {};    // Estat rebut del servidor
+  dynamic playerData;                     // Apuntador al jugador (a gameState)
+  Camera camera = Camera();
 
   AppData() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadGameData("assets/flag_game/game_data.json");
     _connectToWebSocket();
+    notifyListeners();
   }
 
   // Connectar amb el servidor (amb reintents si falla)
@@ -148,4 +157,34 @@ class AppData extends ChangeNotifier {
     ui.decodeImageFromList(bytes, (ui.Image img) => completer.complete(img));
     return completer.future;
   }
+
+  Future<void>  _loadGameData([String filePath = 'assets/flag_game/game_data.json']) async {
+    try {
+      final jsonString = await rootBundle.loadString(filePath);
+      gameData = jsonDecode(jsonString);
+
+      final Set<String> imageFiles = {};
+      for (var level in gameData['levels']) {
+        for (var layer in level['layers']) {
+          if (layer['tilesSheetFile'] != null) {
+            imageFiles.add(layer['tilesSheetFile']);
+          }
+        }
+        for (var sprite in level['sprites']) {
+          if (sprite['imageFile'] != null) {
+            imageFiles.add(sprite['imageFile']);
+          }
+        }
+      }
+
+      for (var imageFile in imageFiles) {
+        await getImage('flag_game/$imageFile');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error carregant els assets del joc: $e");
+      }
+    }
+  }
+
 }

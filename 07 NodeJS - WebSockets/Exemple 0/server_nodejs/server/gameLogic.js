@@ -1,10 +1,16 @@
 'use strict';
+const fs = require('fs');
+const gameData = JSON.parse(fs.readFileSync("server/flag_game/game_data.json", "utf8"));
+const gameLevel = gameData.levels[0];
 
 const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
-const OBJECT_WIDTH = 0.075;
-const OBJECT_HEIGHT = 0.025;
-const SPEED = 0.2;
-const INITIAL_RADIUS = 0.05;
+const TICK_FPS = 25;
+const FOCUS_WIDTH = 1000;
+const FOCUS_HEIGHT = 500;
+const PLAYER_RADIUS = 32;
+const FRICTION_FLOOR = 350;
+const FRICTION_ICE = 50;
+const MOVEMENT_SPEED = 100;
 
 const DIRECTIONS = {
     "up":         { dx: 0, dy: -1 },
@@ -17,23 +23,11 @@ const DIRECTIONS = {
     "upRight":    { dx: 1, dy: -1 },
     "none":       { dx: 0, dy: 0 }
 };
-
+ 
 class GameLogic {
     constructor() {
-        this.objects = [];
         this.players = new Map();
-
-        // Rectangles que mou el servidor
-        for (let i = 0; i < 10; i++) {
-            this.objects.push({
-                x: Math.random() * (1 - OBJECT_WIDTH),
-                y: Math.random() * (1 - OBJECT_HEIGHT),
-                width: OBJECT_WIDTH,
-                height: OBJECT_HEIGHT,
-                speed: SPEED,
-                direction: Math.random() > 0.5 ? 1 : -1
-            });
-        }
+        this.tickCounter = 0;
     }
 
     // Es connecta un client/jugador
@@ -45,11 +39,14 @@ class GameLogic {
             id,
             x: pos.x,
             y: pos.y,
-            speed: SPEED,
+            speedX: 0,
+            speedY: 0,
             direction: "none",
             color,
-            radius: INITIAL_RADIUS
+            radius: PLAYER_RADIUS,
+            onIce: false
         });
+        this.flagOwnerId = "";
 
         return this.players.get(id);
     }
@@ -62,17 +59,17 @@ class GameLogic {
     // Tractar un missatge d'un client/jugador
     handleMessage(id, msg) {
         try {
-          let obj = JSON.parse(msg);
-          if (!obj.type) return;
-          switch (obj.type) {
+            let obj = JSON.parse(msg);
+            if (!obj.type) return;
+            switch (obj.type) {
             case "direction":
-              if (this.players.has(id) && DIRECTIONS[obj.value]) {
-                this.players.get(id).direction = obj.value;
-              }
-              break;
+                if (this.players.has(id) && DIRECTIONS[obj.value]) {
+                    this.players.get(id).direction = obj.value;
+                }
+                break;
             default:
-              break;
-          }
+                break;
+            }
         } catch (error) {}
     }
 
@@ -80,67 +77,110 @@ class GameLogic {
     updateGame(fps) {
         let deltaTime = 1 / fps;
 
-        // Actualitzar la posició dels objectes (rectangles negres)
-        this.objects.forEach(obj => {
-            obj.x += obj.speed * obj.direction * deltaTime;
-            if (obj.x <= 0 || obj.x + obj.width >= 1) {
-                obj.direction *= -1;
+        this.tickCounter = (this.tickCounter + 1) % TICK_FPS;
+
+        this.players.forEach(player => {
+            let moveVector = DIRECTIONS[player.direction];
+            
+            // Check if player is on ice
+            player.onIce = false;
+            if (gameLevel && gameLevel.zones) {
+                gameLevel.zones.forEach(zone => {
+                    if (zone.type === "ice" && this.isCircleRectColliding(
+                        player.x, player.y, player.radius, 
+                        zone.x, zone.y, zone.width, zone.height)) {
+                        player.onIce = true;
+                    }
+                });
             }
-        });
-
-        // Actualitzar la posició dels clients
-        this.players.forEach(client => {
-            let moveVector = DIRECTIONS[client.direction];
-            client.x = Math.max(0, Math.min(1, client.x + client.speed * moveVector.dx * deltaTime));
-            client.y = Math.max(0, Math.min(1, client.y + client.speed * moveVector.dy * deltaTime));
-
-            // Detectar colisions
-            this.objects = this.objects.filter(obj => {
-                if (this.isCircleRectColliding(client.x, client.y, client.radius, obj.x, obj.y, obj.width, obj.height)) {
-                    client.radius *= 1.1;
-                    client.speed *= 1.05;
-                    return false;
+            
+            // Apply movement and friction based on surface
+            const friction = player.onIce ? FRICTION_ICE : FRICTION_FLOOR;
+            
+            // Handle X movement
+            if (moveVector.dx !== 0) {
+                player.speedX = moveVector.dx * MOVEMENT_SPEED;
+            } else {
+                if (player.speedX > 0) {
+                    player.speedX = Math.max(0, player.speedX - friction * deltaTime);
+                } else if (player.speedX < 0) {
+                    player.speedX = Math.min(0, player.speedX + friction * deltaTime);
                 }
-                return true;
-            });
+            }
+            
+            // Handle Y movement
+            if (moveVector.dy !== 0) {
+                player.speedY = moveVector.dy * MOVEMENT_SPEED;
+            } else {
+                if (player.speedY > 0) {
+                    player.speedY = Math.max(0, player.speedY - friction * deltaTime);
+                } else if (player.speedY < 0) {
+                    player.speedY = Math.min(0, player.speedY + friction * deltaTime);
+                }
+            }
+            
+            // Calculate next position
+            let nextX = player.x + player.speedX * deltaTime;
+            let nextY = player.y + player.speedY * deltaTime;
+            
+            // Check collisions with floor areas (unwalkable)
+            let canMoveX = true;
+            let canMoveY = true;
+            
+            if (gameLevel && gameLevel.zones) {
+                gameLevel.zones.forEach(zone => {
+                    if (zone.type === "stone") {
+                        // Check X collision
+                        if (this.isCircleRectColliding(
+                            nextX, player.y, player.radius, 
+                            zone.x, zone.y, zone.width, zone.height)) {
+                            canMoveX = false;
+                        }
+                        
+                        // Check Y collision
+                        if (this.isCircleRectColliding(
+                            player.x, nextY, player.radius, 
+                            zone.x, zone.y, zone.width, zone.height)) {
+                            canMoveY = false;
+                        }
+                    }
+                });
+            }
+            
+            // Apply movement if allowed
+            if (canMoveX) {
+                player.x = nextX;
+            } else {
+                player.speedX = 0;
+            }
+            
+            if (canMoveY) {
+                player.y = nextY;
+            } else {
+                player.speedY = 0;
+            }
+            
+            // Check flag collision
+            if (this.flagOwnerId == "") {
+                let flag = gameLevel.sprites.find(sprite => sprite.type === 'flag');
+                if (flag && this.isCircleRectColliding(player.x, player.y, player.radius, flag.x, flag.y, flag.width, flag.height)) {
+                    this.flagOwnerId = player.id;
+                }
+            }
         });
     }
 
     // Obtenir una posició on no hi h ha ni objectes ni jugadors
     getValidPosition() {
-        let x, y;
-        let isValid = false;
-        let attempts = 0;
-        while (!isValid && attempts < 1000) {
-            attempts++;
-            x = Math.random() * (1 - OBJECT_WIDTH);
-            y = Math.random() * (1 - OBJECT_HEIGHT);
-            isValid = true;
-            for (let obj of this.objects) {
-                if (this.isCircleRectColliding(x, y, INITIAL_RADIUS, obj.x, obj.y, obj.width, obj.height)) {
-                    isValid = false;
-                    break;
-                }
-            }
-            if (isValid) {
-                for (let client of this.players) {
-                    if (this.isCircleCircleColliding(x, y, INITIAL_RADIUS, client.x, client.y, client.radius)) {
-                        isValid = false;
-                        break;
-                    }
-                }
-            }
-        }
-        if (!isValid) {
-            x = (1 - OBJECT_WIDTH) / 2;
-            y = (1 - OBJECT_HEIGHT) / 2;
-        }
+        let x = FOCUS_WIDTH / 2;
+        let y = FOCUS_HEIGHT / 2;
+        
         return { x, y };
-    }    
-
+    }
+    
     // Obtenir un color aleatori que no ha estat escollit abans
     getAvailableColor() {
-        let assignedColors = new Set(Array.from(this.players.values()).map(client => client.color));
+        let assignedColors = new Set(Array.from(this.players.values()).map(player => player.color));
         let availableColors = COLORS.filter(color => !assignedColors.has(color));
         return availableColors.length > 0 
           ? availableColors[Math.floor(Math.random() * availableColors.length)]
@@ -166,8 +206,10 @@ class GameLogic {
     // Retorna l'estat del joc (per enviar-lo als clients/jugadors)
     getGameState() {
         return {
-            objects: this.objects,
-            players: Array.from(this.players.values())
+            tickCounter: this.tickCounter,
+            level: "Level 0",
+            players: Array.from(this.players.values()),
+            flagOwnerId: this.flagOwnerId
         };
     }
 }

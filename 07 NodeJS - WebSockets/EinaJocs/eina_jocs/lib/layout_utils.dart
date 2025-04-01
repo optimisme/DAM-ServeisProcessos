@@ -4,6 +4,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'app_data.dart';
 import 'game_layer.dart';
+import 'game_sprite.dart';
+import 'game_zone.dart';
+import 'layout_sprites.dart';
+import 'layout_zones.dart';
 
 class LayoutUtils {
   static Future<ui.Image> generateTilemapImage(
@@ -404,6 +408,90 @@ class LayoutUtils {
     appData.draggingTileIndex =
         await tileIndexFromTilesetCoords(tilesetCoords, appData, layer);
     appData.draggingOffset = localPosition;
+  }
+  
+  static void selectZoneFromPosition(AppData appData, Offset localPosition, GlobalKey<LayoutZonesState> layoutZonesKey) {
+    Offset levelCoords = LayoutUtils.translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final zones = appData.gameData.levels[appData.selectedLevel].zones;
+    for (var i = 0; i < zones.length; i++) {
+      final zone = zones[i];
+      final rect = Rect.fromLTWH(
+          zone.x.toDouble(), zone.y.toDouble(), zone.width.toDouble(), zone.height.toDouble());
+      if (rect.contains(levelCoords)) {
+        layoutZonesKey.currentState?.selectZone(appData, i, false);
+        break;
+      } else {
+        layoutZonesKey.currentState?.selectZone(appData, -1, false);
+      }
+    }
+  }
+
+  static void startDragZoneFromPosition(AppData appData, Offset localPosition, GlobalKey<LayoutZonesState> layoutZonesKey) {
+    Offset levelCoords = LayoutUtils.translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final zones = appData.gameData.levels[appData.selectedLevel].zones;
+    for (var i = 0; i < zones.length; i++) {
+      final zone = zones[i];
+      final rect = Rect.fromLTWH(
+          zone.x.toDouble(), zone.y.toDouble(), zone.width.toDouble(), zone.height.toDouble());
+      if (rect.contains(levelCoords)) {
+        appData.zoneDragOffset = levelCoords - Offset(zone.x.toDouble(), zone.y.toDouble());
+        break;
+      } else {
+        appData.zoneDragOffset = Offset.zero;
+      }
+    }
+  }
+
+  static void dragZoneFromCanvas(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedZone == -1) return;
+    Offset levelCoords = translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    GameZone zone = appData.gameData.levels[appData.selectedLevel].zones[appData.selectedZone];
+    zone.x = (levelCoords.dx - appData.zoneDragOffset.dx).toInt();
+    zone.y = (levelCoords.dy - appData.zoneDragOffset.dy).toInt();
+  }
+
+  static void selectSpriteFromPosition(AppData appData, Offset localPosition, GlobalKey<LayoutSpritesState> layoutSpritesKey) {
+    Offset levelCoords = LayoutUtils.translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
+    for (var i = 0; i < sprites.length; i++) {
+      final sprite = sprites[i];
+      final rect = Rect.fromLTWH(
+          sprite.x.toDouble(), sprite.y.toDouble(), sprite.spriteWidth.toDouble(), sprite.spriteHeight.toDouble());
+      if (rect.contains(levelCoords)) {
+        layoutSpritesKey.currentState?.selectSprite(appData, i, false);
+        break;
+      } else {
+        layoutSpritesKey.currentState?.selectSprite(appData, -1, false);
+      }
+    }
+  }
+
+  static void startDragSpriteFromPosition(AppData appData, Offset localPosition, GlobalKey<LayoutSpritesState> layoutSpritesKey) {
+    Offset levelCoords = LayoutUtils.translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
+    for (var i = 0; i < sprites.length; i++) {
+      final sprite = sprites[i];
+      final rect = Rect.fromLTWH(
+          sprite.x.toDouble(), sprite.y.toDouble(), sprite.spriteWidth.toDouble(), sprite.spriteHeight.toDouble());
+      if (rect.contains(levelCoords)) {
+        appData.spriteDragOffset = levelCoords - Offset(sprite.x.toDouble(), sprite.y.toDouble());
+        break;
+      } else {
+        appData.spriteDragOffset = Offset.zero;
+      }
+    }
+  }
+
+  static void dragSpriteFromCanvas(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedSprite == -1) return;
+    Offset levelCoords = translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    GameSprite sprite = appData.gameData.levels[appData.selectedLevel].sprites[appData.selectedSprite];
+    sprite.x = (levelCoords.dx - appData.spriteDragOffset.dx).toInt();
+    sprite.y = (levelCoords.dy - appData.spriteDragOffset.dy).toInt();
   }
 
   static Offset? getTilemapCoords(AppData appData, Offset localPosition) {

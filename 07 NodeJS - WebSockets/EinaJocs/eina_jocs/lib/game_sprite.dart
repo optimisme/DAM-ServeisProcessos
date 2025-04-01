@@ -1,10 +1,10 @@
 class GameSprite {
-  final String type;
-  final int x;
-  final int y;
-  final int spriteWidth;
-  final int spriteHeight;
-  final String imageFile;
+  String type;
+  int x;
+  int y;
+  int spriteWidth;
+  int spriteHeight;
+  String imageFile;
 
   GameSprite({
     required this.type,

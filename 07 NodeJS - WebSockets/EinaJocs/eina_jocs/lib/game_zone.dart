@@ -1,10 +1,10 @@
 class GameZone {
-  final String type;
-  final int x;
-  final int y;
-  final int width;
-  final int height;
-  final String color;
+  String type;
+  int x;
+  int y;
+  int width;
+  int height;
+  String color;
 
   GameZone(
       {required this.type,

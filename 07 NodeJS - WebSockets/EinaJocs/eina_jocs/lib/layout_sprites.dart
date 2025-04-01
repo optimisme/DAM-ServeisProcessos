@@ -31,7 +31,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     heightController = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appData = Provider.of<AppData>(context, listen: false);
-      _updateForm(appData);
+      updateForm(appData);
     });
   }
 
@@ -45,7 +45,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     super.dispose();
   }
 
-  void _updateForm(AppData appData) {
+  void updateForm(AppData appData) {
     if (appData.selectedLevel != -1 && appData.selectedSprite != -1) {
       final sprite = appData.gameData.levels[appData.selectedLevel]
           .sprites[appData.selectedSprite];
@@ -83,7 +83,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     appData.gameData.levels[appData.selectedLevel].sprites.add(newSprite);
     appData.selectedSprite = -1;
     imageFile = "";
-    _updateForm(appData);
+    updateForm(appData);
     appData.update();
   }
 
@@ -107,14 +107,14 @@ class LayoutSpritesState extends State<LayoutSprites> {
       appData.gameData.levels[appData.selectedLevel].sprites
           .removeAt(appData.selectedSprite);
       appData.selectedSprite = -1;
-      _updateForm(appData);
+      updateForm(appData);
       appData.update();
     }
   }
 
-  void _selectSprite(AppData appData, int index, bool isSelected) {
+  void selectSprite(AppData appData, int index, bool isSelected) {
     appData.selectedSprite = isSelected ? -1 : index;
-    _updateForm(appData);
+    updateForm(appData);
     appData.update();
   }
 
@@ -185,7 +185,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                         return GestureDetector(
                           key: ValueKey(sprites[index]),
                           onTap: () =>
-                              _selectSprite(appData, index, isSelected),
+                              selectSprite(appData, index, isSelected),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 4, horizontal: 8),

@@ -42,7 +42,7 @@ class LayoutZonesState extends State<LayoutZones> {
     heightController = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appData = Provider.of<AppData>(context, listen: false);
-      _updateForm(appData);
+      updateForm(appData);
     });
   }
 
@@ -56,7 +56,7 @@ class LayoutZonesState extends State<LayoutZones> {
     super.dispose();
   }
 
-  void _updateForm(AppData appData) {
+  void updateForm(AppData appData) {
     if (appData.selectedZone != -1 && appData.selectedLevel != -1) {
       final zone = appData
           .gameData.levels[appData.selectedLevel].zones[appData.selectedZone];
@@ -87,7 +87,7 @@ class LayoutZonesState extends State<LayoutZones> {
         color: color);
     appData.gameData.levels[appData.selectedLevel].zones.add(newZone);
     appData.selectedZone = -1;
-    _updateForm(appData);
+    updateForm(appData);
     appData.update();
   }
 
@@ -111,15 +111,23 @@ class LayoutZonesState extends State<LayoutZones> {
       appData.gameData.levels[appData.selectedLevel].zones
           .removeAt(appData.selectedZone);
       appData.selectedZone = -1;
-      _updateForm(appData);
+      updateForm(appData);
       appData.update();
     }
   }
 
-  void _selectZone(AppData appData, int index, bool isSelected) {
+  void selectZone(AppData appData, int index, bool isSelected) {
     appData.selectedZone = isSelected ? -1 : index;
-    _updateForm(appData);
+    updateForm(appData);
     appData.update();
+/*
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scrollController.animateTo(
+            0.0,
+            duration: Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+      );
+    });*/
   }
 
   void _onReorder(AppData appData, int oldIndex, int newIndex) {
@@ -215,7 +223,7 @@ class LayoutZonesState extends State<LayoutZones> {
                         final zone = zones[index];
                         return GestureDetector(
                           key: ValueKey(zone),
-                          onTap: () => _selectZone(appData, index, isSelected),
+                          onTap: () => selectZone(appData, index, isSelected),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 4, horizontal: 8),

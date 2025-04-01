@@ -42,6 +42,10 @@ class AppData extends ChangeNotifier {
   late double tilesetScaleFactor;
   int draggingTileIndex = -1;
 
+  // Drag offsets
+  late Offset zoneDragOffset = Offset.zero;
+  late Offset spriteDragOffset = Offset.zero;
+
   void update() {
     notifyListeners();
   }

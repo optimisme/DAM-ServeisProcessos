@@ -25,6 +25,10 @@ class Layout extends StatefulWidget {
 }
 
 class _LayoutState extends State<Layout> {
+  // Clau del layout escollit
+  final GlobalKey<LayoutSpritesState> layoutSpritesKey = GlobalKey<LayoutSpritesState>();
+  final GlobalKey<LayoutZonesState> layoutZonesKey = GlobalKey<LayoutZonesState>();
+
   // ignore: unused_field
   Timer? _timer;
   ui.Image? _layerImage;
@@ -92,9 +96,9 @@ class _LayoutState extends State<Layout> {
       case 'tilemap':
         return const LayoutTilemaps();
       case 'zones':
-        return const LayoutZones();
+        return LayoutZones(key: layoutZonesKey);
       case 'sprites':
-        return const LayoutSprites();
+        return LayoutSprites(key: layoutSpritesKey);
       case 'media':
         return const LayoutMedia();
       default:
@@ -202,28 +206,66 @@ class _LayoutState extends State<Layout> {
                             if (appData.selectedSection == "tilemap") {
                               await LayoutUtils.dragTileIndexFromTileset(
                                   appData, details.localPosition);
+                            } else if (appData.selectedSection == "zones") {
+                              LayoutUtils.selectZoneFromPosition(appData, details.localPosition, layoutZonesKey);
+                              if (appData.selectedZone != -1) {
+                                LayoutUtils.startDragZoneFromPosition(appData, details.localPosition, layoutZonesKey);
+                                layoutZonesKey.currentState?.updateForm(appData);
+                              } 
+                            } else if (appData.selectedSection == "sprites") {
+                              LayoutUtils.selectSpriteFromPosition(appData, details.localPosition, layoutSpritesKey);
+                              if (appData.selectedSprite != -1) {
+                                LayoutUtils.startDragSpriteFromPosition(appData, details.localPosition, layoutSpritesKey);
+                                layoutSpritesKey.currentState?.updateForm(appData);
+                              } 
                             }
                           },
                           onPanUpdate: (details) async {
                             if (appData.selectedSection == "tilemap" &&
-                                appData.draggingTileIndex != -1) {
+                              appData.draggingTileIndex != -1) {
                               appData.draggingOffset += details.delta;
+                            } else if (appData.selectedSection == "zones" && appData.selectedZone != -1) {
+                              if (appData.selectedZone != -1) {
+                                LayoutUtils.dragZoneFromCanvas(appData, details.localPosition);
+                                layoutZonesKey.currentState?.updateForm(appData);
+                              } 
+                            } else if (appData.selectedSection == "sprites" && appData.selectedSprite != -1) {
+                              if (appData.selectedSprite != -1) {
+                                LayoutUtils.dragSpriteFromCanvas(appData, details.localPosition);
+                                layoutSpritesKey.currentState?.updateForm(appData);
+                              } 
                             }
                           },
                           onPanEnd: (details) {
                             if (appData.selectedSection == "tilemap" &&
-                                appData.draggingTileIndex != -1) {
+                              appData.draggingTileIndex != -1) {
                               LayoutUtils.dropTileIndexFromTileset(
                                   appData, details.localPosition);
+                            } else if (appData.selectedSection == "zones") {
+                              appData.zoneDragOffset = Offset.zero;
+                            } else if (appData.selectedSection == "sprites") {
+                              appData.zoneDragOffset = Offset.zero;
                             }
 
                             appData.dragging = false;
                             appData.draggingTileIndex = -1;
                           },
+                          onTapDown: (TapDownDetails details) {
+                            if (appData.selectedSection == "zones") {
+                              LayoutUtils.selectZoneFromPosition(appData, details.localPosition, layoutZonesKey);
+                            } else if (appData.selectedSection == "sprites") {
+                              LayoutUtils.selectSpriteFromPosition(appData, details.localPosition, layoutSpritesKey);
+                            }
+                          },
                           onTapUp: (TapUpDetails details) {
                             if (appData.selectedSection == "tilemap") {
                               LayoutUtils.removeTileIndexFromTileset(
                                   appData, details.localPosition);
+                              if (appData.selectedZone != -1) {
+                                layoutZonesKey.currentState?.updateForm(appData);
+                              } else if (appData.selectedSprite != -1) {
+                                layoutSpritesKey.currentState?.updateForm(appData);
+                              }
                             }
                           },
                           child: CustomPaint(

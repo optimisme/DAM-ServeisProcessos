@@ -7,13 +7,14 @@ const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
 const TICK_FPS = 25;
 const FOCUS_WIDTH = 1000;
 const FOCUS_HEIGHT = 500;
-const PLAYER_RADIUS = 16;
 const FRICTION_FLOOR = 350;
 const FRICTION_ICE = 50;
 const FRICTION_AIR = 5;
 const GRAVITY = 500;
 const HORIZONTAL_SPEED = 100;
 const JUMP_IMPULSE = 400;
+const PLAYER_WIDTH = 32;
+const PLAYER_HEIGHT = 32;
 
 const DIRECTIONS = {
     "up":         { dx: 0, dy: -1 },
@@ -42,12 +43,13 @@ class GameLogic {
             id,
             x: pos.x,
             y: pos.y,
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT,
             speedX: 0,
             speedY: 0,
             onFloor: false,
             direction: "none",
-            color,
-            radius: PLAYER_RADIUS
+            color
         });
         this.flagOwnerId = "";
 
@@ -99,7 +101,7 @@ class GameLogic {
                     if (gameLevel && gameLevel.zones) {
                         gameLevel.zones.forEach(zone => {
                             let seg0start = { x: player.x, y: player.y }
-                            let seg0end = { x: player.x, y: (player.y + player.radius + 10) }
+                            let seg0end = { x: player.x, y: (player.y + player.height) }
                             let seg1start = { x: zone.x, y: zone.y }
                             let seg1end = { x: zone.x + zone.width, y: zone.y }
                             if (["ice"].includes(zone.type) &&
@@ -124,7 +126,7 @@ class GameLogic {
             if (gameLevel && gameLevel.zones) {
                 gameLevel.zones.forEach(zone => {
                     let seg0start = { x: player.x, y: player.y }
-                    let seg0end = { x: player.x, y: (nextY + player.radius) }
+                    let seg0end = { x: player.x, y: (nextY + player.height) }
                     let seg1start = { x: zone.x, y: zone.y }
                     let seg1end = { x: zone.x + zone.width, y: zone.y }
                     if (["floor", "ice"].includes(zone.type) &&
@@ -137,7 +139,7 @@ class GameLogic {
             if (verticalCollision && player.speedY >= 0) {
                 player.speedY = 0;
                 player.onFloor = true;
-                player.y = collidedZone.y - player.radius;
+                player.y = collidedZone.y - player.height;
             } else {
                 player.speedY += GRAVITY * deltaTime;
                 player.onFloor = false;
@@ -147,7 +149,7 @@ class GameLogic {
             // Check flag collision
             if (this.flagOwnerId == "") {
                 let flag = gameLevel.sprites.find(sprite => sprite.type === 'flag');
-                if (flag && this.isCircleRectColliding(player.x, player.y, player.radius, flag.x, flag.y, flag.width, flag.height)) {
+                if (flag && this.areRectsColliding(player.x, player.y, player.width, player.height, flag.x, flag.y, flag.width, flag.height)) {
                     this.flagOwnerId = player.id
                 }
             }
@@ -193,13 +195,14 @@ class GameLogic {
         return false;
     }
 
-    // Detectar si un cercle i un rectangle es sobreposen
-    isCircleRectColliding(cx, cy, r, rx, ry, rw, rh) {
-        let closestX = Math.max(rx, Math.min(cx, rx + rw));
-        let closestY = Math.max(ry, Math.min(cy, ry + rh));
-        let dx = cx - closestX;
-        let dy = cy - closestY;
-        return (dx * dx + dy * dy) <= (r * r);
+    // Detectar dos rectangles es sobreposen
+    areRectsColliding(r0x, r0y, r0w, r0h, r1x, r1y, r1w, r1h) {
+        return (
+          r0x < r1x + r1w &&
+          r0x + r0w > r1x &&
+          r0y < r1y + r1h &&
+          r0y + r0h > r1y
+        );
     }
 
     // Detectar si dos cercles es sobreposen

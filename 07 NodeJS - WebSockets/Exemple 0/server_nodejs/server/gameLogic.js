@@ -243,7 +243,7 @@ class GameLogic {
           r0y < r1y + r1h &&
           r0y + r0h > r1y
         );
-      }
+    }
     
     // Retorna l'estat del joc (per enviar-lo als clients/jugadors)
     getGameState() {

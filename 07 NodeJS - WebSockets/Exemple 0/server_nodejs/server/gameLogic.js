@@ -7,10 +7,11 @@ const COLORS = ['green', 'blue', 'orange', 'red', 'purple'];
 const TICK_FPS = 25;
 const FOCUS_WIDTH = 1000;
 const FOCUS_HEIGHT = 500;
-const PLAYER_RADIUS = 16;
 const FRICTION_FLOOR = 350;
 const FRICTION_ICE = 50;
 const MOVEMENT_SPEED = 100;
+const PLAYER_WIDTH = 32;
+const PLAYER_HEIGHT = 32;
 
 const DIRECTIONS = {
     "up":         { dx: 0, dy: -1 },
@@ -39,11 +40,12 @@ class GameLogic {
             id,
             x: pos.x,
             y: pos.y,
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT,
             speedX: 0,
             speedY: 0,
             direction: "none",
             color,
-            radius: PLAYER_RADIUS,
             onIce: false
         });
         this.flagOwnerId = "";
@@ -86,8 +88,8 @@ class GameLogic {
             player.onIce = false;
             if (gameLevel && gameLevel.zones) {
                 gameLevel.zones.forEach(zone => {
-                    if (zone.type === "ice" && this.isCircleRectColliding(
-                        player.x, player.y, player.radius, 
+                    if (zone.type === "ice" && this.areRectsColliding(
+                        player.x, player.y, player.width, player.height, 
                         zone.x, zone.y, zone.width, zone.height)) {
                         player.onIce = true;
                     }
@@ -131,15 +133,15 @@ class GameLogic {
                 gameLevel.zones.forEach(zone => {
                     if (zone.type === "stone") {
                         // Check X collision
-                        if (this.isCircleRectColliding(
-                            nextX, player.y, player.radius, 
+                        if (this.areRectsColliding(
+                            nextX, player.y, player.width, player.height,
                             zone.x, zone.y, zone.width, zone.height)) {
                             canMoveX = false;
                         }
                         
                         // Check Y collision
-                        if (this.isCircleRectColliding(
-                            player.x, nextY, player.radius, 
+                        if (this.areRectsColliding(
+                            player.x, nextY, player.width, player.height,
                             zone.x, zone.y, zone.width, zone.height)) {
                             canMoveY = false;
                         }
@@ -166,8 +168,8 @@ class GameLogic {
                 if (flag) {
                     let flgCollisionX = flag.x - flag.width / 2;
                     let flgCollisionY = flag.y - flag.height / 2;
-                    if (this.isCircleRectColliding(
-                        player.x, player.y, (player.radius / 2), 
+                    if (this.areRectsColliding(
+                        nextX, player.y, player.width / 2, player.height / 2, 
                         flgCollisionX, flgCollisionY, flag.width, flag.height)) {
                         this.flagOwnerId = player.id;
                     }
@@ -199,8 +201,8 @@ class GameLogic {
             
             if (gameLevel && gameLevel.zones) {
                 for (const zone of gameLevel.zones) {
-                    if (zone.type === "stone" && this.isCircleRectColliding(
-                        x, y, PLAYER_RADIUS, 
+                    if (zone.type === "stone" && this.areRectsColliding(
+                        x, y, PLAYER_WIDTH, PLAYER_HEIGHT,
                         zone.x, zone.y, zone.width, zone.height)) {
                         isValidPosition = false;
                         break;
@@ -233,15 +235,15 @@ class GameLogic {
           : COLORS[Math.floor(Math.random() * COLORS.length)];
     }
 
-    // Detectar si un cercle i un rectangle es sobreposen
-    isCircleRectColliding(cx, cy, r, rx, ry, rw, rh) {
-        const effectiveRadius = r;
-        let closestX = Math.max(rx, Math.min(cx, rx + rw));
-        let closestY = Math.max(ry, Math.min(cy, ry + rh));
-        let dx = cx - closestX;
-        let dy = cy - closestY;
-        return (dx * dx + dy * dy) <= (effectiveRadius * effectiveRadius);
-    }
+    // Detectar dos rectangles es sobreposen
+    areRectsColliding(r0x, r0y, r0w, r0h, r1x, r1y, r1w, r1h) {
+        return (
+          r0x < r1x + r1w &&
+          r0x + r0w > r1x &&
+          r0y < r1y + r1h &&
+          r0y + r0h > r1y
+        );
+      }
     
     // Retorna l'estat del joc (per enviar-lo als clients/jugadors)
     getGameState() {

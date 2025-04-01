@@ -96,8 +96,8 @@ class CanvasPainter extends CustomPainter {
       spriteSheet,
       srcRect,
       Rect.fromLTWH(
-        destPos.dx - destSize.width / 2,
-        destPos.dy - destSize.height / 2,
+        destPos.dx,
+        destPos.dy,
         destSize.width,
         destSize.height,
       ),
@@ -276,7 +276,8 @@ class CanvasPainter extends CustomPainter {
     final camData = _getCameraAndScale(painterSize);
     final scale = camData['scale'];
 
-    final double radius = (player["radius"] as num).toDouble();
+    final double playerWidth = (player["width"] as num).toDouble();
+    final double playerHeight = (player["width"] as num).toDouble();
     final String color = player["color"];
     final String direction = player["direction"];
 
@@ -287,19 +288,18 @@ class CanvasPainter extends CustomPainter {
       painterSize,
     );
 
-    // Draw player circle
+    // Draw player rectangle
     final Paint paint = Paint()..color = _getColorFromString(color);
-    canvas.drawCircle(screenPos, radius * scale, paint);
+    final rect = Rect.fromLTWH(screenPos.dx, screenPos.dy, playerWidth * scale, playerHeight * scale);
+    canvas.drawRect(rect, paint);
 
     // Draw direction arrow
     final String arrowPath = "images/arrows.png";
     if (appData.imagesCache.containsKey(arrowPath)) {
       final ui.Image arrowsImage = appData.imagesCache[arrowPath]!;
       final Offset tilePos = _getArrowTile(direction);
-      const Size tileSize = Size(64, 64);
-
-      final double arrowScale = (2 * radius * scale) / tileSize.width;
-      final Size scaledSize = Size(tileSize.width * arrowScale, tileSize.height * arrowScale);
+      const Size tileSize = Size(64, 64); // Arrow tiles are 64x64
+      final Size scaledSize = Size(rect.width, rect.height);
 
       drawSpriteFromSheet(
         canvas,
@@ -344,15 +344,15 @@ class CanvasPainter extends CustomPainter {
       // Position flag above player
       final Offset flagPos = Offset(
         screenPos.dx,
-        screenPos.dy - (radius * scale) - (flagHeight / 2),
+        screenPos.dy,
       );
       
       canvas.drawImageRect(
         spriteImg,
         Rect.fromLTWH(srcX, 0, flagSprite["width"].toDouble(), flagSprite["height"].toDouble()),
         Rect.fromLTWH(
-          flagPos.dx - flagWidth / 2,
-          flagPos.dy - flagHeight / 2,
+          flagPos.dx + playerWidth / 2,
+          flagPos.dy - flagHeight,
           flagWidth,
           flagHeight,
         ),

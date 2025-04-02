@@ -125,7 +125,7 @@
           "y": 32,
           "width": 32,
           "height": 16,
-          "color": "grey"
+          "color": "purple"
         },
         {
           "type": "stone 1",
@@ -133,7 +133,7 @@
           "y": 224,
           "width": 32,
           "height": 16,
-          "color": "grey"
+          "color": "purple"
         },
         {
           "type": "water 0",
@@ -141,7 +141,7 @@
           "y": 96,
           "width": 84,
           "height": 64,
-          "color": "blue"
+          "color": "orange"
         },
         {
           "type": "water 1",
@@ -149,7 +149,7 @@
           "y": 160,
           "width": 116,
           "height": 16,
-          "color": "blue"
+          "color": "orange"
         }
       ],
       "sprites": [

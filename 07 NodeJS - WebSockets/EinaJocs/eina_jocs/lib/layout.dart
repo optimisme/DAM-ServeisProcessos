@@ -251,7 +251,10 @@ class _LayoutState extends State<Layout> {
                             appData.draggingTileIndex = -1;
                           },
                           onTapDown: (TapDownDetails details) {
-                            if (appData.selectedSection == "zones") {
+                            if (appData.selectedSection == "tilemap") {
+                              LayoutUtils.selectTileIndexFromTileset(
+                                  appData, details.localPosition);
+                            } else if (appData.selectedSection == "zones") {
                               LayoutUtils.selectZoneFromPosition(appData, details.localPosition, layoutZonesKey);
                             } else if (appData.selectedSection == "sprites") {
                               LayoutUtils.selectSpriteFromPosition(appData, details.localPosition, layoutSpritesKey);
@@ -259,8 +262,13 @@ class _LayoutState extends State<Layout> {
                           },
                           onTapUp: (TapUpDetails details) {
                             if (appData.selectedSection == "tilemap") {
-                              LayoutUtils.removeTileIndexFromTileset(
+                              if (appData.selectedTileIndex == -1) {
+                                LayoutUtils.removeTileIndexFromTileset(
                                   appData, details.localPosition);
+                              } else {
+                                LayoutUtils.setSelectedTileIndexFromTileset(
+                                  appData, details.localPosition);
+                              }
                               if (appData.selectedZone != -1) {
                                 layoutZonesKey.currentState?.updateForm(appData);
                               } else if (appData.selectedSprite != -1) {

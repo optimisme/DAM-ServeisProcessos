@@ -143,6 +143,18 @@ class LayoutUtils {
       }
     }
 
+    if (appData.selectedTileIndex != -1) {
+      int selectedIndex = appData.selectedTileIndex;
+      int tileRow = (selectedIndex / tilesetColumns).floor();
+      int tileCol = selectedIndex % tilesetColumns;
+      final redRect = Rect.fromLTWH(tileCol * tileWidth, tileRow * tileHeight, tileWidth, tileHeight);
+      final redPaint = Paint()
+        ..color = Colors.red
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+      canvas.drawRect(redRect, redPaint);
+    }
+
     final picture = recorder.endRecording();
     final tilesetImage =
         await picture.toImage(imageWidth.toInt(), imageHeight.toInt());
@@ -384,6 +396,38 @@ class LayoutUtils {
     return row * tilesetColumns + col;
   }
 
+  static selectTileIndexFromTileset(AppData appData, Offset localPosition) async {
+    if (appData.selectedLevel == -1 || appData.selectedLayer == -1) {
+      return;
+    }
+
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final layer = level.layers[appData.selectedLayer];
+
+    if (layer.tilesWidth <= 0 || layer.tilesHeight <= 0) {
+      return;
+    }
+
+    // Convertir de coordenades de canvas a coordenades d'imatge
+    Offset imageCoords = translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+
+    // Convertir de coordenades d'imatge a coordenades del tileset
+    Offset tilesetCoords = translateCoords(
+        imageCoords, appData.tilesetOffset, appData.tilesetScaleFactor);
+
+    int index =
+        await tileIndexFromTilesetCoords(tilesetCoords, appData, layer);
+
+    if (index != -1) {
+      if (index != appData.selectedTileIndex) {
+        appData.selectedTileIndex = index;
+      } else {
+        appData.selectedTileIndex = -1;
+      }
+    }
+  }
+
   static Future<void> dragTileIndexFromTileset(
       AppData appData, Offset localPosition) async {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) {
@@ -543,6 +587,25 @@ class LayoutUtils {
     int col = tileCoords.dy.toInt();
 
     layer.tileMap[row][col] = appData.draggingTileIndex;
+  }
+
+  static void setSelectedTileIndexFromTileset(AppData appData, Offset localPosition) {
+    Offset? tileCoords = getTilemapCoords(appData, localPosition);
+    if (tileCoords == null) return;
+
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final layer = level.layers[appData.selectedLayer];
+
+    int row = tileCoords.dx.toInt();
+    int col = tileCoords.dy.toInt();
+
+    int index = appData.selectedTileIndex;
+
+    if (layer.tileMap[row][col] != index) {
+      layer.tileMap[row][col] = index;
+    } else {
+      layer.tileMap[row][col] = -1;
+    }
   }
 
   static void removeTileIndexFromTileset(

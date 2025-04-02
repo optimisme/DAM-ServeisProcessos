@@ -41,6 +41,7 @@ class AppData extends ChangeNotifier {
   late Offset tilesetOffset;
   late double tilesetScaleFactor;
   int draggingTileIndex = -1;
+  int selectedTileIndex = -1;
 
   // Drag offsets
   late Offset zoneDragOffset = Offset.zero;

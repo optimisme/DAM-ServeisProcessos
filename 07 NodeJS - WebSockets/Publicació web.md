@@ -14,7 +14,7 @@ Compilar el projecte web:
 flutter build web --wasm --base-href "/flutter/"
 ```
 
-**Nota:** Per defecte flutter defineix la carpeta base de la pàgina web, com a l'arrel del servidor "/". Però si es vol posar en una carpeta diferent dins de public, per exmple dins "public/web" s'ha de definir --base-href
+**Nota:** Per defecte flutter defineix la carpeta base de la pàgina web, com a l'arrel del servidor "/". Però si es vol posar en una carpeta diferent dins de public, per exmple dins "public/web" s'ha de definir --base-href i es canvia el tag <base> dins de index.html
 
 **Publicar web al servidor**
 

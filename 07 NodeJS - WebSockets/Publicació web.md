@@ -26,7 +26,9 @@ cp -r ./build/web ../server/public/web
 
 # Al proxmox
 zip -r web.zip ./build/web
-# Copiar web.zip i descomprimir-lo al proxmox dins de public/web 
+scp -i folder/id_rsa -P 20127 ./web.zip usuari@ieticloudpro.ieti.cat:/home/super/public/
+unzip web.zip
+mv build/web web
 ```
 
 I accedir amb la direcció normal:

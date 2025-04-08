@@ -28,7 +28,7 @@ cp -r ./build/web ../server/public/web
 zip -r web.zip ./build/web
 scp -i folder/id_rsa -P 20127 ./web.zip usuari@ieticloudpro.ieti.cat:/home/super/
 unzip web.zip
-mv build/web web (assegurar-se que la carpeta web queda ../server/public/web/index.html)
+mv build/web web # (assegurar-se que la carpeta web queda ../server/public/web/index.html)
 ```
 
 I accedir amb la direcció normal:

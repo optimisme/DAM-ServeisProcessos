@@ -11,7 +11,7 @@ flutter create . --platforms web
 Compilar el projecte web:
 
 ```bash
-flutter build web --wasm --base-href "/flutter/"
+flutter build web --wasm --base-href "/web/"
 ```
 
 **Nota:** Per defecte flutter defineix la carpeta base de la pàgina web, com a l'arrel del servidor "/". Però si es vol posar en una carpeta diferent dins de public, per exmple dins "public/web" s'ha de definir --base-href i es canvia el tag <base> dins de index.html
@@ -22,7 +22,7 @@ Aleshores es pot copiar la web generada al servidor NodeJS:
 
 ```bash
 # En local
-cp -r ./build/web ../server/public/flutter
+cp -r ./build/web ../server/public/web
 
 # Al proxmox
 zip -r web.zip ./build/web

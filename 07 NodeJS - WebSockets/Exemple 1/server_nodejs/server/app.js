@@ -16,9 +16,16 @@ const app = express();
 app.use(express.static('public'));
 app.use(express.json());
 
+// Iniciar 'favicon' buit
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // Inicialitzar servidor HTTP
-const httpServer = app.listen(port, () => {
-    console.log(`Servidor HTTP escoltant a: http://localhost:${port}`);
+const httpServer = app.listen(port, '0.0.0.0', () => {
+  const os = require('os');
+  const localIp = Object.values(os.networkInterfaces())
+    .flat()
+    .find(i => i.family === 'IPv4' && !i.internal)?.address || '0.0.0.0';
+    console.log(`Servidor HTTP escoltant a: http://${localIp}:${port}`);
 });
 
 // Gestionar WebSockets

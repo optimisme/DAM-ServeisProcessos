@@ -15,6 +15,7 @@ Configurar el Proxmox per poder fer-hi funcionar servidors Java
 Connectar-se al proxmox:
 
 ```bash
+chmod 600 id_rsa
 ssh -i id_rsa -p 20127 nomUsuari@ieticloudpro.ieti.cat
 ```
 

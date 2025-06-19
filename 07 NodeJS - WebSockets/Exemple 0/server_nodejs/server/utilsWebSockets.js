@@ -13,7 +13,7 @@ class Obj {
         this.onClose = (socket, id) => { }
 
         // Run WebSocket server
-        this.ws = new WebSocket.Server({ server: httpServer })
+        this.ws = new WebSocket.Server({ server: httpServer, perMessageDeflate: true })
         this.socketsClients = new Map()
         console.log(`Listening for WebSocket queries on ${port}`)
 

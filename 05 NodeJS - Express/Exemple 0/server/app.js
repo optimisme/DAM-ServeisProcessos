@@ -4,6 +4,13 @@ const port = 3000
 
 // Continguts estàtics (carpeta public)
 app.use(express.static('public'))
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
 
 // Configurar direcció ‘/’ 
 app.get('/', async (req, res) => {

@@ -13,10 +13,22 @@ let gameLoop = new GameLoop();
 
 // Inicialitzar servidor Express
 const app = express();
-app.use(express.static('public'));
+app.use(express.static('public', {
+  maxAge: 0,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 app.use(express.json());
-
-// Iniciar 'favicon' buit
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // Inicialitzar servidor HTTP

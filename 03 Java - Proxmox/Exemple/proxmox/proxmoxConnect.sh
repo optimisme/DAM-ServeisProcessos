@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Connects to the remote server using SSH
+
 source ./config.env
 
 USER=${1:-$DEFAULT_USER}

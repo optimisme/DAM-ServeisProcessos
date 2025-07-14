@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Connects to the remote server, uploads the server package, and sets it up
+
 # Function for cleanup on script exit
 cleanup() {
     local exit_code=$?
@@ -35,7 +37,7 @@ if [[ ! -f "$RSA_PATH" ]]; then
 fi
 
 rm -f "$ZIP_NAME"
-zip -r "$ZIP_NAME" . -x "proxmox/*" "node_modules/*" ".gitignore"
+zip -r "$ZIP_NAME" . -x "proxmox/*" "node_modules/*" "data/*" ".gitignore"
 
 eval "$(ssh-agent -s)"
 ssh-add "${RSA_PATH}"
@@ -77,7 +79,7 @@ ssh -t -p 20127 "$USER@ieticloudpro.ieti.cat" << EOF
     echo "Port $SERVER_PORT desalliberat."
 
     echo "Netejant el directori del servidor..."
-    find . -mindepth 1 -not -name "node_modules" -not -path "./.ssh/*" -exec rm -rf {} + 2>/dev/null || true
+    find . -mindepth 1 \( -name "node_modules" -o -name "data" -o -path "./.ssh" \) -prune -o -exec rm -rf {} + 2>/dev/null || true
 
     echo "Comprovant i instal·lant unzip si cal..."
     if ! command -v unzip &>/dev/null; then

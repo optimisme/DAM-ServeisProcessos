@@ -13,7 +13,7 @@
 ## Processament
 
 Les màquines executen instruccions de codi les unes rere les altres, aquestes instruccions fan ús dels recursos de la màquina, habitualment la memòria (registres, …)
-
+ 
 ```assembly
 1 Load r1, X
 2 Load r2, Y

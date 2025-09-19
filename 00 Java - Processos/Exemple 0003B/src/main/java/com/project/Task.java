@@ -1,22 +1,18 @@
 package com.project;
 
-import java.util.concurrent.BlockingQueue;
-
 public class Task implements Runnable {
     private final TaskStrategy strategy;
-    private final BlockingQueue<Integer> queue;
-    private final int poisonPill;
+    private final String who;
 
-    public Task(TaskStrategy strategy, BlockingQueue<Integer> queue, int poisonPill) {
+    public Task(TaskStrategy strategy, String who) {
         this.strategy = strategy;
-        this.queue = queue;
-        this.poisonPill = poisonPill;
+        this.who = who;
     }
 
     @Override
     public void run() {
         try {
-            strategy.execute(queue, poisonPill);
+            strategy.run(who);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

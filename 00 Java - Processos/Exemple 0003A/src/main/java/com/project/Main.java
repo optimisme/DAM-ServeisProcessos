@@ -3,7 +3,12 @@ package com.project;
 import java.util.concurrent.*;
 
 public class Main {
-    private static final int POISON_PILL = Integer.MIN_VALUE;
+    private static final int POISON_PILL = -1;
+
+    // Necessari per assegurar que els missatges no s'entrellacin
+    public static void log(String who, String msg) {
+        System.out.printf("%d [%s] %s%n", System.nanoTime(), who, msg);
+    }
 
     public static void main(String[] args) throws InterruptedException {
 
@@ -19,10 +24,10 @@ public class Main {
 
                     int v = queue.take(); // bloqueja fins que hi hagi element
                     if (v == POISON_PILL) {
-                        System.out.println("Rebut poison pill. Aturant consumidor.");
+                        log("Consumer", "Rebut poison pill. Aturant consumidor.");
                         break;
                     }
-                    System.out.println("Consumit: " + v);
+                    log("Consumer", "Consumit: " + v);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -37,9 +42,10 @@ public class Main {
                     TimeUnit.MILLISECONDS.sleep(delay);
 
                     queue.put(i); // primer posem a la cua
-                    System.out.println("Produït: " + i);
+                    log("Producer", "Produït: " + i);
                 }
                 queue.put(POISON_PILL); // senyal per aturar el consumidor
+                log("Producer", "Poison pill enviat.");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

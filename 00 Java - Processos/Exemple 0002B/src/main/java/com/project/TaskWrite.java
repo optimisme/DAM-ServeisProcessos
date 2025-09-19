@@ -1,15 +1,22 @@
 package com.project;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class TaskWrite implements TaskStrategy {
+    private final AtomicReference<Integer> box;
+    private final CountDownLatch start;
+
+    public TaskWrite(AtomicReference<Integer> box, CountDownLatch start) {
+        this.box = box;
+        this.start = start;
+    }
+
     @Override
-    public void execute(ConcurrentHashMap<String, Integer> sharedData) throws InterruptedException {
-        int delay = ThreadLocalRandom.current().nextInt(1, 4);
-        TimeUnit.SECONDS.sleep(delay);
-        sharedData.put("key1", 100);
-        System.out.println("Tasca 1 ha escrit: 100 (trigat " + delay + " segons)");
+    public void run(String who) {
+        Main.sleepRnd();          // simula treball abans d'escriure
+        box.set(100);             // publica el valor inicial
+        Main.log(who, "ha escrit: 100");
+        start.countDown();        // ara poden córrer lector i modificador en paral·lel
     }
 }

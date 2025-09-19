@@ -1,57 +1,61 @@
 package com.project;
 
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Main {
 
+    // Necessari per assegurar que els missatges no s'entrellacin
+    static void log(String who, String msg) {
+        System.out.printf("%d [%s] %s%n", System.nanoTime(), who, msg);
+    }
+
+    static void sleepRnd() {
+        try { TimeUnit.MILLISECONDS.sleep(ThreadLocalRandom.current().nextInt(1, 200)); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
     public static void main(String[] args) throws InterruptedException {
-        System.out.println("Main Class:");
-        System.out.println("Exec args:");
-
-        // Cua amb capacitat 1 per passar el valor entre tasques
-        BlockingQueue<Integer> bus = new ArrayBlockingQueue<>(1);
-
-        // Pool fix (pots posar 3)
         ExecutorService pool = Executors.newFixedThreadPool(3);
 
-        // Tasca 1: escriure 100 (producer)
-        Runnable writeTask = () -> {
-            try {
-                bus.put(100); // bloqueja fins que el valor es consumeix si la cua és plena
-                System.out.println("Tasca 1 ha escrit: 100");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        AtomicReference<Integer> box = new AtomicReference<>();
+        CountDownLatch start = new CountDownLatch(1); // senyal per arrencar T2 i T3 després d’escriure
+
+        // Tasca 1: escriure valor inicial
+        Runnable t1 = () -> {
+            sleepRnd();
+            box.set(100);                    // publica 100
+            log("Tasca 1", "ha escrit: 100");
+            start.countDown();               // ara poden córrer lector i modificador en paral·lel
         };
 
-        // Tasca 2: modificar (consumeix 100 i publica 200)
-        Runnable modifyTask = () -> {
+        // Tasca 2: modificar (pot córrer abans o després del lector)
+        Runnable t2 = () -> {
             try {
-                Integer cur = bus.take();      // espera fins tenir el 100
-                int modified = 200;            // lògica de modificació
-                bus.put(modified);             // publica 200
-                System.out.println("Tasca 2 ha modificat: " + modified);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+                start.await();               // espera que ja hi hagi el valor inicial
+                sleepRnd();
+                box.set(200);                // publica 200
+                log("Tasca 2", "ha modificat: 200");
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         };
 
-        // Tasca 3: llegir (consumer final)
-        Runnable readTask = () -> {
+        // Tasca 3: llegir (si arriba abans de modificar → 100; si arriba després → 200)
+        Runnable t3 = () -> {
             try {
-                Integer cur = bus.take();      // espera fins tenir el 200
-                System.out.println("Tasca 3 ha llegit: " + cur);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+                start.await();               // espera valor inicial disponible
+                sleepRnd();
+                Integer cur = box.get();     // llegeix l’estat actual
+                log("Tasca 3", "ha llegit: " + cur);
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         };
 
-        // Envia les 3 tasques (en qualsevol ordre; la cua ja coordina)
-        pool.execute(writeTask);
-        pool.execute(modifyTask);
-        pool.execute(readTask);
+        pool.execute(t1);
+        pool.execute(t2);
+        pool.execute(t3);
 
         pool.shutdown();
-        pool.awaitTermination(10, TimeUnit.SECONDS);
+        if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+            pool.shutdownNow();
+        }
     }
 }

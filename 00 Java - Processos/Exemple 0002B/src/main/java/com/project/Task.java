@@ -1,20 +1,18 @@
 package com.project;
 
-import java.util.concurrent.ConcurrentHashMap;
-
 public class Task implements Runnable {
     private final TaskStrategy strategy;
-    private final ConcurrentHashMap<String, Integer> sharedData;
+    private final String who;
 
-    public Task(TaskStrategy strategy, ConcurrentHashMap<String, Integer> sharedData) {
+    public Task(TaskStrategy strategy, String who) {
         this.strategy = strategy;
-        this.sharedData = sharedData;
+        this.who = who;
     }
 
     @Override
     public void run() {
         try {
-            strategy.execute(sharedData);  // Executar l'estratègia passada
+            strategy.run(who);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

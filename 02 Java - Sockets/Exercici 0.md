@@ -1,55 +1,95 @@
-<div style="display: flex; width: 100%;">
-    <div style="flex: 1; padding: 0px;">
-        <p>© Albert Palacios Jiménez, 2024</p>
-    </div>
-    <div style="flex: 1; padding: 0px; text-align: right;">
-        <img src="./assets/ieti.png" height="32" alt="Logo de IETI" style="max-height: 32px;">
-    </div>
-</div>
-<br/>
-
 # Exercici 0
 
-Fes el joc de **"Enfonsa la flota"** amb JavaFX i WebSockets.
+**Introducció a WebSockets**
 
-El joc ha de tenir tres vistes:
+En aquesta pràctica implementarem un sistema compartit on diversos clients poden modificar un **comptador global** en temps real. A més, el servidor guardarà les estadístiques de quantes vegades cada client ha premut els botons.
 
-- La primera vista configura el servidor al que s'ha de connectar el client i el nom del jugador
-- La primera vista configura el servidor al que s'ha de connectar el client i el nom del jugador
-- La segona vista escull un contrincant a partir d'una llista de clients disponibles (clients que estàn connectats al servidor però no estàn jugant)
-- La tercera vista permet definir la posició dels vaixells
-- La quarta vista serà per jugar contra el jugador remot:
+---
 
-    El jugador que té el torn veu un text que diu. "Et toca jugar"
+## Objectiu
 
-    El jugador que no té el torn té totes les posicions desactivades
+Crear un **servidor WebSocket** que gestioni un **comptador global compartit** i un registre d’ús per cada client, i uns **clients JavaFX** que permetin incrementar o decrementar aquest comptador.
 
-    El jugador que no té el torn veu sobre quina posició té el contrincant el mouse, perquè aquesta canvia visiblement de color.
+---
 
-- La quinta vista mostra el resultat.
+## Requisits
 
-Les caselles han de ser botons simples, el canvi de color s'ha de fer amb els estils de JavaFX. Les lletres dels botons són:
+1. **Servidor**
+   - Manté un **valor global** del comptador (per exemple, inicialment 0).
+   - Rep peticions dels clients amb les accions:
+     - `+1` → incrementar el comptador.
+     - `-1` → decrementar el comptador.
+   - Actualitza el comptador i envia el nou valor a **tots els clients connectats**.
+   - Manté un **registre de participació** amb el nombre de clics de cada client:
+     - Identificat pel nom d’usuari o ID que envia el client en connectar-se.
+     - Exemple:  
+       ```
+       { "Anna": 5, "Marc": 2, "Joan": 7 }
+       ```
+   - En cada actualització, el servidor envia també l’estat complet:  
+     - Valor actual del comptador.  
+     - Estadístiques d’ús de tots els clients.
 
-- "": Un text buit per un botó amb el que no s'ha interactuat. 
-- "V": Un botó que té un troç de vaixell nostre. Botó verd.
-- "T": Un botó que té un botó que hem encertat de l'adversari. 
-- "A": Un botó que hem intentat endevinar però on l'adversari no hi té res.
+2. **Client (JavaFX)**
+   - En iniciar-se, demana el **nom d’usuari**.
+   - Mostra:
+     - El **valor actual del comptador** (sincronitzat amb el servidor).
+     - Dos botons: **“+1”** i **“-1”**.
+     - Una llista amb les **estadístiques** de quants clics ha fet cada client.
+   - Quan es prem un botó:
+     - El client envia un missatge al servidor amb l’acció i el nom d’usuari.
+   - Quan es rep una actualització del servidor:
+     - Es mostra el nou valor del comptador.
+     - Es mostra la llista actualitzada d’estadístiques.
 
-- "": Botó de color blanc.
-- "V": Botó de color verd.
-- "T": Botó de color taronja, o vermell quan el vaixell està enfonsat.
-- "A": Botó blau.
+3. **Protocol de missatges (JSON)**
+   - Petició del client:
+     ```json
+     {
+       "type": "action",
+       "user": "Anna",
+       "delta": +1
+     }
+     ```
+   - Resposta del servidor (a tots els clients):
+     ```json
+     {
+       "type": "state",
+       "counter": 12,
+       "stats": {
+         "Anna": 5,
+         "Marc": 2,
+         "Joan": 7
+       }
+     }
+     ```
 
-Les graelles hauràn de ser:
+---
 
-- Horitzontals de la A a la J
-- Verticals del 0 al 9
+## Funcionament esperat
 
-Els vaixells són:
+1. Es llança el **servidor** en una consola.
+2. S’obren un o més **clients JavaFX**.
+3. Quan un client prem **“+1”** o **“-1”**:
+   - El servidor rep l’acció i actualitza el valor.
+   - El servidor incrementa el comptador individual d’aquell client.
+   - El servidor envia el nou estat global a **tots els clients**.
+4. Tots els clients mostren:
+   - El valor del comptador actualitzat.
+   - Les estadístiques d’ús de cada client.
 
-- 1 de 5 espais (Porta avions)
-- 1 de 4 espais (Cuirassat)
-- 2 de 3 espais (Creuers)
-- 2 de 2 espais (Submarí)
+---
 
-La lògica de joc la gestiona el servidor, els clients només mostren l'estat del joc i envien els events.
+## Extensió opcional
+
+- Afegir un **reset** del comptador (només permès a un usuari “admin”).
+- Afegir un **ranking** ordenat per qui ha premut més cops.
+- Mostrar un petit **gràfic de barres** amb els clics de cada client (amb JavaFX).
+
+---
+
+## Notes
+
+- El **servidor** és l’únic que manté l’estat real del joc (comptador i estadístiques).  
+- Els **clients** només mostren l’estat rebut i envien accions.  
+- El projecte s’ha d’estructurar amb **Maven** i incloure els scripts `run.sh` i `run.ps1`.  

@@ -128,13 +128,26 @@ Runnable task = () -> {
 - **Callable**: però pot retornar un resultat (V) i llençar excepcions.
 
 ```java
-import java.util.concurrent.Callable;
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Main Class:");
+        System.out.println("Exec args:");
 
-public class Callable implements Callable<Integer>{
-    @Override
-    public Integer call() throws Exception {
-        int resultat = 42; 
-        return resultat;
+        for (int i = 0; i < 10; i++) {
+            final int id = i;
+            Runnable task = () -> {
+                System.out.println("Executant Task " + id);
+            }
+
+            Thread t = new Thread(task, "Thread-" + id);
+            t.start();
+
+            try {
+                t.join(); // Espera que acabi aquest thread abans de continuar
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
 ```

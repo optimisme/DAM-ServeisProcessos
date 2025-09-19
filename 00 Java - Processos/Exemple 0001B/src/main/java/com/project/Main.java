@@ -2,29 +2,31 @@ package com.project;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 public class Main {
     public static void main(String[] args) {
+        System.out.println("Main Class:");
+        System.out.println("Exec args:");
 
-		// Crear un executor amb un pool de 3 fils
-        ExecutorService executor = Executors.newFixedThreadPool(3);
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        List<Future<String>> futures = new ArrayList<>();
 
-        // Llista per emmagatzemar les tasques
-        List<Runnable> tasks = new ArrayList<>();
-
-        // Primer bucle: Generar tasques de 0 a 9
+        // Crear 10 tasques
         for (int i = 0; i < 10; i++) {
-            tasks.add(new Task(i));
+            Task task = new Task(i);
+            futures.add(executor.submit(task)); // retorna un Future
         }
 
-        // Segon bucle: Executar les tasques
-        for (Runnable task : tasks) {
-            executor.execute(task);
+        // Recuperar i imprimir els resultats
+        for (Future<String> f : futures) {
+            try {
+                System.out.println(f.get()); // get() espera i retorna el String
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
         }
 
-        // Tancar l'executor
         executor.shutdown();
     }
 }

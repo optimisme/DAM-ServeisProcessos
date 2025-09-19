@@ -1,14 +1,20 @@
 package com.project;
 
-class Task implements Runnable {
-    private final int taskId;
+import java.util.Random;
+import java.util.concurrent.Callable;
 
-    public Task(int taskId) {
-        this.taskId = taskId;
+public class Task implements Callable<String> {
+    private static final char[] VOCALS = {'a', 'e', 'i', 'o', 'u'};
+    private final int id;
+
+    public Task(int id) {
+        this.id = id;
     }
 
     @Override
-    public void run() {
-        System.out.println("Executant Task " + taskId);
+    public String call() {
+        Random rnd = new Random();
+        char v = VOCALS[rnd.nextInt(VOCALS.length)];
+        return "Executant Task " + id + " → Lletra aleatòria " + v;
     }
 }

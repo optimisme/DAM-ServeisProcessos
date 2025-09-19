@@ -60,32 +60,36 @@ Encara es poden fer així, i ho podeu trobar en alguna aplicació d’empresa.
 Però per motius de gestió de recursos i llegibilitat del codi ja no és recomanable.
 
 ```java
-class Task implements Runnable {
-	@Override
-	public void run (){
-		System.out.println ("Runnable interface");
-	}
-}
+package com.project;
 
-class ThreadDemo extends Thread {
-	@Override
-	public void run(){
-		System.out.println( "Thread class ");
-	}
-}
+public class Main {
+    public static void main(String[] args) {
+        // Amb lambda (Runnable és una interfície funcional)
+        new Thread(() -> {
+            // Codi que executa el thread 1
+            System.out.println("Codi interface 1");
+        }, "Thread 1").start();
 
-class Main {
-	public static void main (String ... args){
-        new ThreadDemo().start();
-	
-		new Thread(new Task(), "Thread 1").start();
-		
-		new Thread(new Task(), "Thread 2").start();
-	}
-}
-````
+        new Thread(() -> {
+            // Codi que executa el thread 2
+            System.out.println("Codi interface 2");
+        }, "Thread 2").start();
 
-**Nota**: A l´**Exemple 0000** es passa informació personalitzada a les tasques a través del constructor.
+        // Amb classe anònima que esten Thread
+        new Thread() {
+            @Override
+            public void run() {
+                System.out.println("Thread class - anònima");
+            }
+        }.start();
+    }
+}
+```
+
+Els exemples:
+
+- **Exemple 0000A**: Creació senzilla de threads al Main
+- **Exemple 0000B**: Creació professional de threads separant-los per classes
 
 ## Task i Executors
 

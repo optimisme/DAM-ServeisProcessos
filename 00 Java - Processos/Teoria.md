@@ -207,7 +207,9 @@ public class CompletableFutureExample {
         });
 
         // Definir què fer quan la tasca es completa
-        future.thenAccept(result -> System.out.println("Resultat: " + result));
+        future.thenAccept(result -> {
+            System.out.println("Resultat: " + result)
+        });
 
         // Esperar a que es completi la tasca abans de tancar el programa
         future.join();

@@ -14,6 +14,9 @@ public class Main {
         Runnable consumer = () -> {
             try {
                 while (true) {
+                    int delay = ThreadLocalRandom.current().nextInt(1, 200);
+                    TimeUnit.MILLISECONDS.sleep(delay);
+
                     int v = queue.take(); // bloqueja fins que hi hagi element
                     if (v == POISON_PILL) {
                         System.out.println("Rebut poison pill. Aturant consumidor.");
@@ -30,6 +33,9 @@ public class Main {
         Runnable producer = () -> {
             try {
                 for (int i = 0; i < 5; i++) {
+                    int delay = ThreadLocalRandom.current().nextInt(1, 200);
+                    TimeUnit.MILLISECONDS.sleep(delay);
+
                     queue.put(i); // primer posem a la cua
                     System.out.println("Produït: " + i);
                 }

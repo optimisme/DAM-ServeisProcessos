@@ -1,60 +1,61 @@
 package com.project;
 
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Main {
-    private static final int POISON_PILL = -1;
 
     // Necessari per assegurar que els missatges no s'entrellacin
-    public static void log(String who, String msg) {
+    static void log(String who, String msg) {
         System.out.printf("%d [%s] %s%n", System.nanoTime(), who, msg);
     }
 
+    static void sleepRnd() {
+        try { TimeUnit.MILLISECONDS.sleep(ThreadLocalRandom.current().nextInt(1, 200)); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
     public static void main(String[] args) throws InterruptedException {
+        ExecutorService pool = Executors.newFixedThreadPool(3);
 
-        BlockingQueue<Integer> queue = new LinkedBlockingQueue<>();
-        ExecutorService pool = Executors.newFixedThreadPool(2);
+        AtomicReference<Integer> box = new AtomicReference<>();
+        CountDownLatch start = new CountDownLatch(1); // senyal per arrencar T2 i T3 després d’escriure
 
-        // Consumer
-        Runnable consumer = () -> {
-            try {
-                while (true) {
-                    int delay = ThreadLocalRandom.current().nextInt(1, 200);
-                    TimeUnit.MILLISECONDS.sleep(delay);
-
-                    int v = queue.take(); // bloqueja fins que hi hagi element
-                    if (v == POISON_PILL) {
-                        log("Consumer", "Rebut poison pill. Aturant consumidor.");
-                        break;
-                    }
-                    log("Consumer", "Consumit: " + v);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        // Tasca 1: escriure valor inicial
+        Runnable t1 = () -> {
+            sleepRnd();
+            box.set(100);                    // publica 100
+            log("Tasca 1", "ha escrit: 100");
+            start.countDown();               // ara poden córrer lector i modificador en paral·lel
         };
 
-        // Producer
-        Runnable producer = () -> {
+        // Tasca 2: modificar (pot córrer abans o després del lector)
+        Runnable t2 = () -> {
             try {
-                for (int i = 0; i < 5; i++) {
-                    int delay = ThreadLocalRandom.current().nextInt(1, 200);
-                    TimeUnit.MILLISECONDS.sleep(delay);
-
-                    queue.put(i); // primer posem a la cua
-                    log("Producer", "Produït: " + i);
-                }
-                queue.put(POISON_PILL); // senyal per aturar el consumidor
-                log("Producer", "Poison pill enviat.");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+                start.await();               // espera que ja hi hagi el valor inicial
+                sleepRnd();
+                box.set(200);                // publica 200
+                log("Tasca 2", "ha modificat: 200");
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         };
 
-        pool.execute(consumer);
-        pool.execute(producer);
+        // Tasca 3: llegir (si arriba abans de modificar → 100; si arriba després → 200)
+        Runnable t3 = () -> {
+            try {
+                start.await();               // espera valor inicial disponible
+                sleepRnd();
+                Integer cur = box.get();     // llegeix l’estat actual
+                log("Tasca 3", "ha llegit: " + cur);
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        };
+
+        pool.execute(t1);
+        pool.execute(t2);
+        pool.execute(t3);
 
         pool.shutdown();
-        pool.awaitTermination(10, TimeUnit.SECONDS);
+        if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+            pool.shutdownNow();
+        }
     }
 }

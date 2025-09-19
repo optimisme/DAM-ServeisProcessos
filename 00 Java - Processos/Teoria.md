@@ -60,36 +60,36 @@ Encara es poden fer així, i ho podeu trobar en alguna aplicació d’empresa.
 Però per motius de gestió de recursos i llegibilitat del codi ja no és recomanable.
 
 ```java
-package com.project;
+public static void main(String[] args) {
+    // Informació que volem passar als threads
+    String info1 = "Missatge pel Thread 1A";
+    String info2 = "Missatge pel Thread 2A";
+    int number = 42;
 
-public class Main {
-    public static void main(String[] args) {
-        // Amb lambda (Runnable és una interfície funcional)
-        new Thread(() -> {
-            // Codi que executa el thread 1
-            System.out.println("Codi interface 1");
-        }, "Thread 1").start();
+    // Thread amb lambda que rep info1
+    new Thread(() -> {
+        System.out.println(Thread.currentThread().getName() + " → " + info1);
+    }, "Thread 1").start();
 
-        new Thread(() -> {
-            // Codi que executa el thread 2
-            System.out.println("Codi interface 2");
-        }, "Thread 2").start();
+    // Thread amb lambda que rep info2 i un número
+    new Thread(() -> {
+        System.out.println(Thread.currentThread().getName() + " → " + info2 + " i el número " + number);
+    }, "Thread 2").start();
 
-        // Amb classe anònima que esten Thread
-        new Thread() {
-            @Override
-            public void run() {
-                System.out.println("Thread class - anònima");
-            }
-        }.start();
-    }
+    // Thread amb classe anònima que també fa servir informació
+    new Thread() {
+        @Override
+        public void run() {
+            System.out.println(Thread.currentThread().getName() + " → " + "Execució amb classe anònima, número *2 = " + (number * 2));
+        }
+    }.start();
 }
 ```
 
 Els exemples:
 
 - **Exemple 0000A**: Creació senzilla de threads al Main
-- **Exemple 0000B**: Creació professional segons el patró "Strategy"
+- **Exemple 0000B**: Creació amb classes separades
 
 ## Task i Executors
 
@@ -134,8 +134,30 @@ class Task implements Runnable {
 }
 ```
 
-**Exemple 0001A**: Creació de tasques amb "Runnable", sense retorn de valor
+```java
+public static void main(String[] args) {
+    // Crear un executor amb un pool de 3 fils
+    ExecutorService executor = Executors.newFixedThreadPool(3);
 
+    // Llista per emmagatzemar les tasques
+    List<Runnable> tasks = new ArrayList<>();
+
+    // Primer bucle: Generar tasques de 0 a 9
+    for (int i = 0; i < 10; i++) {
+        tasks.add(new Task(i));
+    }
+
+    // Segon bucle: Executar les tasques
+    for (Runnable task : tasks) {
+        executor.execute(task);
+    }
+
+    // Tancar l'executor
+    executor.shutdown();
+}
+```
+
+**Exemple 0001**: Creació de tasques amb "Runnable", sense retorn de valor
 
 ```java
 public class Task implements Callable<String> {
@@ -155,7 +177,35 @@ public class Task implements Callable<String> {
 }
 ```
 
-**Exemple 0001B**: Creació de tasques amb "Callable" i retorn de valor (un String)
+
+```java
+public static void main(String[] args) {
+    System.out.println("Main Class:");
+    System.out.println("Exec args:");
+
+    ExecutorService executor = Executors.newFixedThreadPool(4);
+    List<Future<String>> futures = new ArrayList<>();
+
+    // Crear 10 tasques
+    for (int i = 0; i < 10; i++) {
+        Task task = new Task(i);
+        futures.add(executor.submit(task)); // retorna un Future
+    }
+
+    // Recuperar i imprimir els resultats
+    for (Future<String> f : futures) {
+        try {
+            System.out.println(f.get()); // get() espera i retorna el String
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
+    }
+
+    executor.shutdown();
+}
+```
+
+**Exemple 0002**: Creació de tasques amb "Callable" i retorn de valor (un String)
 
 ### Relació entre Executors i Tasks
 
@@ -165,17 +215,118 @@ public class Task implements Callable<String> {
 
 ## Compartir dades
 
-Java proporciona col·leccions dissenyades per ser segures en entorns concurrents, com les implementacions de les interfícies **ConcurrentMap**, **BlockingQueue**, o **ConcurrentLinkedQueue**.
+Java proporciona col·leccions dissenyades per ser segures en entorns concurrents, com les implementacions de les interfícies **AtomicReference**, **ConcurrentMap**, **BlockingQueue**, o **ConcurrentLinkedQueue**.
 
-**Important!** Si hi hagués N processos consumint les dades, caldria afegir N píndoles.
+```java
+public static void main(String[] args) throws InterruptedException {
+    ExecutorService pool = Executors.newFixedThreadPool(3);
 
-- **Exemple 0002A**: Compartir dades senzilla amb "BlockingQueue"
-- **Exemple 0002B**: Compartir dades professional segons el patró "Strategy"
+    AtomicReference<Integer> box = new AtomicReference<>();
+    CountDownLatch start = new CountDownLatch(1); // senyal per arrencar T2 i T3 després d’escriure
+
+    // Tasca 1: escriure valor inicial
+    Runnable t1 = () -> {
+        sleepRnd();
+        box.set(100);                    // publica 100
+        log("Tasca 1", "ha escrit: 100");
+        start.countDown();               // ara poden córrer lector i modificador en paral·lel
+    };
+
+    // Tasca 2: modificar (pot córrer abans o després del lector)
+    Runnable t2 = () -> {
+        try {
+            start.await();               // espera que ja hi hagi el valor inicial
+            sleepRnd();
+            box.set(200);                // publica 200
+            log("Tasca 2", "ha modificat: 200");
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    };
+
+    // Tasca 3: llegir (si arriba abans de modificar → 100; si arriba després → 200)
+    Runnable t3 = () -> {
+        try {
+            start.await();               // espera valor inicial disponible
+            sleepRnd();
+            Integer cur = box.get();     // llegeix l’estat actual
+            log("Tasca 3", "ha llegit: " + cur);
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    };
+
+    pool.execute(t1);
+    pool.execute(t2);
+    pool.execute(t3);
+
+    pool.shutdown();
+    if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+        pool.shutdownNow();
+    }
+}
+```
+
+- **Exemple 0003A**: Compartir dades senzilla amb "AtomicReference"
+- **Exemple 0003B**: Compartir dades professional segons el patró "Strategy" amb "AtomicReference"
+
+
+- **Exemple 0003A**: Compartir dades senzilla amb "BlockingQueue"
+- **Exemple 0003B**: Compartir dades professional segons el patró "Strategy"
+
+### Poison Pill
 
 **POISON_PILL** és una tècnica pel qual es passen dades, però es guarda un valor, per donar informació al fil que les processa. En aquest cas, que ha de sortir del bucle de processament perquè no hi ha més dades.
 
-- **Exemple 0003A**: Compartir dades i POISON_PILL senzilla amb "BlockingQueue"
-- **Exemple 0002B**: Compartir dades professional segons el patró "Strategy" i POISON_PILL
+**Important!** Si hi hagués N processos consumint les dades, caldria afegir N píndoles.
+
+```javapublic static void main(String[] args) throws InterruptedException {
+
+    BlockingQueue<Integer> queue = new LinkedBlockingQueue<>();
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+
+    // Consumer
+    Runnable consumer = () -> {
+        try {
+            while (true) {
+                int delay = ThreadLocalRandom.current().nextInt(1, 200);
+                TimeUnit.MILLISECONDS.sleep(delay);
+
+                int v = queue.take(); // bloqueja fins que hi hagi element
+                if (v == POISON_PILL) {
+                    log("Consumer", "Rebut poison pill. Aturant consumidor.");
+                    break;
+                }
+                log("Consumer", "Consumit: " + v);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    };
+
+    // Producer
+    Runnable producer = () -> {
+        try {
+            for (int i = 0; i < 5; i++) {
+                int delay = ThreadLocalRandom.current().nextInt(1, 200);
+                TimeUnit.MILLISECONDS.sleep(delay);
+
+                queue.put(i); // primer posem a la cua
+                log("Producer", "Produït: " + i);
+            }
+            queue.put(POISON_PILL); // senyal per aturar el consumidor
+            log("Producer", "Poison pill enviat.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    };
+
+    pool.execute(consumer);
+    pool.execute(producer);
+
+    pool.shutdown();
+    pool.awaitTermination(10, TimeUnit.SECONDS);
+}
+```
+
+- **Exemple 0004A**: Compartir dades i POISON_PILL senzilla amb "BlockingQueue"
+- **Exemple 0004B**: Compartir dades professional segons el patró "Strategy" i POISON_PILL
 
 ## Future i CompletableFuture
 
@@ -188,46 +339,6 @@ Future representa el resultat pendent d’una operació. Amb Future bàsic acost
 - Gestió d’errors (exceptionally, handle).
 - Completar manualment (complete, completeExceptionally).
 - Per defecte usa ForkJoinPool.commonPool (pots passar un Executor propi).
-
-```java
-import java.util.concurrent.CompletableFuture;
-
-public class CompletableFutureExample {
-    public static void main(String[] args) {
-        // Crear un CompletableFuture que es completa amb un valor
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-            // Simular una tasca pesada
-            // amb una espera d'un segon
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            return "Hola, món!";
-        });
-
-        // Definir què fer quan la tasca es completa
-        future.thenAccept(result -> {
-            System.out.println("Resultat: " + result)
-        });
-
-        // Esperar a que es completi la tasca abans de tancar el programa
-        future.join();
-    }
-}
-```
-
-A l'exemple anterior:
-
-- **supplyAsync()**: Executa una tasca de manera asíncrona en un altre fil, retornant un CompletableFuture.
-
-- **thenAccept()**: Defineix una acció que es realitzarà quan el CompletableFuture es completi amb un resultat.
-
-- **join()**: Bloqueja el fil principal fins que el CompletableFuture es completa. És útil en un context com aquest per assegurar-nos que veiem el resultat abans que el programa acabi.
-
-### Accions en cadena
-
-**CompletableFuture** és pràctic per executar accions en cadena, que no sabem quanta estona trigaràn:
 
 ```java
 public static void main(String[] args) {
@@ -262,21 +373,14 @@ public static void main(String[] args) {
 }
 ```
 
-Sortida del codi
-
-```bash
-Tasques en Future1...
-Tasques en Future2...
-Tasques en Future3...
-Resultat final: 30
-```
-
 A l'exemple anterior:
 
-- **CompletableFuture.supplyAsync()**: Crea el primer CompletableFuture (future1), que fa una operació asíncrona i retorna un valor (10).
+- **supplyAsync()**: Executa una tasca de manera asíncrona en un altre fil, retornant un CompletableFuture.
 
-- **thenApply()**: El segon CompletableFuture (future2) s'executa després que el primer es completa. Agafa el resultat del primer (10) i hi suma 5, donant 15.
+- **thenApplyAsync()**: Defineix una acció que es realitzarà quan el CompletableFuture es completi amb un resultat.
 
-- **Un altre thenApply()**: El tercer CompletableFuture (future3) s'executa després que el segon es completa. Agafa el resultat del segon (15) i el multiplica per 2, donant 30.
+- **join()**: Bloqueja el fil principal fins que el CompletableFuture es completa. És útil en un context com aquest per assegurar-nos que veiem el resultat abans que el programa acabi.
 
-- **get()**: Espera a que el tercer CompletableFuture es completi i retorna el resultat final (30).
+**CompletableFuture** és pràctic per executar accions en cadena, que no sabem quanta estona trigaràn.
+
+- **Exemple 0005**: Encadenar processos de duració desconeguda amb "Futures"

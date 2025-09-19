@@ -228,36 +228,34 @@ A l'exemple anterior:
 **CompletableFuture** és pràctic per executar accions en cadena, que no sabem quanta estona trigaràn:
 
 ```java
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+public static void main(String[] args) {
+    ExecutorService exec = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);     // ajuda a no retenir el JVM
+        return t;
+    });
 
-public class Main {
-    public static void main(String[] args) {
-        // Primer CompletableFuture: retorna un número després d'una operació asíncrona
-        CompletableFuture<Integer> future1 = CompletableFuture.supplyAsync(() -> {
-            System.out.println("Tasques en Future1...");
-            return 10;
-        });
+    try {
+        CompletableFuture<Integer> f1 =
+            CompletableFuture.supplyAsync(() -> {
+                System.out.println("Tasques en Future1...");
+                return 10;
+            }, exec);
 
-        // Segon CompletableFuture: suma 5 al resultat del primer
-        CompletableFuture<Integer> future2 = future1.thenApply(result -> {
+        CompletableFuture<Integer> f2 = f1.thenApplyAsync(result -> {
             System.out.println("Tasques en Future2...");
             return result + 5;
-        });
+        }, exec);
 
-        // Tercer CompletableFuture: multiplica el resultat anterior per 2
-        CompletableFuture<Integer> future3 = future2.thenApply(result -> {
+        CompletableFuture<Integer> f3 = f2.thenApplyAsync(result -> {
             System.out.println("Tasques en Future3...");
             return result * 2;
-        });
+        }, exec);
 
-        // Executar el càlcul final
-        try {
-            Integer finalResult = future3.get(); // Bloqueja fins que finalitza
-            System.out.println("Resultat final: " + finalResult);
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-        }
+        Integer finalResult = f3.join();   // o get()
+        System.out.println("Resultat final: " + finalResult);
+    } finally {
+        exec.shutdown();                   // important!
     }
 }
 ```

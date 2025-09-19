@@ -8,7 +8,9 @@
 </div>
 <br/>
 
-# Exercici 0, **"Connecta 4"** amb JavaFX i WebSockets
+# Exercici 0
+
+## "Connecta 4"amb JavaFX i WebSockets
 
 El joc ha de tenir **cinc vistes**:
 

@@ -1,6 +1,6 @@
 # Exercici 0
 
-**Introducció a WebSockets**
+## Introducció a WebSockets
 
 En aquesta pràctica implementarem un sistema compartit on diversos clients poden modificar un **comptador global** en temps real. A més, el servidor guardarà les estadístiques de quantes vegades cada client ha premut els botons.
 

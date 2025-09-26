@@ -10,13 +10,15 @@
 
 # Exercici 0
 
-## "Connecta 4"amb JavaFX i WebSockets
+## "Connecta 4" amb JavaFX i WebSockets
 
 El joc ha de tenir **cinc vistes**:
 
 1. **Configuració**  
    - Configura l’URL del servidor i el **nom del jugador**.  
    - Botó per **connectar-se** i continuar.
+   - Opció per connectar-se automàticament al servidor local
+   - Opció per connectar-se automàticament al servidor Proxmox
 
 2. **Selecció de contrincant**  
    - Mostra una **llista de clients disponibles** (connectats però sense partida en curs).  
@@ -28,17 +30,18 @@ El joc ha de tenir **cinc vistes**:
 
 4. **Partida (tauler i joc en temps real)**  
    - **Tauler de 7 columnes (A–G) x 6 files (0–5)**.  
-   - El tauler es representa amb **botons** (o cel·les clicables) estilitzats amb **CSS de JavaFX**.  
-   - **Torns**:  
+   - El tauler es dibuixa dins un **Canvas JavaFX** i es redibuixa cada cop que canvia l’estat.  
+   - **Interacció i torns**:  
      - El jugador amb el torn veu el text **“Et toca jugar”**.  
-     - L’altre jugador té **totes les columnes desactivades** (no pot deixar fitxes).  
-   - **Interacció i “hover”**:  
-     - En passar el ratolí per sobre d’una **columna**, aquesta es **ressalta** (previsualització) per indicar on **cauria la fitxa**.  
-     - El jugador que **no** té el torn veu **en temps real** la **columna** on l’altre jugador té el ratolí (ressaltada amb un estil diferent).  
-   - **Col·locació de fitxes**:  
-     - En fer clic a una **columna**, la fitxa cau fins a la **posició lliure més baixa** d’aquella columna.  
+     - L’altre jugador té la interacció **desactivada**.  
+   - **Hover i arrossegament**:  
+     - En passar el ratolí per sobre d’una **columna**, aquesta es **ressalta** i es mostra una **fitxa fantasma** a la part superior.  
+     - El jugador que **no** té el torn veu en temps real el **hover remot** de l’altre jugador (ressalt diferenciat).  
+     - Es pot fer **clic** a una columna o bé **arrossegar una fitxa** des de dalt i **deixar-la anar** a la columna per jugar.  
+   - **Animació de caiguda**:  
+     - Quan es juga, la fitxa cau animadament fins a la posició lliure més baixa de la columna.  
    - **Condicions de victòria i empat**:  
-     - Guanya qui connecta **4 fitxes** consecutives **horitzontals, verticals o diagonals**.  
+     - Guanya qui connecta **4 fitxes consecutives** (horitzontals, verticals o diagonals).  
      - Si el tauler s’omple sense guanyador, és **empat**.
 
 5. **Resultat**  
@@ -47,21 +50,21 @@ El joc ha de tenir **cinc vistes**:
 
 ---
 
-## Representació de cel·les i estils (JavaFX CSS)
+## Representació gràfica i estils
 
-Cada cel·la és un **botó** amb lletra i color:
+- **Buit**: cel·la blanca amb vora gris suau.  
+- **Fitxa vermella ("R")**: cercle vermell intens.  
+- **Fitxa groga ("Y")**: cercle groc.  
+- **Hover local**: columna ressaltada amb ombra o gradient suau.  
+- **Hover remot (contrincant)**: columna ressaltada amb contorn alternatiu.  
+- **Quatre en línia (victòria)**: les 4 cel·les guanyadores s’il·luminen amb efecte (ombra/pulsació).  
 
-- **""** (buit): cel·la sense fitxa → **blanc**  
-- **"V"**: fitxa **vermella** (jugador 1) → botó **vermell**  
-- **"G"**: fitxa **groga** (jugador 2) → botó **groc**
+> Les etiquetes `"R"` i `"Y"` són internes al model; al Canvas només es veuen els colors.
 
-Estils recomanats:
-- **Buit**: fons blanc, vora gris suau  
-- **Hover de columna (jugador actiu)**: marca **la columna** amb una **ombra** o fons lleuger  
-- **Hover remot (contrincant)**: marca la columna amb un **contorn** o patró diferent  
-- **Quatre en línia (victòria)**: destaca les 4 cel·les guanyadores (per exemple, **ombra/pulsació**)
+**Important**:
 
-> *Notes*: Les lletres **"V"** i **"G"** són només etiquetes internes; visualment el color del botó ha de ser clar i suficient.
+- S'ha de veure com el contrincant mou la fitxa en temps real, fins que la deixa anar a una columna (còmput servidor)
+- S'ha de veure l'animació de la fitxa caient a la seva posició (còmput local)
 
 ---
 
@@ -73,8 +76,9 @@ Estils recomanats:
   - Detecció de **4 en línia** i **empat**  
   - Sincronització d’estat entre clients
 - Els **clients**:
-  - **Envien esdeveniments** (connectar, convidar, acceptar, **hover de columna**, **jugada a columna**)  
-  - **Renderitzen** l’estat rebut del servidor
+  - **Envien esdeveniments** (connectar, convidar, acceptar, **hover**, **jugada**)  
+  - **Renderitzen** l’estat rebut del servidor  
+  - Fan servir **Canvas + animacions** per a la UI
 
 ---
 
@@ -85,8 +89,8 @@ Esdeveniments mínims (API - JSON):
 - `join { name }`
 - `lobby.list { players[] }`
 - `invite { to }` / `invite.accept { from }` / `invite.decline`
-- `game.start { gameId, youAre: "V"|"G", firstTurn }`
-- `game.hover { gameId, column }` *(s’emet contínuament mentre el ratolí es mou per columnes)*
+- `game.start { gameId, youAre: "R"|"Y", firstTurn }`
+- `game.hover { gameId, column }` *(s’emet mentre el ratolí es mou per columnes)*
 - `game.play { gameId, column }`
 - `game.state { board, turn, lastMove, status: "playing"|"win"|"draw", winner? }`
 - `game.end { result: "win"|"lose"|"draw" }`
@@ -96,12 +100,13 @@ Esdeveniments mínims (API - JSON):
 
 ## Requisits tècnics
 
-- **JavaFX** per a la interfície (multi-escena o contenidor amb canvis de vista).  
+- **JavaFX** per a la interfície (Canvas + escenes).  
 - **WebSockets** per a la comunicació temps real (client Java; servidor pot ser Java o un altre llenguatge).  
-- **ExecutorService** opcional per a tasques d’E/S o timers UI (sense bloquejar el fil d’UI).  
-- **CSS** de JavaFX per a tots els canvis visuals (colors, hover, estat del torn, etc.).  
+- **Timeline / Animation** de JavaFX per a les caigudes de fitxes.  
+- **ExecutorService** opcional per a tasques d’E/S o timers (no bloquejar el fil d’UI).  
+- **CSS JavaFX** per estils generals i textos (missatges de torn, resultat, etc.).  
 - **Separació clara** entre:
-  - **Vista (UI JavaFX)**  
+  - **Vista (UI Canvas + JavaFX)**  
   - **Client WS** (gestió de missatges)  
   - **Model** (estat local derivat del servidor)
 

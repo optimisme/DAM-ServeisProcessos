@@ -1,62 +1,62 @@
 package com.project;
 
+import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class Main {
 
+    // Shared data: partial results by microservice id
+    private static final ConcurrentHashMap<Integer, Integer> partials = new ConcurrentHashMap<>();
+    private static final AtomicLong t0 = new AtomicLong();
+
     public static void main(String[] args) {
-        // Creem un CyclicBarrier per a 3 fils
-        CyclicBarrier barrier = new CyclicBarrier(3, new Runnable() {
-            @Override
-            public void run() {
-                System.out.println("Tots els microserveis han acabat. Combinant els resultats...");
-            }
+        t0.set(System.nanoTime());
+
+        CyclicBarrier barrier = new CyclicBarrier(3, () -> {
+            // Combine partials
+            int total = partials.values().stream().mapToInt(Integer::intValue).sum();
+            long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0.get());
+            System.out.println("Tots els microserveis han acabat. Combinant els resultats...");
+            System.out.println("Parcials: " + partials);
+            System.out.println("Resultat global: " + total + " (temps total: " + ms + "ms)");
         });
 
-        // Executor per gestionar els fils
         ExecutorService executor = Executors.newFixedThreadPool(3);
 
-        // Tasques que simulen els microserveis
-        Runnable microservice1 = () -> {
-            try {
-                System.out.println("Microservei 1 processant dades...");
-                // Simulem un treball
-                Thread.sleep(1000);
-                System.out.println("Microservei 1 completat.");
-                barrier.await(); // Esperem que els altres fils acabin
-            } catch (InterruptedException | BrokenBarrierException e) {
-                e.printStackTrace();
-            }
-        };
+        executor.submit(microservice(1, barrier));
+        executor.submit(microservice(2, barrier));
+        executor.submit(microservice(3, barrier));
 
-        Runnable microservice2 = () -> {
-            try {
-                System.out.println("Microservei 2 processant dades...");
-                Thread.sleep(1500);
-                System.out.println("Microservei 2 completat.");
-                barrier.await();
-            } catch (InterruptedException | BrokenBarrierException e) {
-                e.printStackTrace();
-            }
-        };
-
-        Runnable microservice3 = () -> {
-            try {
-                System.out.println("Microservei 3 processant dades...");
-                Thread.sleep(2000);
-                System.out.println("Microservei 3 completat.");
-                barrier.await();
-            } catch (InterruptedException | BrokenBarrierException e) {
-                e.printStackTrace();
-            }
-        };
-
-        // Executem les tasques
-        executor.submit(microservice1);
-        executor.submit(microservice2);
-        executor.submit(microservice3);
-
-        // Tanquem l'executor
         executor.shutdown();
+        try { executor.awaitTermination(10, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+    }
+
+    private static Runnable microservice(int id, CyclicBarrier barrier) {
+        return () -> {
+            try {
+                // Pre-delay 100-500 ms
+                int preDelay = ThreadLocalRandom.current().nextInt(100, 501);
+                Thread.sleep(preDelay);
+                System.out.println("Microservei " + id + " començarà a processar dades (espera prèvia: " + preDelay + "ms)");
+
+                // Process delay 1000-1500 ms
+                int processDelay = ThreadLocalRandom.current().nextInt(1000, 1501);
+                System.out.println("Microservei " + id + " processant dades... (trigarà " + processDelay + "ms)");
+                Thread.sleep(processDelay);
+
+                // Treball d'exemple, calcular un parcial i guarda les dades a 'partials'
+                int base = id * 100;
+                int partial = 0;
+                for (int i = base; i < base + 10; i++) partial += i; // simple deterministic load
+                partials.put(id, partial);
+
+                System.out.println("Microservei " + id + " completat. (parcial=" + partial + ")");
+                barrier.await();
+            } catch (InterruptedException | BrokenBarrierException e) {
+                System.err.println("Error al microservei " + id + ": " + e.getMessage());
+                Thread.currentThread().interrupt();
+            }
+        };
     }
 }

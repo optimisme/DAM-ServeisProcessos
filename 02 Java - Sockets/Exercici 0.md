@@ -1,95 +1,126 @@
+<div style="display: flex; width: 100%;">
+    <div style="flex: 1; padding: 0px;">
+        <p>© Albert Palacios Jiménez, 2024</p>
+    </div>
+    <div style="flex: 1; padding: 0px; text-align: right;">
+        <img src="./assets/ieti.png" height="32" alt="Logo de IETI" style="max-height: 32px;">
+    </div>
+</div>
+<br/>
+
 # Exercici 0
 
-## Introducció a WebSockets
+## "Connecta 4"amb JavaFX i WebSockets
 
-En aquesta pràctica implementarem un sistema compartit on diversos clients poden modificar un **comptador global** en temps real. A més, el servidor guardarà les estadístiques de quantes vegades cada client ha premut els botons.
+El joc ha de tenir **cinc vistes**:
 
----
+1. **Configuració**  
+   - Configura l’URL del servidor i el **nom del jugador**.  
+   - Botó per **connectar-se** i continuar.
 
-## Objectiu
+2. **Selecció de contrincant**  
+   - Mostra una **llista de clients disponibles** (connectats però sense partida en curs).  
+   - Permet **enviar i acceptar invitacions** per iniciar partida 1v1.
 
-Crear un **servidor WebSocket** que gestioni un **comptador global compartit** i un registre d’ús per cada client, i uns **clients JavaFX** que permetin incrementar o decrementar aquest comptador.
+3. **Sala d’espera / Emparellament**  
+   - Mostra l’estat **“Esperant contrincant”** o **“Emparellant…”**.  
+   - Quan l’altre jugador accepta, passa automàticament a la partida.
 
----
+4. **Partida (tauler i joc en temps real)**  
+   - **Tauler de 7 columnes (A–G) x 6 files (0–5)**.  
+   - El tauler es representa amb **botons** (o cel·les clicables) estilitzats amb **CSS de JavaFX**.  
+   - **Torns**:  
+     - El jugador amb el torn veu el text **“Et toca jugar”**.  
+     - L’altre jugador té **totes les columnes desactivades** (no pot deixar fitxes).  
+   - **Interacció i “hover”**:  
+     - En passar el ratolí per sobre d’una **columna**, aquesta es **ressalta** (previsualització) per indicar on **cauria la fitxa**.  
+     - El jugador que **no** té el torn veu **en temps real** la **columna** on l’altre jugador té el ratolí (ressaltada amb un estil diferent).  
+   - **Col·locació de fitxes**:  
+     - En fer clic a una **columna**, la fitxa cau fins a la **posició lliure més baixa** d’aquella columna.  
+   - **Condicions de victòria i empat**:  
+     - Guanya qui connecta **4 fitxes** consecutives **horitzontals, verticals o diagonals**.  
+     - Si el tauler s’omple sense guanyador, és **empat**.
 
-## Requisits
-
-1. **Servidor**
-   - Manté un **valor global** del comptador (per exemple, inicialment 0).
-   - Rep peticions dels clients amb les accions:
-     - `+1` → incrementar el comptador.
-     - `-1` → decrementar el comptador.
-   - Actualitza el comptador i envia el nou valor a **tots els clients connectats**.
-   - Manté un **registre de participació** amb el nombre de clics de cada client:
-     - Identificat pel nom d’usuari o ID que envia el client en connectar-se.
-     - Exemple:  
-       ```
-       { "Anna": 5, "Marc": 2, "Joan": 7 }
-       ```
-   - En cada actualització, el servidor envia també l’estat complet:  
-     - Valor actual del comptador.  
-     - Estadístiques d’ús de tots els clients.
-
-2. **Client (JavaFX)**
-   - En iniciar-se, demana el **nom d’usuari**.
-   - Mostra:
-     - El **valor actual del comptador** (sincronitzat amb el servidor).
-     - Dos botons: **“+1”** i **“-1”**.
-     - Una llista amb les **estadístiques** de quants clics ha fet cada client.
-   - Quan es prem un botó:
-     - El client envia un missatge al servidor amb l’acció i el nom d’usuari.
-   - Quan es rep una actualització del servidor:
-     - Es mostra el nou valor del comptador.
-     - Es mostra la llista actualitzada d’estadístiques.
-
-3. **Protocol de missatges (JSON)**
-   - Petició del client:
-     ```json
-     {
-       "type": "action",
-       "user": "Anna",
-       "delta": +1
-     }
-     ```
-   - Resposta del servidor (a tots els clients):
-     ```json
-     {
-       "type": "state",
-       "counter": 12,
-       "stats": {
-         "Anna": 5,
-         "Marc": 2,
-         "Joan": 7
-       }
-     }
-     ```
+5. **Resultat**  
+   - Mostra **Guanyador / Perdedor / Empat**.  
+   - Botons per **tornar a la selecció de contrincant** o **tancar**.
 
 ---
 
-## Funcionament esperat
+## Representació de cel·les i estils (JavaFX CSS)
 
-1. Es llança el **servidor** en una consola.
-2. S’obren un o més **clients JavaFX**.
-3. Quan un client prem **“+1”** o **“-1”**:
-   - El servidor rep l’acció i actualitza el valor.
-   - El servidor incrementa el comptador individual d’aquell client.
-   - El servidor envia el nou estat global a **tots els clients**.
-4. Tots els clients mostren:
-   - El valor del comptador actualitzat.
-   - Les estadístiques d’ús de cada client.
+Cada cel·la és un **botó** amb lletra i color:
 
----
+- **""** (buit): cel·la sense fitxa → **blanc**  
+- **"V"**: fitxa **vermella** (jugador 1) → botó **vermell**  
+- **"G"**: fitxa **groga** (jugador 2) → botó **groc**
 
-## Extensió opcional
+Estils recomanats:
+- **Buit**: fons blanc, vora gris suau  
+- **Hover de columna (jugador actiu)**: marca **la columna** amb una **ombra** o fons lleuger  
+- **Hover remot (contrincant)**: marca la columna amb un **contorn** o patró diferent  
+- **Quatre en línia (victòria)**: destaca les 4 cel·les guanyadores (per exemple, **ombra/pulsació**)
 
-- Afegir un **reset** del comptador (només permès a un usuari “admin”).
-- Afegir un **ranking** ordenat per qui ha premut més cops.
-- Mostrar un petit **gràfic de barres** amb els clics de cada client (amb JavaFX).
+> *Notes*: Les lletres **"V"** i **"G"** són només etiquetes internes; visualment el color del botó ha de ser clar i suficient.
 
 ---
 
-## Notes
+## Normes i flux de joc
 
-- El **servidor** és l’únic que manté l’estat real del joc (comptador i estadístiques).  
-- Els **clients** només mostren l’estat rebut i envien accions.  
-- El projecte s’ha d’estructurar amb **Maven** i incloure els scripts `run.sh` i `run.ps1`.  
+- El **servidor** gestiona tota la **lògica de joc**:
+  - Validació de torns  
+  - Caiguda de fitxes  
+  - Detecció de **4 en línia** i **empat**  
+  - Sincronització d’estat entre clients
+- Els **clients**:
+  - **Envien esdeveniments** (connectar, convidar, acceptar, **hover de columna**, **jugada a columna**)  
+  - **Renderitzen** l’estat rebut del servidor
+
+---
+
+## Protocol (orientatiu) via WebSocket
+
+Esdeveniments mínims (API - JSON):
+
+- `join { name }`
+- `lobby.list { players[] }`
+- `invite { to }` / `invite.accept { from }` / `invite.decline`
+- `game.start { gameId, youAre: "V"|"G", firstTurn }`
+- `game.hover { gameId, column }` *(s’emet contínuament mentre el ratolí es mou per columnes)*
+- `game.play { gameId, column }`
+- `game.state { board, turn, lastMove, status: "playing"|"win"|"draw", winner? }`
+- `game.end { result: "win"|"lose"|"draw" }`
+- `error { message }`
+
+---
+
+## Requisits tècnics
+
+- **JavaFX** per a la interfície (multi-escena o contenidor amb canvis de vista).  
+- **WebSockets** per a la comunicació temps real (client Java; servidor pot ser Java o un altre llenguatge).  
+- **ExecutorService** opcional per a tasques d’E/S o timers UI (sense bloquejar el fil d’UI).  
+- **CSS** de JavaFX per a tots els canvis visuals (colors, hover, estat del torn, etc.).  
+- **Separació clara** entre:
+  - **Vista (UI JavaFX)**  
+  - **Client WS** (gestió de missatges)  
+  - **Model** (estat local derivat del servidor)
+
+---
+
+## Validacions mínimes
+
+- No es pot jugar en una **columna plena**.  
+- Només el **jugador amb torn** pot enviar `game.play`.  
+- El servidor rebutja jugades **invàlides** i re-emet l’**estat autoritatiu**.  
+- En acabar la partida, la vista 4 queda **en lectura** i es mostra la vista 5 (resultat).
+
+---
+
+## Important
+
+- Fes servir el **format MVN habitual** (projecte Maven).  
+- Inclou els scripts **`run.ps1`** i **`run.sh`** per compilar i executar fàcilment el client (i, si escau, el servidor).  
+- Documenta al `README.md`:
+  - Com **arrencar el servidor**  
+  - Com **executar el client**  
+  - **Ports**, variables d’entorn i dependències

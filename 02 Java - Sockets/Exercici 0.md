@@ -28,23 +28,28 @@ El joc ha de tenir **cinc vistes**:
    - Mostra l’estat **“Esperant contrincant”** o **“Emparellant…”**.  
    - Quan l’altre jugador accepta, passa automàticament a la partida.
 
-4. **Partida (tauler i joc en temps real)**  
+4. **Compte enrrera**  
+   - Mostra **“3, 2, 1”**.  
+   - Passa automàticament a la partida.
+
+5. **Partida (tauler i joc en temps real)**  
    - **Tauler de 7 columnes (A–G) x 6 files (0–5)**.  
    - El tauler es dibuixa dins un **Canvas JavaFX** i es redibuixa cada cop que canvia l’estat.  
    - **Interacció i torns**:  
-     - El jugador amb el torn veu el text **“Et toca jugar”**.  
+     - El jugador veu el punter del mouse del contrincant.
+     - El jugador amb el torn veu el text **“Et toca jugar”**. 
      - L’altre jugador té la interacció **desactivada**.  
    - **Hover i arrossegament**:  
-     - En passar el ratolí per sobre d’una **columna**, aquesta es **ressalta** i es mostra una **fitxa fantasma** a la part superior.  
-     - El jugador que **no** té el torn veu en temps real el **hover remot** de l’altre jugador (ressalt diferenciat).  
-     - Es pot fer **clic** a una columna o bé **arrossegar una fitxa** des de dalt i **deixar-la anar** a la columna per jugar.  
+     - Hi ha una serie de fitxes disponibles a la dreta de la finestra, ordenades aleatòriament com si estiguéssin a sobre d'una taula.
+     - El jugador ha d'escollir una de les fitxes del seu color i arrossegar-la a sobre d'una columna del tauler, quan aixeca el botó del mouse *"la fitxa cau"* per aquella columna.  
+     - L'oponent ha de veure la posició del mouse del jugador contrari en temps real, com arrossega una fitxa i com la deixa caure al tauler.
    - **Animació de caiguda**:  
      - Quan es juga, la fitxa cau animadament fins a la posició lliure més baixa de la columna.  
    - **Condicions de victòria i empat**:  
      - Guanya qui connecta **4 fitxes consecutives** (horitzontals, verticals o diagonals).  
      - Si el tauler s’omple sense guanyador, és **empat**.
 
-5. **Resultat**  
+6. **Resultat**  
    - Mostra **Guanyador / Perdedor / Empat**.  
    - Botons per **tornar a la selecció de contrincant** o **tancar**.
 
@@ -90,9 +95,12 @@ Esdeveniments mínims (API - JSON):
 - `lobby.list { players[] }`
 - `invite { to }` / `invite.accept { from }` / `invite.decline`
 - `game.start { gameId, youAre: "R"|"Y", firstTurn }`
-- `game.hover { gameId, column }` *(s’emet mentre el ratolí es mou per columnes)*
-- `game.play { gameId, column }`
-- `game.state { board, turn, lastMove, status: "playing"|"win"|"draw", winner? }`
+- `game.move { gameId, posX, posY }` *(s’emet mentre el ratolí es mou sense fitxa)*
+- `game.drag { gameId, posX, posY }` *(s’emet mentre el ratolí arrossega una fitxa)*
+- `game.play { gameId, column }` *(quan s'ha tirat una fitxa per una columna i s'ha d'animar la caiguda)
+- `game.state: ha de portar dades ...
+  - board, turn, lastMove, status: "playing"|"win"|"draw", winner?
+  - l’snapshot complet del taulell (6×7) per resincro­nitzar els taulells a cada jugador
 - `game.end { result: "win"|"lose"|"draw" }`
 - `error { message }`
 
@@ -109,6 +117,8 @@ Esdeveniments mínims (API - JSON):
   - **Vista (UI Canvas + JavaFX)**  
   - **Client WS** (gestió de missatges)  
   - **Model** (estat local derivat del servidor)
+
+> **Important!**: La lògica ha d'estar tota al servidor, els clients només han de mostrar l'estat de les dades que intercanvien amb el servidor
 
 ---
 

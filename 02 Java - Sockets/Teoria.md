@@ -8,6 +8,18 @@
 </div>
 <br/>
 
+# Recordatori Servidors
+
+Un **servidor** és un programa (o ordinador) que **ofereix un servei** a altres programes (els clients) a través d’una xarxa.
+
+Característiques:
+
+- Permet comunicació a través d'un protocol (http, ws, ...)
+- Respòn des de la seva adreça IP
+- Està atent a un un port d'accés.
+
+**Exemple:** un servidor web escolta a ws://192.168.1.10:80
+
 # Sockets
 
 Els sockets permeten enviar i rebre dades entre un client i un servidor, de manera que dues aplicacions es comuniquin entre elles a través d’una xarxa (com internet o una xarxa local).

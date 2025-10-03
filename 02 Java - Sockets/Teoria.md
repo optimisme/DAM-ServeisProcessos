@@ -110,7 +110,7 @@ Explicació:
 
     Envia un missatge al servidor i espera una resposta.
 
-Per fer anar l´**"Exemple 0200"** cal obrir dues consoles, cada una amb les crides:
+Per fer anar l´ **"Exemple 0200"**  cal obrir dues consoles, cada una amb les crides:
 
 - ./run.sh com.server.Main
 - ./run.sh com.client.Main

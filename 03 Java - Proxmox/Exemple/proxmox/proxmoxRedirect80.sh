@@ -7,6 +7,7 @@ USER=${1:-$DEFAULT_USER}
 RSA_PATH=${2:-"$DEFAULT_RSA_PATH"}
 SERVER_PORT=${3:-$DEFAULT_SERVER_PORT}
 RSA_PATH="${RSA_PATH%$'\r'}"
+SSH_OPTS='-oHostKeyAlgorithms=+ssh-rsa -oPubkeyAcceptedAlgorithms=+ssh-rsa'
 
 echo "User: $USER"
 echo "Ruta RSA: $RSA_PATH"
@@ -23,10 +24,7 @@ echo
 eval "$(ssh-agent -s)"
 ssh-add "$RSA_PATH"
 
-ssh -t -p 20127 \
-  -oHostKeyAlgorithms=+ssh-rsa \
-  -oPubkeyAcceptedAlgorithms=+ssh-rsa \
-  "$USER@ieticloudpro.ieti.cat" <<EOF
+ssh -t -p 20127 $SSH_OPTS "$USER@ieticloudpro.ieti.cat" <<EOF
 export DEBIAN_FRONTEND=noninteractive
 echo "$SUDO_PASSWORD" | sudo -S apt-get update -qq
 echo "$SUDO_PASSWORD" | sudo -S apt-get install -y iptables-persistent

@@ -12,7 +12,9 @@ A l'arxiu de configuració el camí a la clau privada RSA serà d'aquest estil:
 ```bash
 DEFAULT_RSA_PATH="/root/.ssh/id_rsa"
 ```
-**Important**: La ruta de l'arxiu amb la clau privada ha d'estar a l'espai WSL amb permissos 600.
+**Important**: La ruta de l'arxiu amb la clau privada ha d'estar a l'espai WSL amb permissos 600. 
+
+Això vol dir que no funciona des de *"/mnt/c/?"* perquè són arxius tipus Windows sense permissos UNIX.
 
 **També** és recomanable tenir tot el projecte a l'espai d'arxius WSL per tal que funcionin els permissos d'execuió.
 

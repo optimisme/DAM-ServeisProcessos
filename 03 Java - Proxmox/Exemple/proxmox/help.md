@@ -20,6 +20,7 @@ El servidor remot ha de tenir els següents paquets instal·lats:
 # Al servidor remot afegeix els paquets necessaris
 sudo apt update
 sudo apt install -y openjdk-21-jre procps grep gawk util-linux net-tools
+exit
 ```
 
 El servidor remot rep peticions pel port *80*, per seguretat és millor redirigir-les a un altre port (el del nostre servidor), per fer-ho:

@@ -6,6 +6,20 @@ Cal tenir instal·lat Windows Subsystem for Linux, és a dir un terminal Ubuntu 
 
 Es pot instal·lar la última versió d'un terminal Ubuntu des de la botiga d'aplicacions de Windows.
 
+## Java i Maven
+
+Cal tenir Java i Maven instal·lats a la consola WSL Ubuntu
+```bash
+sudo apt install default-jdk maven
+```
+
+A la carpeta del projecte:
+```bash
+mvn clean
+mvn install
+./run.sh com.client.Main
+```
+
 ## Clau RSA
 
 A l'arxiu de configuració el camí a la clau privada RSA serà d'aquest estil:

@@ -84,26 +84,6 @@ Amb el servidor i el client en marxa, des de la consola del servidor pots:
 
 > **Important**: Atura el servidor correctament amb **/quit** per evitar problemes de connexió en futures execucions.
 
-## Compartir arxius amb la RPi
-
-Per descarregar arxius des de la RPi al teu ordinador, posa:
-
-- Com a primer paràmetre *pi@dampiX.local:(la ruta de l'arxiu remot que vols descarregar)*.
-- Com a segon paràmetre la carpeta local on deixar l'arxiu *(./)*.
- 
-```bash
-scp pi@dampiX.local:/home/pi/Adafruit_Pi5_Piomatter/piomatter-java-jni/src/main/resources/ietilogo.png ./
-```
-
-Per enviar arxius des del teu ordinador a la RPI, posa:
-
-- Com a primer paràmetre la ruta de l'arxiu local.
-- Com a segon paràmetre *pi@dampiX.local:(la carpeta remota on vols deixar l'arxiu)*.
-
-```bash
-scp ./test.png pi@dampiX.local:/home/pi/Adafruit_Pi5_Piomatter/piomatter-java-jni/src/main/resources/
-```
-
 ## Visual Studio Code
 
 Per treballar més còmodament pots convigurar **"Visual Studio Code"** per editar i obrir terminals a la RPi des del teu ordinador.
@@ -188,3 +168,23 @@ Podràs obrir terminals remots normalment:
 <img src="./assets/visual-terminal.png" style="width: 90%; max-width: 600px">
 </center>
 <br/>
+
+## Compartir arxius amb la RPi
+
+Per descarregar arxius des de la RPi al teu ordinador, posa:
+
+- Com a primer paràmetre *pi@dampiX.local:(la ruta de l'arxiu remot que vols descarregar)*.
+- Com a segon paràmetre la carpeta local on deixar l'arxiu *(./)*.
+ 
+```bash
+scp pi@dampiX.local:/home/pi/Adafruit_Pi5_Piomatter/piomatter-java-jni/src/main/resources/ietilogo.png ./
+```
+
+Per enviar arxius des del teu ordinador a la RPI, posa:
+
+- Com a primer paràmetre la ruta de l'arxiu local.
+- Com a segon paràmetre *pi@dampiX.local:(la carpeta remota on vols deixar l'arxiu)*.
+
+```bash
+scp ./test.png pi@dampiX.local:/home/pi/Adafruit_Pi5_Piomatter/piomatter-java-jni/src/main/resources/
+```

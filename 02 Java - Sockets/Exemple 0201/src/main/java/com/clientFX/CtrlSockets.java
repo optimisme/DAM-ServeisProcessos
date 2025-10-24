@@ -94,7 +94,7 @@ public class CtrlSockets implements Initializable {
         
             for (int i = 0; i < JSONlist.length(); i++) {
                 String value = JSONlist.getString(i);
-                if (!value.equals(id)) { // Corrected condition
+                if (!value.equals(id)) { 
                     list.add(value);
                 }
             }

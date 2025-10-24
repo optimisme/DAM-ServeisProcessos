@@ -1,95 +1,178 @@
+<div style="display: flex; width: 100%;">
+    <div style="flex: 1; padding: 0px;">
+        <p>© Albert Palacios Jiménez, 2024</p>
+    </div>
+    <div style="flex: 1; padding: 0px; text-align: right;">
+        <img src="./assets/ieti.png" height="32" alt="Logo de IETI" style="max-height: 32px;">
+    </div>
+</div>
+<br/>
+
 # Exercici 0
 
-## Introducció a WebSockets
+## "Connecta 4" amb JavaFX i WebSockets
 
-En aquesta pràctica implementarem un sistema compartit on diversos clients poden modificar un **comptador global** en temps real. A més, el servidor guardarà les estadístiques de quantes vegades cada client ha premut els botons.
+El joc ha de tenir **cinc vistes**:
 
----
+1. **Configuració**  
+   - Configura l’URL del servidor i el **nom del jugador**.  
+   - Botó per **connectar-se** i continuar.
+   - Opció per connectar-se automàticament al servidor local
+   - Opció per connectar-se automàticament al servidor Proxmox
 
-## Objectiu
+2. **Selecció de contrincant**  
+   - Mostra una **llista de clients disponibles** (connectats però sense partida en curs).  
+   - Permet **enviar i acceptar invitacions** per iniciar partida 1v1.
 
-Crear un **servidor WebSocket** que gestioni un **comptador global compartit** i un registre d’ús per cada client, i uns **clients JavaFX** que permetin incrementar o decrementar aquest comptador.
+3. **Sala d’espera / Emparellament**  
+   - Mostra l’estat **“Esperant contrincant”** o **“Emparellant…”**.  
+   - Quan l’altre jugador accepta, passa automàticament a la partida.
 
----
+4. **Compte enrrera**  
+   - Mostra **“3, 2, 1”**.  
+   - Passa automàticament a la partida.
 
-## Requisits
+5. **Partida (tauler i joc en temps real)**  
+   - **Tauler de 7 columnes (A–G) x 6 files (0–5)**.  
+   - El tauler es dibuixa dins un **Canvas JavaFX** i es redibuixa cada cop que canvia l’estat.  
+   - **Interacció i torns**:  
+     - El jugador veu el punter del mouse del contrincant.
+     - El jugador amb el torn veu el text **“Et toca jugar”**. 
+     - L’altre jugador té la interacció **desactivada**.  
+   - **Hover i arrossegament**:  
+     - Hi ha una serie de fitxes disponibles a la dreta de la finestra, ordenades aleatòriament com si estiguéssin a sobre d'una taula.
+     - El jugador ha d'escollir una de les fitxes del seu color i arrossegar-la a sobre d'una columna del tauler, quan aixeca el botó del mouse *"la fitxa cau"* per aquella columna.  
+     - L'oponent ha de veure la posició del mouse del jugador contrari en temps real, com arrossega una fitxa i com la deixa caure al tauler.
+   - **Animació de caiguda**:  
+     - Quan es juga, la fitxa cau animadament fins a la posició lliure més baixa de la columna.  
+   - **Condicions de victòria i empat**:  
+     - Guanya qui connecta **4 fitxes consecutives** (horitzontals, verticals o diagonals).  
+     - Si el tauler s’omple sense guanyador, és **empat**.
 
-1. **Servidor**
-   - Manté un **valor global** del comptador (per exemple, inicialment 0).
-   - Rep peticions dels clients amb les accions:
-     - `+1` → incrementar el comptador.
-     - `-1` → decrementar el comptador.
-   - Actualitza el comptador i envia el nou valor a **tots els clients connectats**.
-   - Manté un **registre de participació** amb el nombre de clics de cada client:
-     - Identificat pel nom d’usuari o ID que envia el client en connectar-se.
-     - Exemple:  
-       ```
-       { "Anna": 5, "Marc": 2, "Joan": 7 }
-       ```
-   - En cada actualització, el servidor envia també l’estat complet:  
-     - Valor actual del comptador.  
-     - Estadístiques d’ús de tots els clients.
-
-2. **Client (JavaFX)**
-   - En iniciar-se, demana el **nom d’usuari**.
-   - Mostra:
-     - El **valor actual del comptador** (sincronitzat amb el servidor).
-     - Dos botons: **“+1”** i **“-1”**.
-     - Una llista amb les **estadístiques** de quants clics ha fet cada client.
-   - Quan es prem un botó:
-     - El client envia un missatge al servidor amb l’acció i el nom d’usuari.
-   - Quan es rep una actualització del servidor:
-     - Es mostra el nou valor del comptador.
-     - Es mostra la llista actualitzada d’estadístiques.
-
-3. **Protocol de missatges (JSON)**
-   - Petició del client:
-     ```json
-     {
-       "type": "action",
-       "user": "Anna",
-       "delta": +1
-     }
-     ```
-   - Resposta del servidor (a tots els clients):
-     ```json
-     {
-       "type": "state",
-       "counter": 12,
-       "stats": {
-         "Anna": 5,
-         "Marc": 2,
-         "Joan": 7
-       }
-     }
-     ```
+6. **Resultat**  
+   - Mostra **Guanyador / Perdedor / Empat**.  
+   - Botons per **tornar a la selecció de contrincant** o **tancar**.
 
 ---
 
-## Funcionament esperat
+## Representació gràfica i estils
 
-1. Es llança el **servidor** en una consola.
-2. S’obren un o més **clients JavaFX**.
-3. Quan un client prem **“+1”** o **“-1”**:
-   - El servidor rep l’acció i actualitza el valor.
-   - El servidor incrementa el comptador individual d’aquell client.
-   - El servidor envia el nou estat global a **tots els clients**.
-4. Tots els clients mostren:
-   - El valor del comptador actualitzat.
-   - Les estadístiques d’ús de cada client.
+- **Buit**: cel·la blanca amb vora gris suau.  
+- **Fitxa vermella ("R")**: cercle vermell intens.  
+- **Fitxa groga ("Y")**: cercle groc.  
+- **Hover local**: columna ressaltada amb ombra o gradient suau.  
+- **Hover remot (contrincant)**: columna ressaltada amb contorn alternatiu.  
+- **Quatre en línia (victòria)**: les 4 cel·les guanyadores s’il·luminen amb efecte (ombra/pulsació).  
 
----
+> Les etiquetes `"R"` i `"Y"` són internes al model; al Canvas només es veuen els colors.
 
-## Extensió opcional
+**Important**:
 
-- Afegir un **reset** del comptador (només permès a un usuari “admin”).
-- Afegir un **ranking** ordenat per qui ha premut més cops.
-- Mostrar un petit **gràfic de barres** amb els clics de cada client (amb JavaFX).
+- S'ha de veure com el contrincant mou la fitxa en temps real, fins que la deixa anar a una columna (còmput servidor)
+- S'ha de veure l'animació de la fitxa caient a la seva posició (còmput local)
 
 ---
 
-## Notes
+## Normes i flux de joc
 
-- El **servidor** és l’únic que manté l’estat real del joc (comptador i estadístiques).  
-- Els **clients** només mostren l’estat rebut i envien accions.  
-- El projecte s’ha d’estructurar amb **Maven** i incloure els scripts `run.sh` i `run.ps1`.  
+- El **servidor** gestiona tota la **lògica de joc**:
+  - Validació de torns  
+  - Caiguda de fitxes  
+  - Detecció de **4 en línia** i **empat**  
+  - Sincronització d’estat entre clients
+  - Manté la lògica de la partida
+
+- Els **clients**:
+  - **Envien esdeveniments** (connectar, convidar, acceptar, **hover**, **jugada**)  
+  - **Renderitzen** l’estat rebut del servidor  
+  - Fan servir **Canvas + animacions** per a la UI
+  - Fa la lògica d'animació de caiguda
+
+---
+
+## Protocol/API via WebSocket (orientatiu)
+
+Client > Servidor:
+
+- clientMouseMoving
+- clientPieceMoving
+- clientPlay
+
+Servidor > Clients:
+
+- countdown
+- serverData
+
+Proposta de serverData (caldrà adaptar-la):
+
+- role: R (red), Y (yellow)
+- status: waiting | countdown | playing | win | draw
+- lastMove: per animar la caiguda
+
+```json
+{
+  "type": "serverData",
+  "clientName": "Bulbasaur",
+  "clientsList": [
+    { "name": "Bulbasaur", "color": "GREEN", "mouseX": 412.5, "mouseY": 133.0, "role": "R" },
+    { "name": "Charizard", "color": "ORANGE", "mouseX": 220.0, "mouseY": 210.0, "role": "Y" }
+  ],
+  "objectsList": [
+    { "id": "R_00", "x": 610.0, "y": 80.0, "role": "R" },
+    { "id": "Y_00", "x": 670.0, "y": 80.0, "role": "Y" }
+    ...
+  ],
+  "game": {
+    "status": "playing",
+    "board": [
+      [" "," "," "," "," "," "," "],
+      [" "," "," "," "," "," "," "],
+      [" "," "," "," "," "," "," "],
+      [" "," "," ","R"," "," "," "],
+      [" "," "," ","R","Y"," "," "],
+      ["R","Y"," ","R","Y"," "," "]
+    ],
+    "turn": "Bulbasaur", 
+    "lastMove": { "col": 3, "row": 3 },
+    "winner": "" 
+  }
+}
+```
+
+---
+
+## Requisits tècnics
+
+- **JavaFX** per a la interfície (Canvas + escenes).  
+- **WebSockets** per a la comunicació temps real (client Java; servidor pot ser Java o un altre llenguatge).  
+- **Timeline / Animation** de JavaFX per a les caigudes de fitxes.  
+- **ExecutorService** opcional per a tasques d’E/S o timers (no bloquejar el fil d’UI).  
+- **CSS JavaFX** per estils generals 
+- **Separació clara** entre:
+  - **Vista (UI Canvas + JavaFX)**  
+  - **Client WS** (gestió de missatges)  
+  - **Model** (estat local derivat del servidor)
+- **Server** Manté la lògica de la partida, envia *broadcast* a clients 30 vegades per segon
+- **Client** Envia interacció al servidor, anima la caiguda de fitxes
+
+> **Important!**: La lògica ha d'estar tota al servidor, els clients només han de mostrar l'estat de les dades que intercanvien amb el servidor
+
+---
+
+## Validacions mínimes
+
+- No es pot jugar en una **columna plena**.  
+- Només el **jugador amb torn** pot enviar `game.play`.  
+- El servidor rebutja jugades **invàlides** i re-emet l’**estat autoritatiu**.  
+- En acabar la partida, es mostra la pantalla amb el resultat i el panell final
+
+---
+
+## Important
+
+- Fes servir el **format MVN habitual** (projecte Maven).  
+- Inclou els scripts **`run.ps1`** i **`run.sh`** per compilar i executar fàcilment el client (i, si escau, el servidor).  
+- Documenta al `README.md`:
+  - Com **arrencar el servidor**  
+  - Com **executar el client**  
+  - **Ports** i dependències

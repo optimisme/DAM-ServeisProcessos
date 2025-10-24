@@ -180,7 +180,7 @@ Per descarregar arxius des de la RPi al teu ordinador, posa:
 scp pi@dampiX.local:/home/pi/Adafruit_Pi5_Piomatter/piomatter-java-jni/src/main/resources/ietilogo.png ./
 ```
 
-Per enviar arxius des del teu ordinador a la RPI, posa:
+Per enviar arxius des del teu ordinador a la RPI, posa: 
 
 - Com a primer paràmetre la ruta de l'arxiu local.
 - Com a segon paràmetre *pi@dampiX.local:(la carpeta remota on vols deixar l'arxiu)*.

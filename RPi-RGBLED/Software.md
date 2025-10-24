@@ -169,7 +169,7 @@ Podràs obrir terminals remots normalment:
 </center>
 <br/>
 
-## Compartir arxius amb la RPi
+## Compartir arxius amb la RPi 
 
 Per descarregar arxius des de la RPi al teu ordinador, posa:
 

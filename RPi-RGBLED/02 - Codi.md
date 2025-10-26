@@ -132,8 +132,10 @@ Al l'exemple de WebSockets, s'envien imatges en format Base64.
 **Llegir la imatge i transformar-la a Base64:**
 
 ```java
-/** Retorna Base64 d'una imatge (PNG/JPG/JPEG) via path o classpath */
-/** per "classpath" l'arxiu ha d'estar a "src/main/resources/" */
+/** 
+ * Retorna Base64 d'una imatge (PNG/JPG/JPEG) via path o classpath 
+ * "classpath:" llegeix dels recursos a "src/main/resources/" 
+ */
 private static String loadImageBase64(String spec) throws Exception {
     String lower = spec.toLowerCase(Locale.ROOT);
     if (lower.startsWith("classpath:")) {

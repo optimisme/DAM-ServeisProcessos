@@ -43,5 +43,5 @@ sudo shutdown -h now
 **Important**: La última connexió que s'ha de fer:
 
 <center>
-<img src="./assets/cables-gpio1.png" style="width: 90%; max-width: 500px">
+<img src="./assets/cables-fontrpi.png" style="width: 90%; max-width: 500px">
 </center>

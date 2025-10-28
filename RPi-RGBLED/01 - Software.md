@@ -5,7 +5,7 @@
 Un cop iniciada la RPi (la llum verda deixa de parpellejar):
 
 <center>
-<img src="./assets/rpi-on.png" style="width: 90%; max-width: 500px">
+<img src="./assets/cables-fontrpi.png" style="width: 90%; max-width: 500px">
 </center>
 
 Pots connectar amb la RPi fent servir el seu nom de xarxa (hostname):

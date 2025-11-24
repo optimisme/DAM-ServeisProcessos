@@ -24,7 +24,7 @@ sudo npm install -g n
 sudo n latest
 ```
 
-A MacOX:
+A MacOS:
 ```bash
 sudo brew install node
 sudo npm cache clean -f

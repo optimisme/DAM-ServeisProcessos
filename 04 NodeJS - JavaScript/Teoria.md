@@ -310,6 +310,38 @@ processFile()
 
 **Nota**: En el cas anterior, el codi de després de la crida *processFile()* s'executa encara que la funció no hagi acabat, perquè està esperant rebre les dades de *readFile()*
 
+## Llibreries d'objectes
+
+Per poder organitzar el codi en diferents llibreries (arxiu .js), cal:
+
+**Definir un objecte com una llibreria**
+
+```javascript
+// Arxiu gameLoop.js
+class GameLoop {
+  constructor () {
+    this.running = false;
+  }
+  start() {
+
+  }
+}
+module.exports = GameLoop;
+```
+
+> **Important**: Un cop definit l'objecte cal fer *"module.exports = NomObjecte;"* que volem fer públic.
+
+**Importar un objecte definit com a llibreria**
+
+```javascript
+// Arxiu index.js
+const GameLoop = require('./gameLoop.js');
+let gameLoop = new GameLoop();
+if (gameLoop.running == false) {
+  gameLoop.start()
+}
+```
+
 ## Escriptura per linia de comandes
 
 Per obtenir dades a través de la línia de comandes, cal la llibreria "readline"

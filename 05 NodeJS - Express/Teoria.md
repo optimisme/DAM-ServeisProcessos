@@ -85,6 +85,15 @@ A l'arxiu **"./package.json"** posar l'apartat **scripts** així:
     "pm2stop": "pm2 delete app"
   },
 ```
+
+L'arxiu **"package.json"** té les configuracions i dependències del nostre projecte.
+
+L'eina **"npm"** s'encarrega d'actualitzar l'arxiu automàticament pel què fa les dependències quan fem **"npm install ??"**, però les configuracions **"scripts"** les hem d'editar nosaltres *manualment*
+
+> **Nota**:
+>
+> **npm** crea automàticament la carpeta *"node_modules"* que és específica del nostre ordinador, quan compartim el nostre projecte a un altre equip o servidor ho hem de fer sense aquesta carpeta, i al nou equip la instrucció **"npm install"** la tornarà a crear descarregant les llibreries binàries específiques d'aquell equip.
+
 **Desenvolupament**:
 
 Quan estem desenvolupant, es fa anar el servidor amb:

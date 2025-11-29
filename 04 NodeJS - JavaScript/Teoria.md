@@ -73,6 +73,11 @@ nom = "Maria"
 console.log(`Hola ${nom}`) // Output: Hola Maria
 ```
 
+Escriu el codi anterior a l'arxiu **"index.js"** i executa'l amb:
+```javascript
+node index.js
+```
+
 ## Variables
 
 - JavaScript **NO** defineix el tipus de variables (int, bool, ...)

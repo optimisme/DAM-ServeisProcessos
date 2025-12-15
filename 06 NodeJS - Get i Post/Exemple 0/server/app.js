@@ -11,14 +11,19 @@ app.get('/', async (req, res) => {
 })
 
 // Configurar direcció ‘/api’ 
+
 app.get('/api', async (req, res) => {
-    res.send(`Hello World get`)
-})
+    // Obtenir el valor de "param1"
+    const param1 = req.query.param1 
 
-// Configurar direcció ‘/api’ 
+    // Obtenir el valor de "param2"
+    const param2 = req.query.param2
 
-app.post('/api', async (req, res) => {
-    res.send({message: 'Dades rebudes'})
+    res.json({
+        message: 'Dades rebudes',
+        param1: param1,
+        param2: param2
+    })
 })
 
 

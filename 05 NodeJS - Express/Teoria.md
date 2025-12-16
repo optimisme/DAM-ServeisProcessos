@@ -97,7 +97,7 @@ node --run dev
 
 A producció (Proxmox) el servidor funcionarà amb:
 ```bash
-pm2 start ./server/app.js --name app"
+pm2 start ./server/app.js --name "app"
 ```
 
 A producció (Proxmox) tindrem comandes per llistar o aturar el servidor:

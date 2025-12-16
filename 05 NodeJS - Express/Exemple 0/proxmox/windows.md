@@ -28,7 +28,7 @@ dos2unix * && dos2unix ../*
 
 ## Despendències WSL
 
-A la carpeta del projecte Maven caldrà instal·lar:
+A la carpeta del projecte caldrà instal·lar:
 ```bash
 sudo apt install git zip unzip dos2unix net-tools
 ```

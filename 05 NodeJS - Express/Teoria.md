@@ -30,7 +30,7 @@ Un cop creat el projecte apareix l'arxiu **"package.json"** que defineix la conf
 Per afegir llibreries (dependències) al projecte:
 ```bash
 npm install express
-npm install pm2
+npm install -g pm2
 ```
 
 - **Express** és el framework que simplifica crear APIs amb Node.js
@@ -57,7 +57,7 @@ app.use(express.static('public'))
 // Configurar direcció ‘/’ 
 app.get('/', getHello)
     async function getHello (req, res) {
-    res.send(`Hello World`)
+    res.send(`Hola món`)
 }
 
 // Activar el servidor
@@ -74,16 +74,6 @@ function shutDown() {
     httpServer.close()
     process.exit(0);
 }
-```
-
-A l'arxiu **"./package.json"** posar l'apartat **scripts** així:
-```json
-  "scripts": {
-    "dev": "node --watch --watch-path ./server ./server/app.js",
-    "pm2start": "pm2 start ./server/app.js",
-    "pm2list": "pm2 list",
-    "pm2stop": "pm2 delete app"
-  },
 ```
 
 L'arxiu **"package.json"** té les configuracions i dependències del nostre projecte.
@@ -107,13 +97,13 @@ node --run dev
 
 A producció (Proxmox) el servidor funcionarà amb:
 ```bash
-node --run pm2start
+pm2 start ./server/app.js --name app"
 ```
 
 A producció (Proxmox) tindrem comandes per llistar o aturar el servidor:
 ```bash
-node --run pm2list
-node --run pm2stop
+pm2 list
+pm2 delete app
 ```
 
 **Nota**: Amb la configuració de *package.json* i la llibreria *pm2*, quan el servidor s'atura o es penja, es renicia automàticament.
@@ -172,10 +162,28 @@ ssh -i id_rsa -p 20127 nomUsuari@ieticloudpro.ieti.cat
 
 Cal instal·lar NodeJS al proxmox remot, i també 'unzip':
 ```bash
-sudo apt install npm
+cd scripts
+bash ./proxmoxConnect.sh
+# Escriu la contrasenya (si en tens)
+
+# Al terminal remot del proxmox:
+
+# Desinstal·la Apache si està instal·lat
+sudo systemctl stop apache2
+sudo apt purge apache2 apache2-bin apache2-data apache2-utils
+sudo apt autoremove --purge
+sudo rm -rf /etc/apache2
+sudo rm -rf /var/www
+sudo rm -rf /var/log/apache2
+sudo rm -rf /var/lib/apache2
+
+# Instal·la NodeJS a la última versió
+sudo apt install npm unzip
 sudo npm cache clean -f
 sudo npm install -g n
 sudo n latest
+sudo npm install -g pm2
+exit
 ```
 
 ## Validar el servidor remot (cmd)
@@ -183,7 +191,8 @@ sudo n latest
 Amb el servidor funcionant, per comprovar que s'hi poden fer consultes:
 ```bash
 cd proxmox
-./proxmoxRun.ps1
+./proxmoxSetupRedirect80.sh
+./proxmoxDeploy.sh
 curl https://nomUsuari.ieti.site/
 ```
 

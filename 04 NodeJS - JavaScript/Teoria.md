@@ -242,6 +242,36 @@ saluda("Maria")  // Output: Hola, Maria!
 saluda()         // Ouput: Hola, amic!
 ```
 
+## Bucles map/filter amb duncions
+
+Javascript permet aplicar una funció o un filtre de manera atòmica a tots els elements d'una llista:
+
+- **.map** aplica una funció a cada un dels elements d’un array
+```javascript
+function doubleValues(num) {
+  return num * 2
+}
+let numbers = [1, 2, 3, 4, 5]
+let doubled = numbers.map(doubleValues)
+console.log(doubled) // Output: [2, 4, 6, 8, 10]
+```
+
+- **.filter** permet filtrar els elements d’un array (si la funció definida torna ‘true’)
+```javascript
+function isEven(num) {
+  return num % 2 === 0
+}
+
+function doubleValues(num) {
+  return num * 2
+}
+let numbers = [1, 2, 3, 4, 5]
+let doubledEvens = numbers
+  .filter(isEven)         // Filtra els parells
+  .map(doubleValues)      // Duplica els parells
+console.log(doubledEvens) // Output: [4, 8]
+```
+
 ## Classes
 
 Exemple de definició d'objectes/classes:

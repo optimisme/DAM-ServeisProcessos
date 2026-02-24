@@ -40,6 +40,7 @@ class _LayoutState extends State<Layout> {
   ui.Image? _layerImage;
   bool _isDraggingLayer = false;
   bool _isPointerDown = false;
+  bool _pendingLayersViewportCenter = false;
   final FocusNode _focusNode = FocusNode();
   List<String> sections = [
     'projects',
@@ -290,6 +291,35 @@ class _LayoutState extends State<Layout> {
     appData.update();
   }
 
+  void _queueInitialLayersViewportCenter(AppData appData, Size viewportSize) {
+    if (appData.selectedSection != 'layers') return;
+    if (appData.layersViewScale != 1.0 ||
+        appData.layersViewOffset != Offset.zero) {
+      return;
+    }
+    if (_pendingLayersViewportCenter) return;
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) return;
+
+    _pendingLayersViewportCenter = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingLayersViewportCenter = false;
+      if (!mounted) return;
+
+      final latestAppData = Provider.of<AppData>(context, listen: false);
+      if (latestAppData.selectedSection != 'layers') return;
+      if (latestAppData.layersViewScale != 1.0 ||
+          latestAppData.layersViewOffset != Offset.zero) {
+        return;
+      }
+
+      latestAppData.layersViewOffset = Offset(
+        viewportSize.width / 2,
+        viewportSize.height / 2,
+      );
+      latestAppData.update();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
@@ -358,9 +388,15 @@ class _LayoutState extends State<Layout> {
                             color: cdkColors.backgroundSecondary1,
                             child: const LayoutProjectsMain(),
                           )
-                        : Container(
-                            color: cdkColors.backgroundSecondary1,
-                            child: Listener(
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              _queueInitialLayersViewportCenter(
+                                appData,
+                                Size(constraints.maxWidth, constraints.maxHeight),
+                              );
+                              return Container(
+                                color: cdkColors.backgroundSecondary1,
+                                child: Listener(
                               onPointerDown: (_) => _isPointerDown = true,
                               onPointerUp: (_) => _isPointerDown = false,
                               onPointerCancel: (_) => _isPointerDown = false,
@@ -530,7 +566,9 @@ class _LayoutState extends State<Layout> {
                               ),
                             ),
                           ),
-                        ),
+                              );
+                            },
+                          ),
                   ),
                   ConstrainedBox(
                     constraints:

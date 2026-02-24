@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'app_data.dart';
+import 'layout_utils.dart';
 
 class CanvasPainter extends CustomPainter {
   final ui.Image layerImage;
@@ -99,11 +100,11 @@ class CanvasPainter extends CustomPainter {
     if (appData.selectedLevel != -1) {
       final level = appData.gameData.levels[appData.selectedLevel];
 
-      for (int li = 0; li < level.layers.length; li++) {
+      for (int li = level.layers.length - 1; li >= 0; li--) {
         final layer = level.layers[li];
+        if (layer.visible == false) continue;
         if (!appData.imagesCache.containsKey(layer.tilesSheetFile)) continue;
 
-        final bool hidden = layer.visible == false;
         final ui.Image tilesetImg = appData.imagesCache[layer.tilesSheetFile]!;
         final double tw = layer.tilesWidth.toDouble();
         final double th = layer.tilesHeight.toDouble();
@@ -114,14 +115,15 @@ class CanvasPainter extends CustomPainter {
         final int cols = layer.tileMap.isNotEmpty ? layer.tileMap[0].length : 0;
         final double lx = layer.x.toDouble();
         final double ly = layer.y.toDouble();
+        final double parallax = LayoutUtils.parallaxFactorForDepth(layer.depth);
+        final double parallaxDx = (vOffset.dx * (parallax - 1.0)) / vScale;
+        final double parallaxDy = (vOffset.dy * (parallax - 1.0)) / vScale;
+        final double drawLx = lx + parallaxDx;
+        final double drawLy = ly + parallaxDy;
         final double lw = cols * tw;
         final double lh = rows * th;
 
-        // Hidden layers: draw at 25% opacity
-        final tilePaint = Paint()
-          ..color = hidden
-              ? const Color(0x40FFFFFF)
-              : const Color(0xFFFFFFFF);
+        final Paint tilePaint = Paint()..color = const Color(0xFFFFFFFF);
 
         for (int row = 0; row < rows; row++) {
           for (int col = 0; col < cols; col++) {
@@ -135,8 +137,8 @@ class CanvasPainter extends CustomPainter {
               tilesetImg,
               Rect.fromLTWH(tileCol * tw, tileRow * th, tw, th),
               Rect.fromLTWH(
-                lx + col * tw,
-                ly + row * th,
+                drawLx + col * tw,
+                drawLy + row * th,
                 tw,
                 th,
               ),
@@ -147,50 +149,22 @@ class CanvasPainter extends CustomPainter {
 
         // Draw grid lines over the layer
         final Paint gridPaint = Paint()
-          ..color = hidden
-              ? const Color(0x1A000000)
-              : const Color(0x33000000)
+          ..color = const Color(0x33000000)
           ..strokeWidth = 0.5
           ..style = PaintingStyle.stroke;
         for (int r = 0; r <= rows; r++) {
-          canvas.drawLine(Offset(lx, ly + r * th), Offset(lx + lw, ly + r * th), gridPaint);
+          canvas.drawLine(
+            Offset(drawLx, drawLy + r * th),
+            Offset(drawLx + lw, drawLy + r * th),
+            gridPaint,
+          );
         }
         for (int c = 0; c <= cols; c++) {
-          canvas.drawLine(Offset(lx + c * tw, ly), Offset(lx + c * tw, ly + lh), gridPaint);
-        }
-
-        // Hidden layers: diagonal hatch overlay
-        if (hidden) {
-          final Paint hatchPaint = Paint()
-            ..color = const Color(0x22000000)
-            ..strokeWidth = 1.0 / vScale
-            ..style = PaintingStyle.stroke;
-          final double step = tw;
-          for (double d = -lh; d < lw; d += step) {
-            final double x1 = lx + d;
-            final double y1 = ly;
-            final double x2 = lx + d + lh;
-            final double y2 = ly + lh;
-            canvas.drawLine(Offset(x1, y1), Offset(x2, y2), hatchPaint);
-          }
-          // "Hidden" label in centre of the layer bounds
-          if (lw > 0 && lh > 0) {
-            final tp = TextPainter(
-              text: TextSpan(
-                text: layer.name.isNotEmpty ? '${layer.name} (hidden)' : '(hidden)',
-                style: TextStyle(
-                  color: const Color(0x88000000),
-                  fontSize: 11.0 / vScale,
-                  fontFamily: 'monospace',
-                ),
-              ),
-              textDirection: TextDirection.ltr,
-            )..layout(maxWidth: lw);
-            tp.paint(
-              canvas,
-              Offset(lx + (lw - tp.width) / 2, ly + (lh - tp.height) / 2),
-            );
-          }
+          canvas.drawLine(
+            Offset(drawLx + c * tw, drawLy),
+            Offset(drawLx + c * tw, drawLy + lh),
+            gridPaint,
+          );
         }
 
         // Draw selection border for selected layer
@@ -199,7 +173,10 @@ class CanvasPainter extends CustomPainter {
             ..color = const Color(0xFF2196F3)
             ..strokeWidth = 2.0 / vScale
             ..style = PaintingStyle.stroke;
-          canvas.drawRect(Rect.fromLTWH(lx + 1, ly + 1, lw - 2, lh - 2), selPaint);
+          canvas.drawRect(
+            Rect.fromLTWH(drawLx + 1, drawLy + 1, lw - 2, lh - 2),
+            selPaint,
+          );
         }
       }
     }

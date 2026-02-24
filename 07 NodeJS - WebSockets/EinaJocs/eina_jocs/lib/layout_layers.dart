@@ -186,7 +186,7 @@ class LayoutLayersState extends State<LayoutLayers> {
         name: '',
         x: 0,
         y: 0,
-        depth: 0,
+        depth: 0.0,
         tilesSheetFile: first.fileName,
         tileWidth: first.tileWidth,
         tileHeight: first.tileHeight,
@@ -263,23 +263,14 @@ class LayoutLayersState extends State<LayoutLayers> {
     if (index < 0 || index >= layers.length) return;
     final String layerName = layers[index].name;
 
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Delete layer'),
-        content: Text('Delete "$layerName"? This cannot be undone.'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete layer',
+      message: 'Delete "$layerName"? This cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      isDestructive: true,
+      showBackgroundShade: true,
     );
 
     if (confirmed != true || !mounted) return;
@@ -533,7 +524,7 @@ class _LayerDialogData {
   final String name;
   final int x;
   final int y;
-  final int depth;
+  final double depth;
   final String tilesSheetFile;
   final int tileWidth;
   final int tileHeight;
@@ -616,7 +607,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
         name: _nameController.text.trim(),
         x: int.tryParse(_xController.text.trim()) ?? 0,
         y: int.tryParse(_yController.text.trim()) ?? 0,
-        depth: int.tryParse(_depthController.text.trim()) ?? 0,
+        depth: double.tryParse(_depthController.text.trim()) ?? 0.0,
         tilesSheetFile: asset.fileName,
         tileWidth: asset.tileWidth,
         tileHeight: asset.tileHeight,
@@ -716,11 +707,14 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
                   SizedBox(width: spacing.sm),
                   Expanded(
                     child: labeledField(
-                      'Depth (z-index)',
+                      'Depth displacement',
                       CDKFieldText(
-                        placeholder: 'Depth (z-index)',
+                        placeholder: 'Depth displacement',
                         controller: _depthController,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
                       ),
                     ),
                   ),
@@ -753,39 +747,69 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
                 ],
               ),
               SizedBox(height: spacing.md),
-              CDKText(
-                'Tilesheet',
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              CDKButtonSelect(
-                selectedIndex: _selectedAssetIndex,
-                options: assetOptions,
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedAssetIndex = index;
-                  });
-                },
-              ),
-              const SizedBox(height: 4),
-              CDKText(
-                'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
-                role: CDKTextRole.caption,
-                secondary: true,
-              ),
-              SizedBox(height: spacing.sm),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const CDKText('Visible', role: CDKTextRole.body),
-                  SizedBox(width: spacing.sm),
-                  CupertinoSwitch(
-                    value: _visible,
-                    onChanged: (bool value) {
-                      setState(() {
-                        _visible = value;
-                      });
-                    },
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CDKText(
+                          'Tilesheet',
+                          role: CDKTextRole.caption,
+                          color: cdkColors.colorText,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            CDKButtonSelect(
+                              selectedIndex: _selectedAssetIndex,
+                              options: assetOptions,
+                              onSelected: (int index) {
+                                setState(() {
+                                  _selectedAssetIndex = index;
+                                });
+                              },
+                            ),
+                            SizedBox(width: spacing.md),
+                            const Spacer(),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CDKText(
+                                  'Visible',
+                                  role: CDKTextRole.caption,
+                                  color: cdkColors.colorText,
+                                ),
+                                const SizedBox(width: 6),
+                                SizedBox(
+                                  width: 39,
+                                  height: 24,
+                                  child: FittedBox(
+                                    fit: BoxFit.fill,
+                                    child: CupertinoSwitch(
+                                      value: _visible,
+                                      onChanged: (bool value) {
+                                        setState(() {
+                                          _visible = value;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        CDKText(
+                          'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
+                          role: CDKTextRole.caption,
+                          secondary: true,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,25 @@ import 'layout_sprites.dart';
 import 'layout_zones.dart';
 
 class LayoutUtils {
+  static const double _depthParallaxStep = 0.08;
+  static const double _minParallaxFactor = 0.25;
+  static const double _maxParallaxFactor = 4.0;
+
+  /// Maps depth displacement to a parallax factor.
+  /// Negative depth => closer (moves faster), positive depth => farther (moves slower).
+  static double parallaxFactorForDepth(double depth) {
+    final double factor = math.exp(-depth * _depthParallaxStep);
+    return factor.clamp(_minParallaxFactor, _maxParallaxFactor).toDouble();
+  }
+
+  static Offset _parallaxImageOffsetForLayer(AppData appData, GameLayer layer) {
+    final double parallax = parallaxFactorForDepth(layer.depth);
+    return Offset(
+      appData.imageOffset.dx * parallax,
+      appData.imageOffset.dy * parallax,
+    );
+  }
+
   static Future<ui.Image> generateTilemapImage(
       AppData appData, int levelIndex, int layerIndex, bool drawGrid) async {
     final level = appData.gameData.levels[levelIndex];
@@ -201,13 +221,16 @@ class LayoutUtils {
     int imageWidth = 10;
     int imageHeight = 10;
 
-    // Draw level layers
-    for (var layer in level.layers) {
+    // Draw level layers (painter order): last list item first, first item last.
+    for (int layerIndex = level.layers.length - 1;
+        layerIndex >= 0;
+        layerIndex--) {
+      final layer = level.layers[layerIndex];
       if (layer.visible == false) {
         continue;
       }
       final tilemapImage = await generateTilemapImage(appData,
-          appData.selectedLevel, level.layers.indexOf(layer), drawGrid);
+          appData.selectedLevel, layerIndex, drawGrid);
 
       imgCanvas.drawImage(tilemapImage,
           Offset(layer.x.toDouble(), layer.y.toDouble()), Paint());
@@ -606,16 +629,20 @@ class LayoutUtils {
     sprite.y = (levelCoords.dy - appData.spriteDragOffset.dy).toInt();
   }
 
-  /// Hit-tests all layers (topmost first) and returns the index of the first
+  /// Hit-tests visible layers (topmost first) and returns the index of the first
   /// layer whose bounds contain [localPosition], or -1 if none.
   static int selectLayerFromPosition(AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1) return -1;
     final layers = appData.gameData.levels[appData.selectedLevel].layers;
-    final Offset worldPos =
-        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
-    for (int i = layers.length - 1; i >= 0; i--) {
+    for (int i = 0; i < layers.length; i++) {
       final layer = layers[i];
+      if (!layer.visible) continue;
       if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) continue;
+      final Offset worldPos = translateCoords(
+        localPosition,
+        _parallaxImageOffsetForLayer(appData, layer),
+        appData.scaleFactor,
+      );
       final double w = (layer.tileMap.first.length * layer.tilesWidth).toDouble();
       final double h = (layer.tileMap.length * layer.tilesHeight).toDouble();
       final Rect bounds =
@@ -632,9 +659,13 @@ class LayoutUtils {
     }
     final layer = appData.gameData.levels[appData.selectedLevel]
         .layers[appData.selectedLayer];
+    if (!layer.visible) return false;
     if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) return false;
-    final Offset worldPos =
-        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    final Offset worldPos = translateCoords(
+      localPosition,
+      _parallaxImageOffsetForLayer(appData, layer),
+      appData.scaleFactor,
+    );
     final double w =
         (layer.tileMap.first.length * layer.tilesWidth).toDouble();
     final double h = (layer.tileMap.length * layer.tilesHeight).toDouble();
@@ -647,10 +678,13 @@ class LayoutUtils {
   static void startDragLayerFromPosition(
       AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) return;
-    final Offset worldPos = translateCoords(
-        localPosition, appData.imageOffset, appData.scaleFactor);
     final layer = appData.gameData.levels[appData.selectedLevel]
         .layers[appData.selectedLayer];
+    final Offset worldPos = translateCoords(
+      localPosition,
+      _parallaxImageOffsetForLayer(appData, layer),
+      appData.scaleFactor,
+    );
     appData.pushUndo();
     appData.layerDragOffset =
         worldPos - Offset(layer.x.toDouble(), layer.y.toDouble());
@@ -659,11 +693,14 @@ class LayoutUtils {
   /// Move the selected layer to follow the cursor.
   static void dragLayerFromCanvas(AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) return;
-    final Offset worldPos = translateCoords(
-        localPosition, appData.imageOffset, appData.scaleFactor);
     final layers =
         appData.gameData.levels[appData.selectedLevel].layers;
     final GameLayer old = layers[appData.selectedLayer];
+    final Offset worldPos = translateCoords(
+      localPosition,
+      _parallaxImageOffsetForLayer(appData, old),
+      appData.scaleFactor,
+    );
     final int newX = (worldPos.dx - appData.layerDragOffset.dx).round();
     final int newY = (worldPos.dy - appData.layerDragOffset.dy).round();
     layers[appData.selectedLayer] = GameLayer(

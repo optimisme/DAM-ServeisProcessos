@@ -178,23 +178,14 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (index < 0 || index >= sprites.length) return;
     final String spriteName = sprites[index].type;
 
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Delete sprite'),
-        content: Text('Delete "$spriteName"? This cannot be undone.'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete sprite',
+      message: 'Delete "$spriteName"? This cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      isDestructive: true,
+      showBackgroundShade: true,
     );
 
     if (confirmed != true || !mounted) return;

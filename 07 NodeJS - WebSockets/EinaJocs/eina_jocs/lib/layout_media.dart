@@ -180,23 +180,14 @@ class _LayoutMediaState extends State<LayoutMedia> {
     if (index < 0 || index >= assets.length) return;
     final String fileName = assets[index].fileName;
 
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Delete media'),
-        content: Text('Delete "$fileName"? This cannot be undone.'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete media',
+      message: 'Delete "$fileName"? This cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      isDestructive: true,
+      showBackgroundShade: true,
     );
 
     if (confirmed != true || !mounted) return;

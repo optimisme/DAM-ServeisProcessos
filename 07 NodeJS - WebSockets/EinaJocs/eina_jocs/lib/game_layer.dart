@@ -2,7 +2,7 @@ class GameLayer {
   final String name;
   final int x;
   final int y;
-  final int depth;
+  final double depth;
   final String tilesSheetFile;
   final int tilesWidth;
   final int tilesHeight;
@@ -23,11 +23,13 @@ class GameLayer {
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
   factory GameLayer.fromJson(Map<String, dynamic> json) {
+    final dynamic rawDepth = json['depth'];
+    final double parsedDepth = rawDepth is num ? rawDepth.toDouble() : 0.0;
     return GameLayer(
         name: json['name'] as String,
         x: json['x'] as int,
         y: json['y'] as int,
-        depth: json['depth'] as int,
+        depth: parsedDepth,
         tilesSheetFile: json['tilesSheetFile'] as String,
         tilesWidth: json['tilesWidth'] as int,
         tilesHeight: json['tilesHeight'] as int,

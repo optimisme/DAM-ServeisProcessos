@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 
 class TitledTextfield extends StatefulWidget {
   final String title;
@@ -44,14 +45,17 @@ class TitledTextfield extends StatefulWidget {
 class TitledTextfieldState extends State<TitledTextfield> {
   @override
   Widget build(BuildContext context) {
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    final typography = CDKThemeNotifier.typographyTokensOf(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 4.0),
-          child: Text(
+          child: CDKText(
             widget.title,
-            style: const TextStyle(fontSize: 14),
+            role: CDKTextRole.bodyStrong,
           ),
         ),
         CupertinoTextField(
@@ -60,14 +64,22 @@ class TitledTextfieldState extends State<TitledTextfield> {
           keyboardType: widget.keyboardType,
           obscureText: widget.obscureText,
           maxLines: widget.maxLines,
-          maxLength: widget.maxLength,
           onChanged: widget.onChanged,
-          style: widget.textStyle ?? const TextStyle(fontSize: 14),
+          style: widget.textStyle ??
+              typography.body.copyWith(color: cdkColors.colorText),
           placeholderStyle: widget.placeholderStyle ??
-              const TextStyle(fontSize: 12, color: Colors.grey),
+              typography.caption.copyWith(color: cdkColors.colorTextSecondary),
           padding: widget.padding ??
               const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-          //decoration: widget.decoration,
+          decoration: widget.decoration ??
+              BoxDecoration(
+                color: CDKThemeNotifier.colorTokensOf(context).background,
+                borderRadius: BorderRadius.circular(4.0),
+                border: Border.all(color: CDKTheme.grey200, width: 1),
+              ),
+          inputFormatters: widget.maxLength == null
+              ? null
+              : [LengthLimitingTextInputFormatter(widget.maxLength)],
           autofocus: widget.autofocus,
           textAlign: widget.textAlign,
           enabled: widget.enabled,

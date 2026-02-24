@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_data.dart';
@@ -52,9 +53,9 @@ class LayoutGameState extends State<LayoutGame> {
         children: [
           const Padding(
             padding: EdgeInsets.all(8.0),
-            child: Text(
+            child: CDKText(
               'Game settings:',
-              style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
+              role: CDKTextRole.bodyStrong,
             ),
           ),
           Expanded(
@@ -79,32 +80,28 @@ class LayoutGameState extends State<LayoutGame> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    Text("Project path:",
-                        style: TextStyle(
-                          fontSize: 16.0,
-                        )),
-                    Text(
+                    const CDKText(
+                      "Project path:",
+                      role: CDKTextRole.bodyStrong,
+                    ),
+                    CDKText(
                       appData.filePath.isEmpty
                           ? "Project path not set"
                           : _shortenFilePath(appData.filePath),
-                      style: TextStyle(
-                        fontSize: 14.0,
-                        color: CupertinoColors.systemGrey,
-                      ),
+                      role: CDKTextRole.body,
+                      secondary: true,
                     ),
                     const SizedBox(height: 16),
-                    Text("File name:",
-                        style: TextStyle(
-                          fontSize: 16.0,
-                        )),
-                    Text(
+                    const CDKText(
+                      "File name:",
+                      role: CDKTextRole.bodyStrong,
+                    ),
+                    CDKText(
                       appData.fileName.isEmpty
                           ? "File name not set"
                           : appData.fileName,
-                      style: TextStyle(
-                        fontSize: 14.0,
-                        color: CupertinoColors.systemGrey,
-                      ),
+                      role: CDKTextRole.body,
+                      secondary: true,
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -117,21 +114,23 @@ class LayoutGameState extends State<LayoutGame> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                CupertinoButton.filled(
-                  sizeStyle: CupertinoButtonSize.small,
-                  borderRadius: BorderRadius.all(Radius.circular(5)),
-                  onPressed: () {
-                    appData.loadGame();
-                  },
-                  child: const Text('Load folder'),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: appData.selectedProject == null
+                      ? null
+                      : () {
+                          appData.reloadWorkingProject();
+                        },
+                  child: const Text('Reload'),
                 ),
-                CupertinoButton.filled(
-                  sizeStyle: CupertinoButtonSize.small,
-                  borderRadius: BorderRadius.all(Radius.circular(5)),
-                  onPressed: () {
-                    appData.saveGame();
-                  },
-                  child: Text('Save'),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: appData.selectedProject == null
+                      ? null
+                      : () {
+                          appData.saveGame();
+                        },
+                  child: const Text('Save'),
                 ),
               ],
             ),

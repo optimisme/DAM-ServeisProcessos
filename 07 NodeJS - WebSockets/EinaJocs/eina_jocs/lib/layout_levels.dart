@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_level.dart';
-import 'titled_text_filed.dart';
 
 class LayoutLevels extends StatefulWidget {
   const LayoutLevels({super.key});
@@ -14,43 +16,34 @@ class LayoutLevels extends StatefulWidget {
 }
 
 class LayoutLevelsState extends State<LayoutLevels> {
-  late TextEditingController nameController;
-  late TextEditingController descriptionController;
   final ScrollController scrollController = ScrollController();
+  final GlobalKey _selectedEditAnchorKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    nameController = TextEditingController();
-    descriptionController = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appData = Provider.of<AppData>(context, listen: false);
-      _updateForm(appData);
-    });
   }
 
   @override
   void dispose() {
-    nameController.dispose();
-    descriptionController.dispose();
     super.dispose();
   }
 
-  void _updateForm(AppData appData) {
-    if (appData.selectedLevel != -1) {
-      final selectedLevel = appData.gameData.levels[appData.selectedLevel];
-      nameController.text = selectedLevel.name;
-      descriptionController.text = selectedLevel.description;
-    } else {
-      nameController.clear();
-      descriptionController.clear();
+  Future<void> _autoSaveIfPossible(AppData appData) async {
+    if (appData.selectedProject == null) {
+      return;
     }
+    await appData.saveGame();
   }
 
-  void _addLevel(AppData appData) {
+  void _addLevel({
+    required AppData appData,
+    required String name,
+    required String description,
+  }) {
     final newLevel = GameLevel(
-      name: nameController.text,
-      description: descriptionController.text,
+      name: name,
+      description: description,
       layers: [],
       zones: [],
       sprites: [],
@@ -58,38 +51,155 @@ class LayoutLevelsState extends State<LayoutLevels> {
 
     appData.gameData.levels.add(newLevel);
     appData.selectedLevel = -1;
-    _updateForm(appData);
     appData.update();
   }
 
-  void _updateLevel(AppData appData) {
-    if (appData.selectedLevel != -1) {
-      appData.gameData.levels[appData.selectedLevel] = GameLevel(
-        name: nameController.text,
-        description: descriptionController.text,
-        layers: appData.gameData.levels[appData.selectedLevel].layers,
-        zones: appData.gameData.levels[appData.selectedLevel].zones,
-        sprites: appData.gameData.levels[appData.selectedLevel].sprites,
-      );
-      appData.update();
+  Future<_LevelDialogData?> _promptLevelData({
+    required String title,
+    required String confirmLabel,
+    String initialName = "",
+    String initialDescription = "",
+    int? editingIndex,
+    GlobalKey? anchorKey,
+    bool useArrowedPopover = false,
+  }) async {
+    if (Overlay.maybeOf(context) == null) {
+      return null;
     }
+
+    final appData = Provider.of<AppData>(context, listen: false);
+    final Set<String> existingNames = appData.gameData.levels
+        .asMap()
+        .entries
+        .where((entry) => entry.key != editingIndex)
+        .map((entry) => entry.value)
+        .map((level) => level.name.trim().toLowerCase())
+        .toSet();
+    final CDKDialogController controller = CDKDialogController();
+    final Completer<_LevelDialogData?> completer =
+        Completer<_LevelDialogData?>();
+    _LevelDialogData? result;
+
+    final dialogChild = _LevelFormDialog(
+      title: title,
+      confirmLabel: confirmLabel,
+      initialName: initialName,
+      initialDescription: initialDescription,
+      existingNames: existingNames,
+      onConfirm: (value) {
+        result = value;
+        controller.close();
+      },
+      onCancel: controller.close,
+    );
+
+    if (useArrowedPopover && anchorKey != null) {
+      CDKDialogsManager.showPopoverArrowed(
+        context: context,
+        anchorKey: anchorKey,
+        isAnimated: true,
+        dismissOnEscape: true,
+        dismissOnOutsideTap: true,
+        showBackgroundShade: false,
+        controller: controller,
+        onHide: () {
+          if (!completer.isCompleted) {
+            completer.complete(result);
+          }
+        },
+        child: dialogChild,
+      );
+    } else {
+      CDKDialogsManager.showModal(
+        context: context,
+        dismissOnEscape: true,
+        dismissOnOutsideTap: false,
+        showBackgroundShade: true,
+        controller: controller,
+        onHide: () {
+          if (!completer.isCompleted) {
+            completer.complete(result);
+          }
+        },
+        child: dialogChild,
+      );
+    }
+
+    return completer.future;
   }
 
-  void _deleteLevel(AppData appData) {
-    if (appData.selectedLevel != -1) {
-      appData.gameData.levels.removeAt(appData.selectedLevel);
-      appData.selectedLevel = -1;
-      _updateForm(appData);
+  Future<void> _promptAndAddLevel() async {
+    final _LevelDialogData? levelData = await _promptLevelData(
+      title: "New level",
+      confirmLabel: "Add",
+    );
+    if (levelData == null || !mounted) {
+      return;
+    }
+    final appData = Provider.of<AppData>(context, listen: false);
+    _addLevel(
+      appData: appData,
+      name: levelData.name,
+      description: levelData.description,
+    );
+    await _autoSaveIfPossible(appData);
+  }
+
+  Future<void> _promptAndEditLevel(int index, GlobalKey anchorKey) async {
+    final appData = Provider.of<AppData>(context, listen: false);
+    if (index < 0 || index >= appData.gameData.levels.length) {
+      return;
+    }
+    final GameLevel selected = appData.gameData.levels[index];
+    final _LevelDialogData? updated = await _promptLevelData(
+      title: "Edit level",
+      confirmLabel: "Save",
+      initialName: selected.name,
+      initialDescription: selected.description,
+      editingIndex: index,
+      anchorKey: anchorKey,
+      useArrowedPopover: true,
+    );
+    if (updated == null || !mounted) {
+      return;
+    }
+    _updateLevel(
+      appData: appData,
+      index: index,
+      name: updated.name,
+      description: updated.description,
+    );
+    await _autoSaveIfPossible(appData);
+  }
+
+  void _updateLevel({
+    required AppData appData,
+    required int index,
+    required String name,
+    required String description,
+  }) {
+    if (index >= 0 && index < appData.gameData.levels.length) {
+      final previous = appData.gameData.levels[index];
+      appData.gameData.levels[index] = GameLevel(
+        name: name,
+        description: description,
+        layers: previous.layers,
+        zones: previous.zones,
+        sprites: previous.sprites,
+      );
+      appData.selectedLevel = index;
       appData.update();
     }
   }
 
   void _selectLevel(AppData appData, int index, bool isSelected) {
-    appData.selectedLevel = isSelected ? -1 : index;
+    if (isSelected) {
+      return;
+    }
+    appData.selectedLevel = index;
     appData.selectedLayer = -1;
     appData.selectedZone = -1;
     appData.selectedSprite = -1;
-    _updateForm(appData);
     appData.update();
   }
 
@@ -115,6 +225,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     }
 
     appData.update();
+    unawaited(_autoSaveIfPossible(appData));
 
     if (kDebugMode) {
       print(
@@ -125,29 +236,44 @@ class LayoutLevelsState extends State<LayoutLevels> {
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    final typography = CDKThemeNotifier.typographyTokensOf(context);
     final levels = appData.gameData.levels;
-
-    bool isFormFilled =
-        nameController.text.isNotEmpty && descriptionController.text.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.all(8.0),
-          child: Text(
-            'Game levels:',
-            style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+          child: Row(
+            children: [
+              CDKText(
+                'Game Levels',
+                role: CDKTextRole.title,
+                style: typography.title.copyWith(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              CDKButton(
+                style: CDKButtonStyle.action,
+                onPressed: () async {
+                  await _promptAndAddLevel();
+                },
+                child: const Text('+ Add Level'),
+              ),
+            ],
           ),
         ),
         Expanded(
             child: levels.isEmpty
-                ? const Padding(
+                ? Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
+                    child: const CDKText(
                       '(No levels defined)',
-                      style: TextStyle(
-                          fontSize: 12.0, color: CupertinoColors.systemGrey),
+                      role: CDKTextRole.caption,
+                      secondary: true,
                     ),
                   )
                 : CupertinoScrollbar(
@@ -160,7 +286,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
                         DefaultWidgetsLocalizations.delegate,
                       ],
                       child: ReorderableListView.builder(
-                        //controller: scrollController,
+                        buildDefaultDragHandles: false,
                         itemCount: levels.length,
                         onReorder: (oldIndex, newIndex) =>
                             _onReorder(appData, oldIndex, newIndex),
@@ -175,8 +301,9 @@ class LayoutLevelsState extends State<LayoutLevels> {
                               padding: const EdgeInsets.symmetric(
                                   vertical: 4, horizontal: 8),
                               color: isSelected
-                                  ? CupertinoColors.systemBlue.withOpacity(0.2)
-                                  : CupertinoColors.systemBackground,
+                                  ? CupertinoColors.systemBlue
+                                      .withValues(alpha: 0.2)
+                                  : cdkColors.backgroundSecondary0,
                               child: Row(
                                 children: [
                                   Expanded(
@@ -184,24 +311,60 @@ class LayoutLevelsState extends State<LayoutLevels> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
+                                        CDKText(
                                           levels[index].name,
+                                          role: isSelected
+                                              ? CDKTextRole.bodyStrong
+                                              : CDKTextRole.body,
                                           style: TextStyle(
-                                            fontSize: 14.0,
+                                            fontSize: isSelected ? 17 : 16,
                                             fontWeight: isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                                ? FontWeight.w700
+                                                : FontWeight.w600,
                                           ),
                                         ),
                                         const SizedBox(height: 2),
-                                        Text(
+                                        CDKText(
                                           levels[index].description,
-                                          style: const TextStyle(
-                                            fontSize: 12.0,
-                                            color: CupertinoColors.systemGrey,
-                                          ),
+                                          role: CDKTextRole.caption,
+                                          color: cdkColors.colorText,
                                         ),
                                       ],
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      child: CupertinoButton(
+                                        key: _selectedEditAnchorKey,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                        ),
+                                        minimumSize: const Size(20, 20),
+                                        onPressed: () async {
+                                          await _promptAndEditLevel(
+                                            index,
+                                            _selectedEditAnchorKey,
+                                          );
+                                        },
+                                        child: Icon(
+                                          CupertinoIcons.pencil,
+                                          size: 16,
+                                          color: cdkColors.colorText,
+                                        ),
+                                      ),
+                                    ),
+                                  ReorderableDragStartListener(
+                                    index: index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      child: Icon(
+                                        CupertinoIcons.bars,
+                                        size: 16,
+                                        color: cdkColors.colorText,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -212,60 +375,177 @@ class LayoutLevelsState extends State<LayoutLevels> {
                       ),
                     ),
                   )),
-        Padding(
-          padding: EdgeInsets.all(8.0),
-          child: Text(
-            (appData.selectedLevel == -1) ? 'New level:' : 'Modify level:',
-            style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: TitledTextfield(
-            title: 'Level name',
-            controller: nameController,
-            onChanged: (_) => setState(() {}), // Per actualitzar el botó
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: TitledTextfield(
-            title: 'Level description',
-            controller: descriptionController,
-            onChanged: (_) => setState(() {}), // Per actualitzar el botó
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      ],
+    );
+  }
+}
+
+class _LevelDialogData {
+  const _LevelDialogData({
+    required this.name,
+    required this.description,
+  });
+
+  final String name;
+  final String description;
+}
+
+class _LevelFormDialog extends StatefulWidget {
+  const _LevelFormDialog({
+    required this.title,
+    required this.confirmLabel,
+    required this.initialName,
+    required this.initialDescription,
+    required this.existingNames,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  final String title;
+  final String confirmLabel;
+  final String initialName;
+  final String initialDescription;
+  final Set<String> existingNames;
+  final ValueChanged<_LevelDialogData> onConfirm;
+  final VoidCallback onCancel;
+
+  @override
+  State<_LevelFormDialog> createState() => _LevelFormDialogState();
+}
+
+class _LevelFormDialogState extends State<_LevelFormDialog> {
+  late final TextEditingController _nameController = TextEditingController(
+    text: widget.initialName,
+  );
+  late final TextEditingController _descriptionController =
+      TextEditingController(text: widget.initialDescription);
+  final FocusNode _nameFocusNode = FocusNode();
+  String? _errorText;
+
+  bool get _isValid {
+    final String cleaned = _nameController.text.trim();
+    return cleaned.isNotEmpty &&
+        !widget.existingNames.contains(cleaned.toLowerCase());
+  }
+
+  void _validate(String value) {
+    final String cleaned = value.trim();
+    final String? error;
+    if (cleaned.isNotEmpty &&
+        widget.existingNames.contains(cleaned.toLowerCase())) {
+      error = "Another level is named like that.";
+    } else {
+      error = null;
+    }
+    setState(() {
+      _errorText = error;
+    });
+  }
+
+  void _confirm() {
+    final String cleanedName = _nameController.text.trim();
+    _validate(cleanedName);
+    if (cleanedName.isEmpty ||
+        widget.existingNames.contains(cleanedName.toLowerCase())) {
+      return;
+    }
+    widget.onConfirm(
+      _LevelDialogData(
+        name: cleanedName,
+        description: _descriptionController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _nameFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _nameFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 320, maxWidth: 420),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (appData.selectedLevel != -1) ...[
-              CupertinoButton.filled(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                onPressed: isFormFilled ? () => _updateLevel(appData) : null,
-                child: const Text('Update'),
+            CDKText(widget.title, role: CDKTextRole.title),
+            SizedBox(height: spacing.md),
+            const CDKText("Enter level details.", role: CDKTextRole.body),
+            SizedBox(height: spacing.md),
+            CDKText(
+              "Name",
+              role: CDKTextRole.caption,
+              color: cdkColors.colorText,
+            ),
+            const SizedBox(height: 4),
+            CDKFieldText(
+              placeholder: "Level name",
+              controller: _nameController,
+              focusNode: _nameFocusNode,
+              onChanged: _validate,
+              onSubmitted: (_) => _confirm(),
+            ),
+            SizedBox(height: spacing.sm),
+            CDKText(
+              "Description",
+              role: CDKTextRole.caption,
+              color: cdkColors.colorText,
+            ),
+            const SizedBox(height: 4),
+            CDKFieldText(
+              placeholder: "Level description (optional)",
+              controller: _descriptionController,
+              onSubmitted: (_) => _confirm(),
+            ),
+            if (_errorText != null) ...[
+              SizedBox(height: spacing.sm),
+              Text(
+                _errorText!,
+                style: typography.caption.copyWith(color: CDKTheme.red),
               ),
-              CupertinoButton(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                color: CupertinoColors.destructiveRed,
-                onPressed: () => _deleteLevel(appData),
-                child:
-                    const Text('Delete', style: TextStyle(color: Colors.white)),
-              ),
-            ] else
-              CupertinoButton.filled(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                onPressed: isFormFilled ? () => _addLevel(appData) : null,
-                child: const Text('Add Level'),
-              ),
+            ],
+            SizedBox(height: spacing.lg + spacing.sm),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  onPressed: widget.onCancel,
+                  child: const Text("Cancel"),
+                ),
+                SizedBox(width: spacing.md),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  enabled: _isValid,
+                  onPressed: _confirm,
+                  child: Text(widget.confirmLabel),
+                ),
+              ],
+            ),
           ],
         ),
-        const SizedBox(height: 16),
-      ],
+      ),
     );
   }
 }

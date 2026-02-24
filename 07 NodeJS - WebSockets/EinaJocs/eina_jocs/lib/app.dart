@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'layout.dart';
 
 class App extends StatelessWidget {
@@ -6,10 +7,10 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const CupertinoApp(
-      debugShowCheckedModeBanner: false,
-      theme: CupertinoThemeData(brightness: Brightness.light),
-      home: Layout(title: "Level builder"),
+    return const CDKApp(
+      defaultAppearance: CDKThemeAppearance.system,
+      defaultColor: "systemBlue",
+      child: Layout(title: "Level builder"),
     );
   }
 }

@@ -6,24 +6,27 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:eina_jocs/app.dart';
-import 'package:flutter/material.dart';
+import 'package:eina_jocs/app_data.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const App());
+  testWidgets('App renders editor layout', (WidgetTester tester) async {
+    final appData = AppData()
+      ..storageReady = true
+      ..projectsPath = '/tmp/eina_jocs_test_projects';
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => appData,
+        child: const App(),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Projects'), findsWidgets);
+    expect(find.text('Import ZIP'), findsNWidgets(2));
+    expect(find.text('Export ZIP'), findsNWidgets(2));
   });
 }

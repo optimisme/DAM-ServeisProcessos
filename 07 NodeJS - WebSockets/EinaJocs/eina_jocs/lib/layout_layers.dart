@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_layer.dart';
-import 'titled_text_filed.dart';
 
 class LayoutLayers extends StatefulWidget {
   const LayoutLayers({super.key});
@@ -14,159 +15,249 @@ class LayoutLayers extends StatefulWidget {
 }
 
 class LayoutLayersState extends State<LayoutLayers> {
-  late TextEditingController nameController;
-  late TextEditingController xController;
-  late TextEditingController yController;
-  late TextEditingController depthController;
-  String tilesSheetFile = "";
-  late TextEditingController tileWidthController;
-  late TextEditingController tileHeightController;
-  late TextEditingController tilemapWidthController;
-  late TextEditingController tilemapHeightController;
   final ScrollController scrollController = ScrollController();
+  final GlobalKey _selectedEditAnchorKey = GlobalKey();
 
-  @override
-  void initState() {
-    super.initState();
-    nameController = TextEditingController();
-    xController = TextEditingController();
-    yController = TextEditingController();
-    depthController = TextEditingController();
-    tileWidthController = TextEditingController();
-    tileHeightController = TextEditingController();
-    tilemapWidthController = TextEditingController();
-    tilemapHeightController = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appData = Provider.of<AppData>(context, listen: false);
-      _updateForm(appData);
-    });
-  }
-
-  @override
-  void dispose() {
-    nameController.dispose();
-    xController.dispose();
-    yController.dispose();
-    depthController.dispose();
-    tileWidthController.dispose();
-    tileHeightController.dispose();
-    tilemapWidthController.dispose();
-    tilemapHeightController.dispose();
-    super.dispose();
-  }
-
-  bool isVisible = true; // Estat local per al switch
-
-  void _updateForm(AppData appData) {
-    if (appData.selectedLevel != -1 && appData.selectedLayer != -1) {
-      final selectedLayer = appData
-          .gameData.levels[appData.selectedLevel].layers[appData.selectedLayer];
-      nameController.text = selectedLayer.name;
-      xController.text = selectedLayer.x.toString();
-      yController.text = selectedLayer.y.toString();
-      depthController.text = selectedLayer.depth.toString();
-      tilesSheetFile = selectedLayer.tilesSheetFile;
-      tileWidthController.text = selectedLayer.tilesWidth.toString();
-      tileHeightController.text = selectedLayer.tilesHeight.toString();
-      tilemapWidthController.text = selectedLayer.tileMap[0].length.toString();
-      tilemapHeightController.text = selectedLayer.tileMap.length.toString();
-      isVisible = selectedLayer.visible;
-    } else {
-      nameController.clear();
-      xController.clear();
-      yController.clear();
-      depthController.clear();
-      tilesSheetFile = "";
-      tileWidthController.clear();
-      tileHeightController.clear();
-      tilemapWidthController.clear();
-      tilemapHeightController.clear();
-      isVisible = true;
+  Future<void> _autoSaveIfPossible(AppData appData) async {
+    if (appData.selectedProject == null) {
+      return;
     }
+    await appData.saveGame();
   }
 
-  void _addLayer(AppData appData) {
-    if (appData.selectedLevel == -1) return;
+  void _addLayer({
+    required AppData appData,
+    required _LayerDialogData data,
+  }) {
+    if (appData.selectedLevel == -1) {
+      return;
+    }
 
-    int tileMapWidth = int.tryParse(tilemapWidthController.text) ?? 32;
-    int tileMapHeight = int.tryParse(tilemapHeightController.text) ?? 32;
+    final int mapWidth = data.tilemapWidth < 1 ? 1 : data.tilemapWidth;
+    final int mapHeight = data.tilemapHeight < 1 ? 1 : data.tilemapHeight;
 
-    final newLayer = GameLayer(
-        name: nameController.text,
-        x: int.tryParse(xController.text) ?? 0,
-        y: int.tryParse(yController.text) ?? 0,
-        depth: int.tryParse(depthController.text) ?? 0,
-        tilesSheetFile: tilesSheetFile,
-        tilesWidth: int.tryParse(tileWidthController.text) ?? 32,
-        tilesHeight: int.tryParse(tileHeightController.text) ?? 32,
-        tileMap:
-            List.generate(tileMapHeight, (_) => List.filled(tileMapWidth, -1)),
-        visible: isVisible);
+    appData.gameData.levels[appData.selectedLevel].layers.add(
+      GameLayer(
+        name: data.name,
+        x: data.x,
+        y: data.y,
+        depth: data.depth,
+        tilesSheetFile: data.tilesSheetFile,
+        tilesWidth: data.tileWidth,
+        tilesHeight: data.tileHeight,
+        tileMap: List.generate(
+          mapHeight,
+          (_) => List.filled(mapWidth, -1),
+        ),
+        visible: data.visible,
+      ),
+    );
 
-    appData.gameData.levels[appData.selectedLevel].layers.add(newLayer);
     appData.selectedLayer = -1;
-    tilesSheetFile = "";
-    _updateForm(appData);
     appData.update();
   }
 
-  void _updateLayer(AppData appData) {
-    if (appData.selectedLevel != -1 && appData.selectedLayer != -1) {
-      final layers = appData.gameData.levels[appData.selectedLevel].layers;
-      final GameLayer oldLayer = layers[appData.selectedLayer];
-
-      int newWidth = int.tryParse(tilemapWidthController.text) ?? 32;
-      int newHeight = int.tryParse(tilemapHeightController.text) ?? 16;
-
-      List<List<int>> newTileMap = List.generate(newHeight, (y) {
-        return List.generate(newWidth, (x) {
-          if (y < oldLayer.tileMap.length && x < oldLayer.tileMap[0].length) {
-            return oldLayer.tileMap[y][x];
-          }
-          return -1;
-        });
-      });
-
-      layers[appData.selectedLayer] = GameLayer(
-          name: nameController.text,
-          x: int.tryParse(xController.text) ?? 0,
-          y: int.tryParse(yController.text) ?? 0,
-          depth: int.tryParse(depthController.text) ?? 0,
-          tilesSheetFile: tilesSheetFile,
-          tilesWidth: int.tryParse(tileWidthController.text) ?? 0,
-          tilesHeight: int.tryParse(tileHeightController.text) ?? 0,
-          tileMap: newTileMap,
-          visible: isVisible);
-
-      appData.update();
+  void _updateLayer({
+    required AppData appData,
+    required int index,
+    required _LayerDialogData data,
+  }) {
+    if (appData.selectedLevel == -1) {
+      return;
     }
+
+    final List<GameLayer> layers =
+        appData.gameData.levels[appData.selectedLevel].layers;
+    if (index < 0 || index >= layers.length) {
+      return;
+    }
+
+    final GameLayer oldLayer = layers[index];
+    final int newWidth = data.tilemapWidth < 1 ? 1 : data.tilemapWidth;
+    final int newHeight = data.tilemapHeight < 1 ? 1 : data.tilemapHeight;
+
+    final int oldHeight = oldLayer.tileMap.length;
+    final int oldWidth = oldHeight == 0 ? 0 : oldLayer.tileMap.first.length;
+
+    final List<List<int>> resizedTileMap = List.generate(newHeight, (y) {
+      return List.generate(newWidth, (x) {
+        if (y < oldHeight && x < oldWidth) {
+          return oldLayer.tileMap[y][x];
+        }
+        return -1;
+      });
+    });
+
+    layers[index] = GameLayer(
+      name: data.name,
+      x: data.x,
+      y: data.y,
+      depth: data.depth,
+      tilesSheetFile: data.tilesSheetFile,
+      tilesWidth: data.tileWidth,
+      tilesHeight: data.tileHeight,
+      tileMap: resizedTileMap,
+      visible: data.visible,
+    );
+
+    appData.selectedLayer = index;
+    appData.update();
   }
 
-  void _deleteLayer(AppData appData) {
-    if (appData.selectedLevel != -1 && appData.selectedLayer != -1) {
-      appData.gameData.levels[appData.selectedLevel].layers
-          .removeAt(appData.selectedLayer);
-      appData.selectedLayer = -1;
-      _updateForm(appData);
-      appData.update();
+  Future<_LayerDialogData?> _promptLayerData({
+    required String title,
+    required String confirmLabel,
+    required _LayerDialogData initialData,
+    GlobalKey? anchorKey,
+    bool useArrowedPopover = false,
+  }) async {
+    if (Overlay.maybeOf(context) == null) {
+      return null;
     }
+
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    final CDKDialogController controller = CDKDialogController();
+    final Completer<_LayerDialogData?> completer =
+        Completer<_LayerDialogData?>();
+    _LayerDialogData? result;
+
+    final dialogChild = _LayerFormDialog(
+      title: title,
+      confirmLabel: confirmLabel,
+      initialData: initialData,
+      onPickTilesSheet: appData.pickImageFile,
+      onConfirm: (value) {
+        result = value;
+        controller.close();
+      },
+      onCancel: controller.close,
+    );
+
+    if (useArrowedPopover && anchorKey != null) {
+      CDKDialogsManager.showPopoverArrowed(
+        context: context,
+        anchorKey: anchorKey,
+        isAnimated: true,
+        dismissOnEscape: true,
+        dismissOnOutsideTap: true,
+        showBackgroundShade: false,
+        controller: controller,
+        onHide: () {
+          if (!completer.isCompleted) {
+            completer.complete(result);
+          }
+        },
+        child: dialogChild,
+      );
+    } else {
+      CDKDialogsManager.showModal(
+        context: context,
+        dismissOnEscape: true,
+        dismissOnOutsideTap: false,
+        showBackgroundShade: true,
+        controller: controller,
+        onHide: () {
+          if (!completer.isCompleted) {
+            completer.complete(result);
+          }
+        },
+        child: dialogChild,
+      );
+    }
+
+    return completer.future;
+  }
+
+  Future<void> _promptAndAddLayer() async {
+    final _LayerDialogData? data = await _promptLayerData(
+      title: 'New layer',
+      confirmLabel: 'Add',
+      initialData: const _LayerDialogData(
+        name: '',
+        x: 0,
+        y: 0,
+        depth: 0,
+        tilesSheetFile: '',
+        tileWidth: 32,
+        tileHeight: 32,
+        tilemapWidth: 32,
+        tilemapHeight: 16,
+        visible: true,
+      ),
+    );
+    if (!mounted || data == null) {
+      return;
+    }
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    _addLayer(appData: appData, data: data);
+    await _autoSaveIfPossible(appData);
+  }
+
+  Future<void> _promptAndEditLayer(int index, GlobalKey anchorKey) async {
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1) {
+      return;
+    }
+
+    final List<GameLayer> layers =
+        appData.gameData.levels[appData.selectedLevel].layers;
+    if (index < 0 || index >= layers.length) {
+      return;
+    }
+
+    final GameLayer layer = layers[index];
+    final int mapWidth = layer.tileMap.isEmpty ? 0 : layer.tileMap.first.length;
+    final int mapHeight = layer.tileMap.length;
+
+    final _LayerDialogData? data = await _promptLayerData(
+      title: 'Edit layer',
+      confirmLabel: 'Save',
+      initialData: _LayerDialogData(
+        name: layer.name,
+        x: layer.x,
+        y: layer.y,
+        depth: layer.depth,
+        tilesSheetFile: layer.tilesSheetFile,
+        tileWidth: layer.tilesWidth,
+        tileHeight: layer.tilesHeight,
+        tilemapWidth: mapWidth,
+        tilemapHeight: mapHeight,
+        visible: layer.visible,
+      ),
+      anchorKey: anchorKey,
+      useArrowedPopover: true,
+    );
+
+    if (!mounted || data == null) {
+      return;
+    }
+
+    _updateLayer(appData: appData, index: index, data: data);
+    await _autoSaveIfPossible(appData);
   }
 
   void _selectLayer(AppData appData, int index, bool isSelected) {
-    appData.selectedLayer = isSelected ? -1 : index;
-    _updateForm(appData);
+    if (isSelected) {
+      return;
+    }
+    appData.selectedLayer = index;
     appData.update();
   }
 
   void _onReorder(AppData appData, int oldIndex, int newIndex) {
+    if (appData.selectedLevel == -1) {
+      return;
+    }
+
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
 
-    final layers = appData.gameData.levels[appData.selectedLevel].layers;
+    final List<GameLayer> layers =
+        appData.gameData.levels[appData.selectedLevel].layers;
     final int selectedIndex = appData.selectedLayer;
 
-    final layer = layers.removeAt(oldIndex);
+    final GameLayer layer = layers.removeAt(oldIndex);
     layers.insert(newIndex, layer);
 
     if (selectedIndex == oldIndex) {
@@ -175,32 +266,24 @@ class LayoutLayersState extends State<LayoutLayers> {
       appData.selectedLayer -= 1;
     } else if (selectedIndex < oldIndex && selectedIndex >= newIndex) {
       appData.selectedLayer += 1;
-    } else {
-      appData.selectedLayer = selectedIndex;
     }
 
     appData.update();
-
-    if (kDebugMode) {
-      print(
-          "Updated layer order: ${appData.gameData.levels[appData.selectedLevel].layers.map((layer) => layer.name).join(', ')}");
-      print("Selected layer remains at index: ${appData.selectedLayer}");
-    }
-  }
-
-  Future<void> _pickTilesSheet(AppData appData) async {
-    tilesSheetFile = await appData.pickImageFile();
-    appData.update();
+    unawaited(_autoSaveIfPossible(appData));
   }
 
   @override
   Widget build(BuildContext context) {
-    final appData = Provider.of<AppData>(context);
+    final AppData appData = Provider.of<AppData>(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    final typography = CDKThemeNotifier.typographyTokensOf(context);
+
     if (appData.selectedLevel == -1) {
       return const Center(
-        child: Text(
-          'No level selected',
-          style: TextStyle(fontSize: 16.0, color: CupertinoColors.systemGrey),
+        child: CDKText(
+          'Select a level to edit layers.',
+          role: CDKTextRole.body,
+          secondary: true,
         ),
       );
     }
@@ -208,287 +291,479 @@ class LayoutLayersState extends State<LayoutLayers> {
     final level = appData.gameData.levels[appData.selectedLevel];
     final layers = level.layers;
 
-    final bool isFormFilled = nameController.text.isNotEmpty &&
-        xController.text.isNotEmpty &&
-        yController.text.isNotEmpty &&
-        depthController.text.isNotEmpty &&
-        tilesSheetFile != "" &&
-        tileWidthController.text.isNotEmpty &&
-        tileHeightController.text.isNotEmpty &&
-        tilemapWidthController.text.isNotEmpty &&
-        tilemapHeightController.text.isNotEmpty;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Text(
-            'Editing Layers for level "${level.name}"',
-            style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+          child: Row(
+            children: [
+              CDKText(
+                'Layers',
+                role: CDKTextRole.title,
+                style: typography.title.copyWith(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              CDKButton(
+                style: CDKButtonStyle.action,
+                onPressed: () async {
+                  await _promptAndAddLayer();
+                },
+                child: const Text('+ Add Layer'),
+              ),
+            ],
           ),
         ),
         Expanded(
-            child: layers.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      '(No layers defined)',
-                      style: TextStyle(
-                          fontSize: 12.0, color: CupertinoColors.systemGrey),
-                    ),
-                  )
-                : CupertinoScrollbar(
-                    controller: scrollController,
-                    child: Localizations.override(
-                      context: context,
-                      delegates: [
-                        DefaultMaterialLocalizations
-                            .delegate, // Add Material Localizations
-                        DefaultWidgetsLocalizations.delegate,
-                      ],
-                      child: ReorderableListView.builder(
-                        //controller: scrollController,
-                        itemCount: layers.length,
-                        onReorder: (oldIndex, newIndex) =>
-                            _onReorder(appData, oldIndex, newIndex),
-                        itemBuilder: (context, index) {
-                          final isSelected = (index == appData.selectedLayer);
-                          final layer = appData.gameData
-                              .levels[appData.selectedLevel].layers[index];
-                          String subtitle =
-                              "${layer.depth} - ${layer.tilesSheetFile}";
-                          return GestureDetector(
-                              key: ValueKey(layers[index]), // Reorder value key
-                              onTap: () {
-                                _selectLayer(appData, index, isSelected);
-                              },
-                              child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 4, horizontal: 8),
-                                  color: isSelected
-                                      ? CupertinoColors.systemBlue
-                                          .withOpacity(0.2)
-                                      : CupertinoColors.systemBackground,
-                                  child: Row(children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            layers[index].name,
-                                            style: TextStyle(
-                                              fontSize: 14.0,
-                                              fontWeight: isSelected
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            subtitle,
-                                            style: const TextStyle(
-                                              fontSize: 12.0,
-                                              color: CupertinoColors.systemGrey,
-                                            ),
-                                          ),
-                                        ],
+          child: layers.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8.0),
+                  child: CDKText(
+                    '(No layers defined)',
+                    role: CDKTextRole.caption,
+                    secondary: true,
+                  ),
+                )
+              : CupertinoScrollbar(
+                  controller: scrollController,
+                  child: Localizations.override(
+                    context: context,
+                    delegates: [
+                      DefaultMaterialLocalizations.delegate,
+                      DefaultWidgetsLocalizations.delegate,
+                    ],
+                    child: ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
+                      itemCount: layers.length,
+                      onReorder: (oldIndex, newIndex) =>
+                          _onReorder(appData, oldIndex, newIndex),
+                      itemBuilder: (context, index) {
+                        final bool isSelected = index == appData.selectedLayer;
+                        final GameLayer layer = layers[index];
+                        final int mapWidth = layer.tileMap.isEmpty
+                            ? 0
+                            : layer.tileMap.first.length;
+                        final int mapHeight = layer.tileMap.length;
+                        final String subtitle =
+                            'Depth ${layer.depth} | ${mapWidth}x$mapHeight tiles';
+                        final String details =
+                            '${layer.tilesWidth}x${layer.tilesHeight} px | ${layer.visible ? 'Visible' : 'Hidden'}';
+
+                        return GestureDetector(
+                          key: ValueKey(layer),
+                          onTap: () => _selectLayer(appData, index, isSelected),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 6,
+                              horizontal: 8,
+                            ),
+                            color: isSelected
+                                ? CupertinoColors.systemBlue
+                                    .withValues(alpha: 0.2)
+                                : cdkColors.backgroundSecondary0,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      CDKText(
+                                        layer.name,
+                                        role: isSelected
+                                            ? CDKTextRole.bodyStrong
+                                            : CDKTextRole.body,
+                                        style: TextStyle(
+                                          fontSize: isSelected ? 17 : 16,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      CDKText(
+                                        subtitle,
+                                        role: CDKTextRole.caption,
+                                        color: cdkColors.colorText,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      CDKText(
+                                        details,
+                                        role: CDKTextRole.caption,
+                                        color: cdkColors.colorText,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (isSelected)
+                                  MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: CupertinoButton(
+                                      key: _selectedEditAnchorKey,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      minimumSize: const Size(20, 20),
+                                      onPressed: () async {
+                                        await _promptAndEditLayer(
+                                          index,
+                                          _selectedEditAnchorKey,
+                                        );
+                                      },
+                                      child: Icon(
+                                        CupertinoIcons.pencil,
+                                        size: 16,
+                                        color: cdkColors.colorText,
                                       ),
                                     ),
-                                  ])));
-                        },
-                      ),
-                    ),
-                  )),
-        const SizedBox(height: 8),
-        Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Text(
-              (appData.selectedLayer == -1) ? 'Add layer:' : 'Modify layer:',
-              style:
-                  const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
-            )),
-        const SizedBox(height: 8),
-        Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(children: [
-              Expanded(
-                  child: TitledTextfield(
-                title: "Layer name",
-                controller: nameController,
-                onChanged: (_) => setState(() {}),
-              )),
-              const SizedBox(width: 8),
-              Column(children: [
-                Text(
-                  'Visible',
-                  style: const TextStyle(fontSize: 14.0),
-                ),
-                Transform.scale(
-                    scale: 0.65,
-                    child: CupertinoSwitch(
-                      value: isVisible,
-                      onChanged: (bool value) {
-                        setState(() {
-                          isVisible = value;
-                        });
+                                  ),
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: Icon(
+                                      CupertinoIcons.bars,
+                                      size: 16,
+                                      color: cdkColors.colorText,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
                       },
-                    ))
-              ]),
-            ])),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TitledTextfield(
-                  title: 'X position (px)',
-                  controller: xController,
-                  placeholder: '0',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TitledTextfield(
-                  title: 'Y position (px)',
-                  controller: yController,
-                  placeholder: '0',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TitledTextfield(
-                  title: 'Depth (z-index)',
-                  controller: depthController,
-                  placeholder: '0',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-            ],
-          ),
         ),
-        const SizedBox(height: 16),
-        Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Text(
-              'Tiles image:',
-              style:
-                  const TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
-            )),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  tilesSheetFile == "" ? "No file selected" : tilesSheetFile,
-                  style: const TextStyle(
-                      fontSize: 12.0, color: CupertinoColors.systemGrey),
-                ),
-              ),
-              CupertinoButton.filled(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                child: const Text(
-                  "Choose File",
-                  style: TextStyle(fontSize: 12.0, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () => _pickTilesSheet(appData),
-              ),
-            ],
+      ],
+    );
+  }
+}
+
+class _LayerDialogData {
+  const _LayerDialogData({
+    required this.name,
+    required this.x,
+    required this.y,
+    required this.depth,
+    required this.tilesSheetFile,
+    required this.tileWidth,
+    required this.tileHeight,
+    required this.tilemapWidth,
+    required this.tilemapHeight,
+    required this.visible,
+  });
+
+  final String name;
+  final int x;
+  final int y;
+  final int depth;
+  final String tilesSheetFile;
+  final int tileWidth;
+  final int tileHeight;
+  final int tilemapWidth;
+  final int tilemapHeight;
+  final bool visible;
+}
+
+class _LayerFormDialog extends StatefulWidget {
+  const _LayerFormDialog({
+    required this.title,
+    required this.confirmLabel,
+    required this.initialData,
+    required this.onPickTilesSheet,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  final String title;
+  final String confirmLabel;
+  final _LayerDialogData initialData;
+  final Future<String> Function() onPickTilesSheet;
+  final ValueChanged<_LayerDialogData> onConfirm;
+  final VoidCallback onCancel;
+
+  @override
+  State<_LayerFormDialog> createState() => _LayerFormDialogState();
+}
+
+class _LayerFormDialogState extends State<_LayerFormDialog> {
+  late final TextEditingController _nameController = TextEditingController(
+    text: widget.initialData.name,
+  );
+  late final TextEditingController _xController = TextEditingController(
+    text: widget.initialData.x.toString(),
+  );
+  late final TextEditingController _yController = TextEditingController(
+    text: widget.initialData.y.toString(),
+  );
+  late final TextEditingController _depthController = TextEditingController(
+    text: widget.initialData.depth.toString(),
+  );
+  late final TextEditingController _tileWidthController = TextEditingController(
+    text: widget.initialData.tileWidth.toString(),
+  );
+  late final TextEditingController _tileHeightController =
+      TextEditingController(
+    text: widget.initialData.tileHeight.toString(),
+  );
+  late final TextEditingController _tilemapWidthController =
+      TextEditingController(
+    text: widget.initialData.tilemapWidth.toString(),
+  );
+  late final TextEditingController _tilemapHeightController =
+      TextEditingController(
+    text: widget.initialData.tilemapHeight.toString(),
+  );
+
+  late String _tilesSheetFile = widget.initialData.tilesSheetFile;
+  late bool _visible = widget.initialData.visible;
+
+  bool get _isValid =>
+      _nameController.text.trim().isNotEmpty &&
+      _tilesSheetFile.trim().isNotEmpty;
+
+  Future<void> _pickTilesSheet() async {
+    final String picked = await widget.onPickTilesSheet();
+    if (!mounted || picked.isEmpty) {
+      return;
+    }
+    setState(() {
+      _tilesSheetFile = picked;
+    });
+  }
+
+  void _confirm() {
+    if (!_isValid) {
+      return;
+    }
+
+    widget.onConfirm(
+      _LayerDialogData(
+        name: _nameController.text.trim(),
+        x: int.tryParse(_xController.text.trim()) ?? 0,
+        y: int.tryParse(_yController.text.trim()) ?? 0,
+        depth: int.tryParse(_depthController.text.trim()) ?? 0,
+        tilesSheetFile: _tilesSheetFile,
+        tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
+        tileHeight: int.tryParse(_tileHeightController.text.trim()) ?? 32,
+        tilemapWidth: int.tryParse(_tilemapWidthController.text.trim()) ?? 32,
+        tilemapHeight: int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
+        visible: _visible,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _xController.dispose();
+    _yController.dispose();
+    _depthController.dispose();
+    _tileWidthController.dispose();
+    _tileHeightController.dispose();
+    _tilemapWidthController.dispose();
+    _tilemapHeightController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    Widget labeledField(String label, Widget field) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CDKText(
+            label,
+            role: CDKTextRole.caption,
+            color: cdkColors.colorText,
           ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TitledTextfield(
-                  title: 'Tile width (px)',
-                  controller: tileWidthController,
-                  placeholder: '32',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TitledTextfield(
-                  title: 'Tile height (px)',
-                  controller: tileHeightController,
-                  placeholder: '32',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TitledTextfield(
-                  title: 'Tilemap width (tiles)',
-                  controller: tilemapWidthController,
-                  placeholder: '32',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TitledTextfield(
-                  title: 'Tilemap height (tiles)',
-                  controller: tilemapHeightController,
-                  placeholder: '16',
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          const SizedBox(height: 4),
+          field,
+        ],
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 380, maxWidth: 520),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (appData.selectedLayer != -1) ...[
-              CupertinoButton.filled(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                onPressed: isFormFilled ? () => _updateLayer(appData) : null,
-                child: const Text('Update'),
+            CDKText(widget.title, role: CDKTextRole.title),
+            SizedBox(height: spacing.md),
+            const CDKText('Configure layer details.', role: CDKTextRole.body),
+            SizedBox(height: spacing.md),
+            labeledField(
+              'Layer Name',
+              CDKFieldText(
+                placeholder: 'Layer name',
+                controller: _nameController,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _confirm(),
               ),
-              CupertinoButton(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                color: CupertinoColors.destructiveRed,
-                onPressed: () => _deleteLayer(appData),
-                child:
-                    const Text('Delete', style: TextStyle(color: Colors.white)),
-              ),
-            ] else
-              CupertinoButton.filled(
-                sizeStyle: CupertinoButtonSize.small,
-                borderRadius: BorderRadius.all(Radius.circular(5)),
-                onPressed: isFormFilled ? () => _addLayer(appData) : null,
-                child: const Text('Add Layer'),
-              ),
+            ),
+            SizedBox(height: spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: labeledField(
+                    'X (px)',
+                    CDKFieldText(
+                      placeholder: 'X (px)',
+                      controller: _xController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: labeledField(
+                    'Y (px)',
+                    CDKFieldText(
+                      placeholder: 'Y (px)',
+                      controller: _yController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: labeledField(
+                    'Depth (z-index)',
+                    CDKFieldText(
+                      placeholder: 'Depth (z-index)',
+                      controller: _depthController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: labeledField(
+                    'Tile Width (px)',
+                    CDKFieldText(
+                      placeholder: 'Tile width (px)',
+                      controller: _tileWidthController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: labeledField(
+                    'Tile Height (px)',
+                    CDKFieldText(
+                      placeholder: 'Tile height (px)',
+                      controller: _tileHeightController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: labeledField(
+                    'Tilemap Width (tiles)',
+                    CDKFieldText(
+                      placeholder: 'Tilemap width (tiles)',
+                      controller: _tilemapWidthController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: labeledField(
+                    'Tilemap Height (tiles)',
+                    CDKFieldText(
+                      placeholder: 'Tilemap height (tiles)',
+                      controller: _tilemapHeightController,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.md),
+            CDKText(
+              'Tilesheet Image',
+              role: CDKTextRole.caption,
+              color: cdkColors.colorText,
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: CDKText(
+                    _tilesSheetFile.isEmpty
+                        ? 'No file selected'
+                        : _tilesSheetFile,
+                    role: CDKTextRole.caption,
+                    color: cdkColors.colorText,
+                  ),
+                ),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: _pickTilesSheet,
+                  child: const Text('Choose File'),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.sm),
+            Row(
+              children: [
+                const CDKText('Visible', role: CDKTextRole.body),
+                SizedBox(width: spacing.sm),
+                CupertinoSwitch(
+                  value: _visible,
+                  onChanged: (bool value) {
+                    setState(() {
+                      _visible = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.lg + spacing.sm),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  onPressed: widget.onCancel,
+                  child: const Text('Cancel'),
+                ),
+                SizedBox(width: spacing.md),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  enabled: _isValid,
+                  onPressed: _confirm,
+                  child: Text(widget.confirmLabel),
+                ),
+              ],
+            ),
           ],
         ),
-        const SizedBox(height: 16),
-      ],
+      ),
     );
   }
 }

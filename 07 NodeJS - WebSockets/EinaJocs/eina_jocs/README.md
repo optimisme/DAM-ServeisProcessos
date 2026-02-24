@@ -1,16 +1,26 @@
 # eina_jocs
 
-A new Flutter project.
+cd eina_jocs
+flutter config --enable-macos-desktop
+flutter pub get
+flutter run -d macos
 
-## Getting Started
+## Projects Storage
 
-This project is a starting point for a Flutter application.
+Projects are stored in the OS app-data location under an app-managed folder:
 
-A few resources to get you started if this is your first Flutter project:
+- macOS: `~/Library/Application Support/EinaJocs/projects`
+- Linux: `~/.local/share/EinaJocs/projects` (or `$XDG_DATA_HOME/EinaJocs/projects`)
+- Windows: `%APPDATA%\\EinaJocs\\projects`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+The editor keeps a registry in:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- `.../EinaJocs/projects_index.json`
+
+Use the **Projects** section as follows:
+
+- main area: choose the working project from the list
+- main area: create new empty projects with `+ Add Project`
+- main area: rename by clicking project name (inline edit) and click outside to save
+- main area: delete selected project with the trash icon
+- sidebar: import/export project archives (`.zip`)

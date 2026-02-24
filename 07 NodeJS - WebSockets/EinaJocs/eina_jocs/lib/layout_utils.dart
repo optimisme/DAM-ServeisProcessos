@@ -321,83 +321,16 @@ class LayoutUtils {
 
     await appData.getImage(layer.tilesSheetFile);
 
-    final recorder = ui.PictureRecorder();
-    final imgCanvas = Canvas(recorder);
-
-    // Obtenir imatge del tilemap amb la quadrícula
-    final tilemapImage = await generateTilemapImage(
-        appData, appData.selectedLevel, appData.selectedLayer, true);
-
-    // Calcular l'escala i la posició del tilemap al canvas
-    double availableWidth = tilemapImage.width * 0.95;
-    double availableHeight = tilemapImage.height * 0.95;
-
-    double scaleX = availableWidth / tilemapImage.width;
-    double scaleY = availableHeight / tilemapImage.height;
-    double tilemapScale = scaleX < scaleY ? scaleX : scaleY;
-
-    double scaledTilemapWidth = tilemapImage.width * tilemapScale;
-    double scaledTilemapHeight = tilemapImage.height * tilemapScale;
-
-    double tilemapX = (tilemapImage.width - scaledTilemapWidth) / 2;
-    double tilemapY = (tilemapImage.height - scaledTilemapHeight) / 2;
-
-    // Guardar offset i escala del tilemap a AppData
-    appData.tilemapOffset = Offset(tilemapX, tilemapY);
-    appData.tilemapScaleFactor = tilemapScale;
-
-    imgCanvas.drawImageRect(
-      tilemapImage,
-      Rect.fromLTWH(
-          0, 0, tilemapImage.width.toDouble(), tilemapImage.height.toDouble()),
-      Rect.fromLTWH(
-          tilemapX, tilemapY, scaledTilemapWidth, scaledTilemapHeight),
-      Paint(),
+    // Main canvas renders only the tilemap; tileset is handled in right sidebar.
+    final ui.Image tilemapImage = await generateTilemapImage(
+      appData,
+      appData.selectedLevel,
+      appData.selectedLayer,
+      true,
     );
-
-    // Obtenir imatge del tileset amb la quadrícula
-    final tilesetImage = await generateTilesetImage(
-        appData,
-        layer.tilesSheetFile,
-        layer.tilesWidth.toDouble(),
-        layer.tilesHeight.toDouble(),
-        true);
-
-    // Calcular la posició i mida escalada del tileset
-    double tilesetMaxWidth = tilemapImage.width * 0.5;
-    double tilesetMaxHeight = tilemapImage.height.toDouble();
-    double tilesetX = tilemapImage.width + 10;
-
-    double tilesetScale =
-        (tilesetMaxWidth / tilesetImage.width).clamp(0.0, 1.0);
-    if (tilesetImage.height * tilesetScale > tilesetMaxHeight) {
-      tilesetScale = (tilesetMaxHeight / tilesetImage.height).clamp(0.0, 1.0);
-    }
-
-    double scaledTilesetWidth = tilesetImage.width * tilesetScale;
-    double scaledTilesetHeight = tilesetImage.height * tilesetScale;
-    double centeredTilesetX =
-        tilesetX + (tilesetMaxWidth - scaledTilesetWidth) / 2;
-    double centeredTilesetY = (tilesetMaxHeight - scaledTilesetHeight) / 2;
-
-    // Guardar offset i escala del tileset a AppData
-    appData.tilesetOffset = Offset(centeredTilesetX, centeredTilesetY);
-    appData.tilesetScaleFactor = tilesetScale;
-
-    // Dibuixar el tileset escalat amb la quadrícula
-    imgCanvas.drawImageRect(
-      tilesetImage,
-      Rect.fromLTWH(
-          0, 0, tilesetImage.width.toDouble(), tilesetImage.height.toDouble()),
-      Rect.fromLTWH(centeredTilesetX, centeredTilesetY, scaledTilesetWidth,
-          scaledTilesetHeight),
-      Paint(),
-    );
-
-    final picture = recorder.endRecording();
-    return await picture.toImage(
-        (tilemapImage.width + tilesetMaxWidth + 10).toInt(),
-        tilemapImage.height);
+    appData.tilemapOffset = Offset.zero;
+    appData.tilemapScaleFactor = 1.0;
+    return tilemapImage;
   }
 
   static Future<ui.Image> drawCanvasImageMedia(AppData appData) async {
@@ -766,6 +699,49 @@ class LayoutUtils {
 
     appData.pushUndo();
     layer.tileMap[row][col] = appData.draggingTileIndex;
+  }
+
+  static bool hasTilePatternSelection(AppData appData) {
+    return appData.selectedTilePattern.isNotEmpty;
+  }
+
+  static bool pasteSelectedTilePatternAtTilemap(
+    AppData appData,
+    Offset localPosition, {
+    bool pushUndo = false,
+  }) {
+    final Offset? tileCoords = getTilemapCoords(appData, localPosition);
+    if (tileCoords == null) return false;
+    if (!hasTilePatternSelection(appData)) return false;
+
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final layer = level.layers[appData.selectedLayer];
+    final int startRow = tileCoords.dx.toInt();
+    final int startCol = tileCoords.dy.toInt();
+    final List<List<int>> pattern = appData.selectedTilePattern;
+
+    bool changed = false;
+    bool pushed = false;
+    for (int row = 0; row < pattern.length; row++) {
+      final int destRow = startRow + row;
+      if (destRow < 0 || destRow >= layer.tileMap.length) continue;
+      final List<int> patternRow = pattern[row];
+      for (int col = 0; col < patternRow.length; col++) {
+        final int destCol = startCol + col;
+        if (destCol < 0 || destCol >= layer.tileMap[destRow].length) continue;
+        final int index = patternRow[col];
+        if (index < 0) continue;
+        if (layer.tileMap[destRow][destCol] == index) continue;
+        if (pushUndo && !pushed) {
+          appData.pushUndo();
+          pushed = true;
+        }
+        layer.tileMap[destRow][destCol] = index;
+        changed = true;
+      }
+    }
+
+    return changed;
   }
 
   static void setSelectedTileIndexFromTileset(

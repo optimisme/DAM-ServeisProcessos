@@ -1,8 +1,32 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
+import 'game_layer.dart';
+
+class _AccentColorOption {
+  const _AccentColorOption({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+}
+
+const List<_AccentColorOption> _tilesetAccentOptions = [
+  _AccentColorOption(label: 'Blue', color: Color(0xFF2196F3)),
+  _AccentColorOption(label: 'Green', color: Color(0xFF34C759)),
+  _AccentColorOption(label: 'Orange', color: Color(0xFFFF9500)),
+  _AccentColorOption(label: 'Red', color: Color(0xFFFF3B30)),
+  _AccentColorOption(label: 'Pink', color: Color(0xFFFF2D55)),
+  _AccentColorOption(label: 'Purple', color: Color(0xFFAF52DE)),
+  _AccentColorOption(label: 'Teal', color: Color(0xFF30B0C7)),
+  _AccentColorOption(label: 'Yellow', color: Color(0xFFFFCC00)),
+];
 
 class LayoutTilemaps extends StatefulWidget {
   const LayoutTilemaps({super.key});
@@ -12,6 +36,206 @@ class LayoutTilemaps extends StatefulWidget {
 }
 
 class LayoutTilemapsState extends State<LayoutTilemaps> {
+  Offset? _dragSelectionStartTile;
+  bool _isDraggingSelection = false;
+  Future<ui.Image>? _tilesetImageFuture;
+  String _tilesetImagePath = '';
+  final GlobalKey _settingsAnchorKey = GlobalKey();
+
+  void _ensureTilesetImageFuture(AppData appData, String tilesheetPath) {
+    if (_tilesetImageFuture != null && _tilesetImagePath == tilesheetPath) {
+      return;
+    }
+    _tilesetImagePath = tilesheetPath;
+    appData.selectedTileIndex = -1;
+    appData.selectedTilePattern = [];
+    appData.tilesetSelectionColStart = -1;
+    appData.tilesetSelectionRowStart = -1;
+    appData.tilesetSelectionColEnd = -1;
+    appData.tilesetSelectionRowEnd = -1;
+    _tilesetImageFuture = appData.getImage(tilesheetPath);
+  }
+
+  void _showSelectionColorPopover(AppData appData) {
+    if (Overlay.maybeOf(context) == null) return;
+    final CDKDialogController controller = CDKDialogController();
+    CDKDialogsManager.showPopoverArrowed(
+      context: context,
+      anchorKey: _settingsAnchorKey,
+      isAnimated: true,
+      animateContentResize: false,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
+      showBackgroundShade: false,
+      controller: controller,
+      child: _TilesetSelectionColorPopover(
+        selectedColor: appData.tilesetSelectionAccentColor,
+        onSelect: (Color color) {
+          appData.tilesetSelectionAccentColor = color;
+          appData.update();
+          controller.close();
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeader({
+    required AppData appData,
+    required TextStyle titleStyle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      child: Row(
+        children: [
+          CDKText(
+            'Tileset',
+            role: CDKTextRole.title,
+            style: titleStyle,
+          ),
+          const Spacer(),
+          CDKButton(
+            key: _settingsAnchorKey,
+            style: CDKButtonStyle.normal,
+            onPressed: () => _showSelectionColorPopover(appData),
+            child: const Icon(
+              CupertinoIcons.gear,
+              size: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Offset? _tileFromLocalPosition({
+    required Offset localPosition,
+    required Offset imageOffset,
+    required double imageScale,
+    required GameLayer layer,
+    required ui.Image image,
+  }) {
+    if (imageScale <= 0) return null;
+    final double imageX = (localPosition.dx - imageOffset.dx) / imageScale;
+    final double imageY = (localPosition.dy - imageOffset.dy) / imageScale;
+    if (imageX < 0 ||
+        imageY < 0 ||
+        imageX >= image.width ||
+        imageY >= image.height) {
+      return null;
+    }
+
+    if (layer.tilesWidth <= 0 || layer.tilesHeight <= 0) return null;
+    final int cols = (image.width / layer.tilesWidth).floor();
+    final int rows = (image.height / layer.tilesHeight).floor();
+    if (cols <= 0 || rows <= 0) return null;
+
+    final int col = (imageX / layer.tilesWidth).floor();
+    final int row = (imageY / layer.tilesHeight).floor();
+    if (col < 0 || row < 0 || col >= cols || row >= rows) return null;
+    return Offset(col.toDouble(), row.toDouble());
+  }
+
+  void _clearTileSelection(AppData appData) {
+    appData.selectedTileIndex = -1;
+    appData.selectedTilePattern = [];
+    appData.tilesetSelectionColStart = -1;
+    appData.tilesetSelectionRowStart = -1;
+    appData.tilesetSelectionColEnd = -1;
+    appData.tilesetSelectionRowEnd = -1;
+    appData.update();
+  }
+
+  void _setRectTileSelection({
+    required AppData appData,
+    required GameLayer layer,
+    required ui.Image image,
+    required Offset startTile,
+    required Offset endTile,
+    bool notify = true,
+  }) {
+    final int cols = (image.width / layer.tilesWidth).floor();
+    final int rows = (image.height / layer.tilesHeight).floor();
+    if (cols <= 0 || rows <= 0) {
+      _clearTileSelection(appData);
+      return;
+    }
+
+    final int startCol =
+        startTile.dx.toInt().clamp(0, cols - 1);
+    final int startRow =
+        startTile.dy.toInt().clamp(0, rows - 1);
+    final int endCol =
+        endTile.dx.toInt().clamp(0, cols - 1);
+    final int endRow =
+        endTile.dy.toInt().clamp(0, rows - 1);
+
+    final int left = math.min(startCol, endCol);
+    final int right = math.max(startCol, endCol);
+    final int top = math.min(startRow, endRow);
+    final int bottom = math.max(startRow, endRow);
+
+    final List<List<int>> pattern = [];
+    for (int row = top; row <= bottom; row++) {
+      final List<int> patternRow = [];
+      for (int col = left; col <= right; col++) {
+        patternRow.add(row * cols + col);
+      }
+      pattern.add(patternRow);
+    }
+
+    appData.selectedTilePattern = pattern;
+    appData.selectedTileIndex = pattern.isNotEmpty && pattern.first.isNotEmpty
+        ? pattern.first.first
+        : -1;
+    appData.tilesetSelectionColStart = left;
+    appData.tilesetSelectionRowStart = top;
+    appData.tilesetSelectionColEnd = right;
+    appData.tilesetSelectionRowEnd = bottom;
+    if (notify) {
+      appData.update();
+    }
+  }
+
+  void _toggleSingleTileSelection({
+    required AppData appData,
+    required GameLayer layer,
+    required ui.Image image,
+    required Offset localPosition,
+    required Offset imageOffset,
+    required double imageScale,
+  }) {
+    final Offset? tile = _tileFromLocalPosition(
+      localPosition: localPosition,
+      imageOffset: imageOffset,
+      imageScale: imageScale,
+      layer: layer,
+      image: image,
+    );
+    if (tile == null) return;
+
+    final int col = tile.dx.toInt();
+    final int row = tile.dy.toInt();
+    final bool isSameSingle = appData.selectedTilePattern.length == 1 &&
+        appData.selectedTilePattern.first.length == 1 &&
+        appData.tilesetSelectionColStart == col &&
+        appData.tilesetSelectionRowStart == row &&
+        appData.tilesetSelectionColEnd == col &&
+        appData.tilesetSelectionRowEnd == row;
+
+    if (isSameSingle) {
+      _clearTileSelection(appData);
+      return;
+    }
+
+    _setRectTileSelection(
+      appData: appData,
+      layer: layer,
+      image: image,
+      startTile: tile,
+      endTile: tile,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
@@ -20,53 +244,362 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
 
     final bool hasLevel = appData.selectedLevel != -1;
     final bool hasLayer = hasLevel && appData.selectedLayer != -1;
-
-    String message;
-    if (!hasLevel) {
-      message = 'Select a level to edit tilemaps.';
-    } else if (!hasLayer) {
-      message = 'Select a layer to edit its tilemap.';
-    } else {
-      message = '';
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
-          child: CDKText(
-            'Tilemap',
-            role: CDKTextRole.title,
-            style: typography.title.copyWith(
+    if (!hasLayer) {
+      final String message = hasLevel
+          ? 'Select a layer to edit its tilemap.'
+          : 'Select a level to edit tilemaps.';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(
+            appData: appData,
+            titleStyle: typography.title.copyWith(
               fontSize: 24,
               fontWeight: FontWeight.w700,
             ),
           ),
-        ),
-        if (hasLayer)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: CDKText(
-              'Layer: ${appData.gameData.levels[appData.selectedLevel].layers[appData.selectedLayer].name}',
-              role: CDKTextRole.bodyStrong,
-              color: cdkColors.colorText,
+          Expanded(
+            child: Center(
+              child: CDKText(
+                message,
+                role: CDKTextRole.body,
+                secondary: true,
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
+        ],
+      );
+    }
+
+    final GameLayer layer =
+        appData.gameData.levels[appData.selectedLevel].layers[appData.selectedLayer];
+    _ensureTilesetImageFuture(appData, layer.tilesSheetFile);
+    final int selectedRows = appData.selectedTilePattern.length;
+    final int selectedCols =
+        selectedRows == 0 ? 0 : appData.selectedTilePattern.first.length;
+    final String selectionLabel = selectedRows == 0
+        ? 'Selection: none'
+        : 'Selection: ${selectedCols}x$selectedRows tile(s)';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(
+          appData: appData,
+          titleStyle: typography.title.copyWith(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: CDKText(
+            'Layer: ${layer.name}',
+            role: CDKTextRole.bodyStrong,
+            color: cdkColors.colorText,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: CDKText(
+            selectionLabel,
+            role: CDKTextRole.caption,
+            color: cdkColors.colorText,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8.0),
+          child: CDKText(
+            'Click to toggle one tile. Drag to select a tile block.',
+            role: CDKTextRole.caption,
+            secondary: true,
+          ),
+        ),
+        const SizedBox(height: 8),
         Expanded(
-          child: Center(
-            child: CDKText(
-              hasLayer
-                  ? 'Use the canvas to paint tiles and the tileset to pick indices.'
-                  : message,
-              role: CDKTextRole.body,
-              secondary: !hasLayer,
-              color: hasLayer ? cdkColors.colorText : null,
-              textAlign: TextAlign.center,
-            ),
+          child: FutureBuilder<ui.Image>(
+            future: _tilesetImageFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  snapshot.data == null) {
+                return const Center(child: CupertinoActivityIndicator());
+              }
+              final ui.Image? image = snapshot.data;
+              if (image == null) {
+                return const Center(
+                  child: CDKText(
+                    'Tileset image not available.',
+                    role: CDKTextRole.body,
+                    secondary: true,
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  const double padding = 8.0;
+                  final double maxWidth = math.max(1, constraints.maxWidth - padding * 2);
+                  final double maxHeight = math.max(1, constraints.maxHeight - padding * 2);
+                  final double imageScale = math.min(
+                    maxWidth / image.width,
+                    maxHeight / image.height,
+                  );
+                  final double drawWidth = image.width * imageScale;
+                  final double drawHeight = image.height * imageScale;
+                  final Offset imageOffset = Offset(
+                    (constraints.maxWidth - drawWidth) / 2,
+                    (constraints.maxHeight - drawHeight) / 2,
+                  );
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: (details) {
+                      _toggleSingleTileSelection(
+                        appData: appData,
+                        layer: layer,
+                        image: image,
+                        localPosition: details.localPosition,
+                        imageOffset: imageOffset,
+                        imageScale: imageScale,
+                      );
+                    },
+                    onPanStart: (details) {
+                      final Offset? tile = _tileFromLocalPosition(
+                        localPosition: details.localPosition,
+                        imageOffset: imageOffset,
+                        imageScale: imageScale,
+                        layer: layer,
+                        image: image,
+                      );
+                      if (tile == null) {
+                        _dragSelectionStartTile = null;
+                        _isDraggingSelection = false;
+                        return;
+                      }
+                      _dragSelectionStartTile = tile;
+                      _isDraggingSelection = true;
+                      _setRectTileSelection(
+                        appData: appData,
+                        layer: layer,
+                        image: image,
+                        startTile: tile,
+                        endTile: tile,
+                      );
+                    },
+                    onPanUpdate: (details) {
+                      if (!_isDraggingSelection || _dragSelectionStartTile == null) {
+                        return;
+                      }
+                      final Offset? tile = _tileFromLocalPosition(
+                        localPosition: details.localPosition,
+                        imageOffset: imageOffset,
+                        imageScale: imageScale,
+                        layer: layer,
+                        image: image,
+                      );
+                      if (tile == null) return;
+                      _setRectTileSelection(
+                        appData: appData,
+                        layer: layer,
+                        image: image,
+                        startTile: _dragSelectionStartTile!,
+                        endTile: tile,
+                      );
+                    },
+                    onPanEnd: (_) {
+                      _isDraggingSelection = false;
+                      _dragSelectionStartTile = null;
+                    },
+                    child: CustomPaint(
+                      painter: _TilesetSelectionPainter(
+                        image: image,
+                        imageOffset: imageOffset,
+                        imageScale: imageScale,
+                        tileWidth: layer.tilesWidth.toDouble(),
+                        tileHeight: layer.tilesHeight.toDouble(),
+                        selectionColStart: appData.tilesetSelectionColStart,
+                        selectionRowStart: appData.tilesetSelectionRowStart,
+                        selectionColEnd: appData.tilesetSelectionColEnd,
+                        selectionRowEnd: appData.tilesetSelectionRowEnd,
+                        selectionColor: appData.tilesetSelectionAccentColor,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TilesetSelectionPainter extends CustomPainter {
+  const _TilesetSelectionPainter({
+    required this.image,
+    required this.imageOffset,
+    required this.imageScale,
+    required this.tileWidth,
+    required this.tileHeight,
+    required this.selectionColStart,
+    required this.selectionRowStart,
+    required this.selectionColEnd,
+    required this.selectionRowEnd,
+    required this.selectionColor,
+  });
+
+  final ui.Image image;
+  final Offset imageOffset;
+  final double imageScale;
+  final double tileWidth;
+  final double tileHeight;
+  final int selectionColStart;
+  final int selectionRowStart;
+  final int selectionColEnd;
+  final int selectionRowEnd;
+  final Color selectionColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Rect src =
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final Rect dst = Rect.fromLTWH(
+      imageOffset.dx,
+      imageOffset.dy,
+      image.width * imageScale,
+      image.height * imageScale,
+    );
+    canvas.drawImageRect(image, src, dst, Paint());
+
+    if (tileWidth > 0 && tileHeight > 0) {
+      final int cols = (image.width / tileWidth).floor();
+      final int rows = (image.height / tileHeight).floor();
+      final Paint gridPaint = Paint()
+        ..color = const Color(0xAA000000)
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke;
+
+      for (int col = 0; col <= cols; col++) {
+        final double x = imageOffset.dx + col * tileWidth * imageScale;
+        canvas.drawLine(
+          Offset(x, imageOffset.dy),
+          Offset(x, imageOffset.dy + rows * tileHeight * imageScale),
+          gridPaint,
+        );
+      }
+      for (int row = 0; row <= rows; row++) {
+        final double y = imageOffset.dy + row * tileHeight * imageScale;
+        canvas.drawLine(
+          Offset(imageOffset.dx, y),
+          Offset(imageOffset.dx + cols * tileWidth * imageScale, y),
+          gridPaint,
+        );
+      }
+    }
+
+    if (selectionColStart >= 0 &&
+        selectionRowStart >= 0 &&
+        selectionColEnd >= 0 &&
+        selectionRowEnd >= 0) {
+      final int left = math.min(selectionColStart, selectionColEnd);
+      final int right = math.max(selectionColStart, selectionColEnd);
+      final int top = math.min(selectionRowStart, selectionRowEnd);
+      final int bottom = math.max(selectionRowStart, selectionRowEnd);
+
+      final Rect selectedRect = Rect.fromLTWH(
+        imageOffset.dx + left * tileWidth * imageScale,
+        imageOffset.dy + top * tileHeight * imageScale,
+        (right - left + 1) * tileWidth * imageScale,
+        (bottom - top + 1) * tileHeight * imageScale,
+      );
+
+      canvas.drawRect(
+        selectedRect,
+        Paint()..color = selectionColor.withValues(alpha: 0.35),
+      );
+      canvas.drawRect(
+        selectedRect,
+        Paint()
+          ..color = selectionColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TilesetSelectionPainter oldDelegate) {
+    return image != oldDelegate.image ||
+        imageOffset != oldDelegate.imageOffset ||
+        imageScale != oldDelegate.imageScale ||
+        tileWidth != oldDelegate.tileWidth ||
+        tileHeight != oldDelegate.tileHeight ||
+        selectionColStart != oldDelegate.selectionColStart ||
+        selectionRowStart != oldDelegate.selectionRowStart ||
+        selectionColEnd != oldDelegate.selectionColEnd ||
+        selectionRowEnd != oldDelegate.selectionRowEnd ||
+        selectionColor != oldDelegate.selectionColor;
+  }
+}
+
+class _TilesetSelectionColorPopover extends StatelessWidget {
+  const _TilesetSelectionColorPopover({
+    required this.selectedColor,
+    required this.onSelect,
+  });
+
+  final Color selectedColor;
+  final ValueChanged<Color> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 250),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CDKText(
+              'Selection Color',
+              role: CDKTextRole.bodyStrong,
+            ),
+            SizedBox(height: spacing.sm),
+            Wrap(
+              spacing: spacing.sm,
+              runSpacing: spacing.sm,
+              children: _tilesetAccentOptions.map((option) {
+                final bool isSelected = option.color == selectedColor;
+                return GestureDetector(
+                  onTap: () => onSelect(option.color),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: option.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected
+                            ? CupertinoColors.black
+                            : CupertinoColors.white,
+                        width: isSelected ? 2.5 : 1,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(growable: false),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

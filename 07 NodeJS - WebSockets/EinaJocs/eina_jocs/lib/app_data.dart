@@ -90,6 +90,12 @@ class AppData extends ChangeNotifier {
   late double tilesetScaleFactor;
   int draggingTileIndex = -1;
   int selectedTileIndex = -1;
+  List<List<int>> selectedTilePattern = [];
+  int tilesetSelectionColStart = -1;
+  int tilesetSelectionRowStart = -1;
+  int tilesetSelectionColEnd = -1;
+  int tilesetSelectionRowEnd = -1;
+  Color tilesetSelectionAccentColor = const Color(0xFF2196F3);
 
   // Drag offsets
   late Offset zoneDragOffset = Offset.zero;
@@ -391,6 +397,11 @@ class AppData extends ChangeNotifier {
     selectedSprite = -1;
     selectedMedia = -1;
     selectedTileIndex = -1;
+    selectedTilePattern = [];
+    tilesetSelectionColStart = -1;
+    tilesetSelectionRowStart = -1;
+    tilesetSelectionColEnd = -1;
+    tilesetSelectionRowEnd = -1;
     layersViewScale = 1.0;
     layersViewOffset = Offset.zero;
     layerDragOffset = Offset.zero;
@@ -444,6 +455,11 @@ class AppData extends ChangeNotifier {
     selectedSprite = -1;
     selectedMedia = -1;
     selectedTileIndex = -1;
+    selectedTilePattern = [];
+    tilesetSelectionColStart = -1;
+    tilesetSelectionRowStart = -1;
+    tilesetSelectionColEnd = -1;
+    tilesetSelectionRowEnd = -1;
     _undoStack.clear();
     _redoStack.clear();
     imagesCache.clear();
@@ -558,6 +574,11 @@ class AppData extends ChangeNotifier {
       selectedSprite = -1;
       selectedMedia = -1;
       selectedTileIndex = -1;
+      selectedTilePattern = [];
+      tilesetSelectionColStart = -1;
+      tilesetSelectionRowStart = -1;
+      tilesetSelectionColEnd = -1;
+      tilesetSelectionRowEnd = -1;
       _undoStack.clear();
       _redoStack.clear();
       imagesCache.clear();

@@ -39,6 +39,8 @@ class _LayoutState extends State<Layout> {
   Timer? _timer;
   ui.Image? _layerImage;
   bool _isDraggingLayer = false;
+  bool _isPaintingTilemap = false;
+  bool _didModifyTilemapDuringGesture = false;
   bool _isPointerDown = false;
   bool _pendingLayersViewportCenter = false;
   final FocusNode _focusNode = FocusNode();
@@ -291,6 +293,13 @@ class _LayoutState extends State<Layout> {
     appData.update();
   }
 
+  Future<void> _autoSaveIfPossible(AppData appData) async {
+    if (appData.selectedProject == null) {
+      return;
+    }
+    await appData.saveGame();
+  }
+
   void _queueInitialLayersViewportCenter(AppData appData, Size viewportSize) {
     if (appData.selectedSection != 'layers') return;
     if (appData.layersViewScale != 1.0 ||
@@ -433,8 +442,16 @@ class _LayoutState extends State<Layout> {
                                     _isDraggingLayer = false;
                                   }
                                 } else if (appData.selectedSection == "tilemap") {
-                                  await LayoutUtils.dragTileIndexFromTileset(
-                                      appData, details.localPosition);
+                                  _isPaintingTilemap =
+                                      LayoutUtils.pasteSelectedTilePatternAtTilemap(
+                                    appData,
+                                    details.localPosition,
+                                    pushUndo: true,
+                                  );
+                                  if (_isPaintingTilemap) {
+                                    _didModifyTilemapDuringGesture = true;
+                                    appData.update();
+                                  }
                                 } else if (appData.selectedSection == "zones") {
                                   LayoutUtils.selectZoneFromPosition(appData,
                                       details.localPosition, layoutZonesKey);
@@ -474,8 +491,16 @@ class _LayoutState extends State<Layout> {
                                     appData.update();
                                   }
                                 } else if (appData.selectedSection == "tilemap" &&
-                                    appData.draggingTileIndex != -1) {
-                                  appData.draggingOffset += details.delta;
+                                    _isPaintingTilemap) {
+                                  final bool changed =
+                                      LayoutUtils.pasteSelectedTilePatternAtTilemap(
+                                    appData,
+                                    details.localPosition,
+                                  );
+                                  if (changed) {
+                                    _didModifyTilemapDuringGesture = true;
+                                    appData.update();
+                                  }
                                 } else if (appData.selectedSection == "zones" &&
                                     appData.selectedZone != -1) {
                                   if (appData.selectedZone != -1) {
@@ -501,9 +526,12 @@ class _LayoutState extends State<Layout> {
                                     _isDraggingLayer = false;
                                   }
                                 } else if (appData.selectedSection == "tilemap" &&
-                                    appData.draggingTileIndex != -1) {
-                                  LayoutUtils.dropTileIndexFromTileset(
-                                      appData, details.localPosition);
+                                    _isPaintingTilemap) {
+                                  _isPaintingTilemap = false;
+                                  if (_didModifyTilemapDuringGesture) {
+                                    _didModifyTilemapDuringGesture = false;
+                                    unawaited(_autoSaveIfPossible(appData));
+                                  }
                                 } else if (appData.selectedSection == "zones") {
                                   appData.zoneDragOffset = Offset.zero;
                                 } else if (appData.selectedSection ==
@@ -528,9 +556,6 @@ class _LayoutState extends State<Layout> {
                                     appData.selectedLayer = hit;
                                     appData.update();
                                   }
-                                } else if (appData.selectedSection == "tilemap") {
-                                  LayoutUtils.selectTileIndexFromTileset(
-                                      appData, details.localPosition);
                                 } else if (appData.selectedSection == "zones") {
                                   LayoutUtils.selectZoneFromPosition(appData,
                                       details.localPosition, layoutZonesKey);
@@ -542,19 +567,17 @@ class _LayoutState extends State<Layout> {
                               },
                               onTapUp: (TapUpDetails details) {
                                 if (appData.selectedSection == "tilemap") {
-                                  if (appData.selectedTileIndex == -1) {
-                                    LayoutUtils.removeTileIndexFromTileset(
-                                        appData, details.localPosition);
-                                  } else {
-                                    LayoutUtils.setSelectedTileIndexFromTileset(
-                                        appData, details.localPosition);
-                                  }
-                                  if (appData.selectedZone != -1) {
-                                    layoutZonesKey.currentState
-                                        ?.updateForm(appData);
-                                  } else if (appData.selectedSprite != -1) {
-                                    layoutSpritesKey.currentState
-                                        ?.updateForm(appData);
+                                  if (!_isPaintingTilemap) {
+                                    final bool changed =
+                                        LayoutUtils.pasteSelectedTilePatternAtTilemap(
+                                      appData,
+                                      details.localPosition,
+                                      pushUndo: true,
+                                    );
+                                    if (changed) {
+                                      appData.update();
+                                      unawaited(_autoSaveIfPossible(appData));
+                                    }
                                   }
                                 }
                               },

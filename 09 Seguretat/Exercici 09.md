@@ -8,7 +8,9 @@
 </div>
 <br/>
 
-# Exercici 09, Encriptació
+# Exercici 09, Encriptació i publicació
+
+## Aplicació
 
 Fes una aplicació Flutter que permeti encriptar arxius a través del sistema de *clau pública* i *clau privada*, per compartir-los de manera segura.
 
@@ -32,3 +34,17 @@ Aquest és un disseny de les funcionalitats que s'esperen:
 <center>
     <img src="./assets/appmockup.png" style="width: 100%; max-width: 800px;">
 </center>
+
+## Publicació
+
+Exporta l'aplicació amb "--release" segons la documentació oficial de Flutter i el teu sistema operatiu.
+
+Crea un paquet de distribució:
+
+- **Linux**: un .deb, .rpm o Flatpak
+- **Windows**: un .exe o .msi
+- **MacOS**: un .dmg o .pkg
+
+Afegeix una carpeta "dist" al teu repositori on guardis el paquet de i fes una "release" a GitHub amb aquest paquet.
+
+Fes una pagina web a GitHub Pages on expliquis com utilitzar l'aplicació i on puguis descarregar el paquet binari *"release"* de l'aplicació.

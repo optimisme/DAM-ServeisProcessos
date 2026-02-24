@@ -238,6 +238,8 @@ class LayoutLayersState extends State<LayoutLayers> {
 
   void _selectLayer(AppData appData, int index, bool isSelected) {
     if (isSelected) {
+      appData.selectedLayer = -1;
+      appData.update();
       return;
     }
     appData.selectedLayer = index;

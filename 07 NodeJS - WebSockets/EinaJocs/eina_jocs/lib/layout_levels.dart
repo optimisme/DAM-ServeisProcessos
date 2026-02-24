@@ -194,6 +194,11 @@ class LayoutLevelsState extends State<LayoutLevels> {
 
   void _selectLevel(AppData appData, int index, bool isSelected) {
     if (isSelected) {
+      appData.selectedLevel = -1;
+      appData.selectedLayer = -1;
+      appData.selectedZone = -1;
+      appData.selectedSprite = -1;
+      appData.update();
       return;
     }
     appData.selectedLevel = index;

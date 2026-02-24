@@ -85,6 +85,112 @@ class _LayoutState extends State<Layout> {
     return selectedIndex == -1 ? 0 : selectedIndex;
   }
 
+  List<MapEntry<String, String>> _selectedBreadcrumbParts(AppData appData) {
+    final List<MapEntry<String, String>> parts = [];
+    final String? projectName = appData.selectedProject?.name.trim();
+    if (projectName != null && projectName.isNotEmpty) {
+      parts.add(MapEntry('Project', projectName));
+    }
+
+    if (appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length) {
+      final level = appData.gameData.levels[appData.selectedLevel];
+      parts.add(
+        MapEntry(
+          'Level',
+          level.name.trim().isEmpty
+              ? 'Level ${appData.selectedLevel + 1}'
+              : level.name.trim(),
+        ),
+      );
+
+      if (appData.selectedLayer >= 0 &&
+          appData.selectedLayer < level.layers.length) {
+        final layer = level.layers[appData.selectedLayer];
+        parts.add(
+          MapEntry(
+            'Layer',
+            layer.name.trim().isEmpty
+                ? 'Layer ${appData.selectedLayer + 1}'
+                : layer.name.trim(),
+          ),
+        );
+      }
+
+      if (appData.selectedZone >= 0 &&
+          appData.selectedZone < level.zones.length) {
+        final zone = level.zones[appData.selectedZone];
+        parts.add(
+          MapEntry(
+            'Zone',
+            zone.type.trim().isEmpty
+                ? 'Zone ${appData.selectedZone + 1}'
+                : zone.type.trim(),
+          ),
+        );
+      }
+
+      if (appData.selectedSprite >= 0 &&
+          appData.selectedSprite < level.sprites.length) {
+        final sprite = level.sprites[appData.selectedSprite];
+        parts.add(
+          MapEntry(
+            'Sprite',
+            sprite.type.trim().isEmpty
+                ? 'Sprite ${appData.selectedSprite + 1}'
+                : sprite.type.trim(),
+          ),
+        );
+      }
+    }
+
+    if (parts.isEmpty) {
+      return const [MapEntry('Selection', 'None')];
+    }
+    return parts;
+  }
+
+  Widget _buildBreadcrumb(AppData appData, BuildContext context) {
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final List<MapEntry<String, String>> parts =
+        _selectedBreadcrumbParts(appData);
+    final List<InlineSpan> spans = [];
+
+    for (int i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        spans.add(
+          TextSpan(
+            text: ' > ',
+            style: typography.caption.copyWith(
+              color: cdkColors.colorTextSecondary,
+            ),
+          ),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: '${parts[i].key}: ',
+          style: typography.caption.copyWith(
+            color: cdkColors.colorTextSecondary,
+          ),
+        ),
+      );
+      spans.add(
+        TextSpan(
+          text: parts[i].value,
+          style: typography.body.copyWith(color: cdkColors.colorText),
+        ),
+      );
+    }
+
+    return Text.rich(
+      TextSpan(children: spans),
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+    );
+  }
+
   List<Widget> _buildSegmentedOptions(BuildContext context) {
     return sections
         .map(
@@ -167,13 +273,26 @@ class _LayoutState extends State<Layout> {
       data: media.copyWith(textScaler: const TextScaler.linear(0.9)),
       child: CupertinoPageScaffold(
         navigationBar: CupertinoNavigationBar(
-          middle: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: CDKPickerButtonsSegmented(
-              selectedIndex: _selectedSectionIndex(appData.selectedSection),
-              options: _buildSegmentedOptions(context),
-              onSelected: (index) => _onTabSelected(appData, sections[index]),
-            ),
+          middle: Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildBreadcrumb(appData, context),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: CDKPickerButtonsSegmented(
+                  selectedIndex: _selectedSectionIndex(appData.selectedSection),
+                  options: _buildSegmentedOptions(context),
+                  onSelected: (index) =>
+                      _onTabSelected(appData, sections[index]),
+                ),
+              ),
+            ],
           ),
         ),
         child: SafeArea(

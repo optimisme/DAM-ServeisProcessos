@@ -194,6 +194,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
 
   void _selectSprite(AppData appData, int index, bool isSelected) {
     if (isSelected) {
+      appData.selectedSprite = -1;
+      appData.update();
       return;
     }
     appData.selectedSprite = index;

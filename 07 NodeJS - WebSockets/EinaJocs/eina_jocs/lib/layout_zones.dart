@@ -204,6 +204,8 @@ class LayoutZonesState extends State<LayoutZones> {
 
   void _selectZone(AppData appData, int index, bool isSelected) {
     if (isSelected) {
+      appData.selectedZone = -1;
+      appData.update();
       return;
     }
     appData.selectedZone = index;

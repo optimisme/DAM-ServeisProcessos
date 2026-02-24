@@ -19,6 +19,16 @@ class LayoutLayersState extends State<LayoutLayers> {
   final ScrollController scrollController = ScrollController();
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
 
+  String _formatDepthDisplacement(double depth) {
+    if (depth == depth.roundToDouble()) {
+      return depth.toInt().toString();
+    }
+    final String fixed = depth.toStringAsFixed(2);
+    return fixed
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
   Future<void> _autoSaveIfPossible(AppData appData) async {
     if (appData.selectedProject == null) {
       return;
@@ -407,7 +417,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                             : layer.tileMap.first.length;
                         final int mapHeight = layer.tileMap.length;
                         final String subtitle =
-                            'Depth ${layer.depth} | ${mapWidth}x$mapHeight tiles';
+                            'Depth displacement ${_formatDepthDisplacement(layer.depth)} | ${mapWidth}x$mapHeight tiles';
                         final String details =
                             '${layer.tilesWidth}x${layer.tilesHeight} px | ${layer.visible ? 'Visible' : 'Hidden'}';
 
@@ -594,10 +604,28 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
   GameMediaAsset get _selectedAsset =>
       widget.tilesetAssets[_selectedAssetIndex];
 
-  bool get _isValid => _nameController.text.trim().isNotEmpty;
+  double? _parseDepthValue(String raw) {
+    final String cleaned = raw.trim();
+    if (cleaned.isEmpty) {
+      return 0.0;
+    }
+    final String normalized = cleaned.replaceAll(',', '.');
+    return double.tryParse(normalized);
+  }
+
+  String? get _depthErrorText {
+    if (_parseDepthValue(_depthController.text) == null) {
+      return 'Enter a valid decimal number (for example: -0.5 or 1.25).';
+    }
+    return null;
+  }
+
+  bool get _isValid =>
+      _nameController.text.trim().isNotEmpty && _depthErrorText == null;
 
   void _confirm() {
-    if (!_isValid) {
+    final double? parsedDepth = _parseDepthValue(_depthController.text);
+    if (!_isValid || parsedDepth == null) {
       return;
     }
 
@@ -607,7 +635,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
         name: _nameController.text.trim(),
         x: int.tryParse(_xController.text.trim()) ?? 0,
         y: int.tryParse(_yController.text.trim()) ?? 0,
-        depth: double.tryParse(_depthController.text.trim()) ?? 0.0,
+        depth: parsedDepth,
         tilesSheetFile: asset.fileName,
         tileWidth: asset.tileWidth,
         tileHeight: asset.tileHeight,
@@ -715,11 +743,20 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
                           decimal: true,
                           signed: true,
                         ),
+                        onChanged: (_) => setState(() {}),
                       ),
                     ),
                   ),
                 ],
               ),
+              if (_depthErrorText != null) ...[
+                const SizedBox(height: 4),
+                CDKText(
+                  _depthErrorText!,
+                  role: CDKTextRole.caption,
+                  color: CupertinoColors.systemRed.resolveFrom(context),
+                ),
+              ],
               SizedBox(height: spacing.sm),
               Row(
                 children: [

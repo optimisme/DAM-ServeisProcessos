@@ -6,6 +6,7 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_layer.dart';
+import 'game_media_asset.dart';
 
 class LayoutLayers extends StatefulWidget {
   const LayoutLayers({super.key});
@@ -108,14 +109,15 @@ class LayoutLayersState extends State<LayoutLayers> {
     required String title,
     required String confirmLabel,
     required _LayerDialogData initialData,
+    required List<GameMediaAsset> tilesetAssets,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
     }
 
-    final AppData appData = Provider.of<AppData>(context, listen: false);
     final CDKDialogController controller = CDKDialogController();
     final Completer<_LayerDialogData?> completer =
         Completer<_LayerDialogData?>();
@@ -125,12 +127,18 @@ class LayoutLayersState extends State<LayoutLayers> {
       title: title,
       confirmLabel: confirmLabel,
       initialData: initialData,
-      onPickTilesSheet: appData.pickImageFile,
+      tilesetAssets: tilesetAssets,
       onConfirm: (value) {
         result = value;
         controller.close();
       },
       onCancel: controller.close,
+      onDelete: onDelete != null
+          ? () {
+              controller.close();
+              onDelete();
+            }
+          : null,
     );
 
     if (useArrowedPopover && anchorKey != null) {
@@ -169,32 +177,39 @@ class LayoutLayersState extends State<LayoutLayers> {
     return completer.future;
   }
 
-  Future<void> _promptAndAddLayer() async {
+  Future<void> _promptAndAddLayer(List<GameMediaAsset> tilesetAssets) async {
+    final GameMediaAsset first = tilesetAssets.first;
     final _LayerDialogData? data = await _promptLayerData(
       title: 'New layer',
       confirmLabel: 'Add',
-      initialData: const _LayerDialogData(
+      initialData: _LayerDialogData(
         name: '',
         x: 0,
         y: 0,
         depth: 0,
-        tilesSheetFile: '',
-        tileWidth: 32,
-        tileHeight: 32,
+        tilesSheetFile: first.fileName,
+        tileWidth: first.tileWidth,
+        tileHeight: first.tileHeight,
         tilemapWidth: 32,
         tilemapHeight: 16,
         visible: true,
       ),
+      tilesetAssets: tilesetAssets,
     );
     if (!mounted || data == null) {
       return;
     }
     final AppData appData = Provider.of<AppData>(context, listen: false);
+    appData.pushUndo();
     _addLayer(appData: appData, data: data);
     await _autoSaveIfPossible(appData);
   }
 
-  Future<void> _promptAndEditLayer(int index, GlobalKey anchorKey) async {
+  Future<void> _promptAndEditLayer(
+    int index,
+    GlobalKey anchorKey,
+    List<GameMediaAsset> tilesetAssets,
+  ) async {
     final AppData appData = Provider.of<AppData>(context, listen: false);
     if (appData.selectedLevel == -1) {
       return;
@@ -225,15 +240,53 @@ class LayoutLayersState extends State<LayoutLayers> {
         tilemapHeight: mapHeight,
         visible: layer.visible,
       ),
+      tilesetAssets: tilesetAssets,
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      onDelete: () => _confirmAndDeleteLayer(index),
     );
 
     if (!mounted || data == null) {
       return;
     }
 
+    appData.pushUndo();
     _updateLayer(appData: appData, index: index, data: data);
+    await _autoSaveIfPossible(appData);
+  }
+
+  Future<void> _confirmAndDeleteLayer(int index) async {
+    if (!mounted) return;
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1) return;
+    final layers = appData.gameData.levels[appData.selectedLevel].layers;
+    if (index < 0 || index >= layers.length) return;
+    final String layerName = layers[index].name;
+
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Delete layer'),
+        content: Text('Delete "$layerName"? This cannot be undone.'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    appData.pushUndo();
+    layers.removeAt(index);
+    appData.selectedLayer = -1;
+    appData.update();
     await _autoSaveIfPossible(appData);
   }
 
@@ -260,6 +313,7 @@ class LayoutLayersState extends State<LayoutLayers> {
         appData.gameData.levels[appData.selectedLevel].layers;
     final int selectedIndex = appData.selectedLayer;
 
+    appData.pushUndo();
     final GameLayer layer = layers.removeAt(oldIndex);
     layers.insert(newIndex, layer);
 
@@ -293,6 +347,10 @@ class LayoutLayersState extends State<LayoutLayers> {
 
     final level = appData.gameData.levels[appData.selectedLevel];
     final layers = level.layers;
+    final List<GameMediaAsset> tilesetAssets = appData.gameData.mediaAssets
+        .where((a) => a.hasTileGrid)
+        .toList(growable: false);
+    final bool hasTilesets = tilesetAssets.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,13 +368,20 @@ class LayoutLayersState extends State<LayoutLayers> {
                 ),
               ),
               const Spacer(),
-              CDKButton(
-                style: CDKButtonStyle.action,
-                onPressed: () async {
-                  await _promptAndAddLayer();
-                },
-                child: const Text('+ Add Layer'),
-              ),
+              if (hasTilesets)
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: () async {
+                    await _promptAndAddLayer(tilesetAssets);
+                  },
+                  child: const Text('+ Add Layer'),
+                )
+              else
+                CDKText(
+                  'Add a tileset in Media first.',
+                  role: CDKTextRole.caption,
+                  secondary: true,
+                ),
             ],
           ),
         ),
@@ -401,7 +466,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                                     ],
                                   ),
                                 ),
-                                if (isSelected)
+                                if (isSelected && hasTilesets)
                                   MouseRegion(
                                     cursor: SystemMouseCursors.click,
                                     child: CupertinoButton(
@@ -414,6 +479,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                                         await _promptAndEditLayer(
                                           index,
                                           _selectedEditAnchorKey,
+                                          tilesetAssets,
                                         );
                                       },
                                       child: Icon(
@@ -481,17 +547,19 @@ class _LayerFormDialog extends StatefulWidget {
     required this.title,
     required this.confirmLabel,
     required this.initialData,
-    required this.onPickTilesSheet,
+    required this.tilesetAssets,
     required this.onConfirm,
     required this.onCancel,
+    this.onDelete,
   });
 
   final String title;
   final String confirmLabel;
   final _LayerDialogData initialData;
-  final Future<String> Function() onPickTilesSheet;
+  final List<GameMediaAsset> tilesetAssets;
   final ValueChanged<_LayerDialogData> onConfirm;
   final VoidCallback onCancel;
+  final VoidCallback? onDelete;
 
   @override
   State<_LayerFormDialog> createState() => _LayerFormDialogState();
@@ -510,13 +578,6 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
   late final TextEditingController _depthController = TextEditingController(
     text: widget.initialData.depth.toString(),
   );
-  late final TextEditingController _tileWidthController = TextEditingController(
-    text: widget.initialData.tileWidth.toString(),
-  );
-  late final TextEditingController _tileHeightController =
-      TextEditingController(
-    text: widget.initialData.tileHeight.toString(),
-  );
   late final TextEditingController _tilemapWidthController =
       TextEditingController(
     text: widget.initialData.tilemapWidth.toString(),
@@ -526,39 +587,42 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
     text: widget.initialData.tilemapHeight.toString(),
   );
 
-  late String _tilesSheetFile = widget.initialData.tilesSheetFile;
   late bool _visible = widget.initialData.visible;
+  late int _selectedAssetIndex = _resolveInitialAssetIndex();
 
-  bool get _isValid =>
-      _nameController.text.trim().isNotEmpty &&
-      _tilesSheetFile.trim().isNotEmpty;
-
-  Future<void> _pickTilesSheet() async {
-    final String picked = await widget.onPickTilesSheet();
-    if (!mounted || picked.isEmpty) {
-      return;
+  int _resolveInitialAssetIndex() {
+    final String current = widget.initialData.tilesSheetFile;
+    if (current.isNotEmpty) {
+      final int found = widget.tilesetAssets
+          .indexWhere((a) => a.fileName == current);
+      if (found != -1) return found;
     }
-    setState(() {
-      _tilesSheetFile = picked;
-    });
+    return 0;
   }
+
+  GameMediaAsset get _selectedAsset =>
+      widget.tilesetAssets[_selectedAssetIndex];
+
+  bool get _isValid => _nameController.text.trim().isNotEmpty;
 
   void _confirm() {
     if (!_isValid) {
       return;
     }
 
+    final GameMediaAsset asset = _selectedAsset;
     widget.onConfirm(
       _LayerDialogData(
         name: _nameController.text.trim(),
         x: int.tryParse(_xController.text.trim()) ?? 0,
         y: int.tryParse(_yController.text.trim()) ?? 0,
         depth: int.tryParse(_depthController.text.trim()) ?? 0,
-        tilesSheetFile: _tilesSheetFile,
-        tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
-        tileHeight: int.tryParse(_tileHeightController.text.trim()) ?? 32,
+        tilesSheetFile: asset.fileName,
+        tileWidth: asset.tileWidth,
+        tileHeight: asset.tileHeight,
         tilemapWidth: int.tryParse(_tilemapWidthController.text.trim()) ?? 32,
-        tilemapHeight: int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
+        tilemapHeight:
+            int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
         visible: _visible,
       ),
     );
@@ -570,8 +634,6 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
     _xController.dispose();
     _yController.dispose();
     _depthController.dispose();
-    _tileWidthController.dispose();
-    _tileHeightController.dispose();
     _tilemapWidthController.dispose();
     _tilemapHeightController.dispose();
     super.dispose();
@@ -581,6 +643,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+
     Widget labeledField(String label, Widget field) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -596,10 +659,15 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
       );
     }
 
+    final GameMediaAsset asset = _selectedAsset;
+    final List<String> assetOptions =
+        widget.tilesetAssets.map((a) => a.fileName).toList(growable: false);
+
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 380, maxWidth: 520),
         child: Padding(
@@ -663,32 +731,6 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
                 children: [
                   Expanded(
                     child: labeledField(
-                      'Tile Width (px)',
-                      CDKFieldText(
-                        placeholder: 'Tile width (px)',
-                        controller: _tileWidthController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Tile Height (px)',
-                      CDKFieldText(
-                        placeholder: 'Tile height (px)',
-                        controller: _tileHeightController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
                       'Tilemap Width (tiles)',
                       CDKFieldText(
                         placeholder: 'Tilemap width (tiles)',
@@ -712,28 +754,25 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
               ),
               SizedBox(height: spacing.md),
               CDKText(
-                'Tilesheet Image',
+                'Tilesheet',
                 role: CDKTextRole.caption,
                 color: cdkColors.colorText,
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: CDKText(
-                      _tilesSheetFile.isEmpty
-                          ? 'No file selected'
-                          : _tilesSheetFile,
-                      role: CDKTextRole.caption,
-                      color: cdkColors.colorText,
-                    ),
-                  ),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    onPressed: _pickTilesSheet,
-                    child: const Text('Choose File'),
-                  ),
-                ],
+              CDKButtonSelect(
+                selectedIndex: _selectedAssetIndex,
+                options: assetOptions,
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedAssetIndex = index;
+                  });
+                },
+              ),
+              const SizedBox(height: 4),
+              CDKText(
+                'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
+                role: CDKTextRole.caption,
+                secondary: true,
               ),
               SizedBox(height: spacing.sm),
               Row(
@@ -752,19 +791,31 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
               ),
               SizedBox(height: spacing.lg + spacing.sm),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CDKButton(
-                    style: CDKButtonStyle.normal,
-                    onPressed: widget.onCancel,
-                    child: const Text('Cancel'),
-                  ),
-                  SizedBox(width: spacing.md),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    enabled: _isValid,
-                    onPressed: _confirm,
-                    child: Text(widget.confirmLabel),
+                  if (widget.onDelete != null)
+                    CDKButton(
+                      style: CDKButtonStyle.destructive,
+                      onPressed: widget.onDelete,
+                      child: const Text('Delete'),
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  Row(
+                    children: [
+                      CDKButton(
+                        style: CDKButtonStyle.normal,
+                        onPressed: widget.onCancel,
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: spacing.md),
+                      CDKButton(
+                        style: CDKButtonStyle.action,
+                        enabled: _isValid,
+                        onPressed: _confirm,
+                        child: Text(widget.confirmLabel),
+                      ),
+                    ],
                   ),
                 ],
               ),

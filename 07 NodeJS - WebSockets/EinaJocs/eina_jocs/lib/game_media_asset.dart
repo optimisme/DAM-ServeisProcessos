@@ -11,10 +11,22 @@ class GameMediaAsset {
     required this.tileHeight,
   });
 
+  static const List<String> validTypes = [
+    'image',
+    'tileset',
+    'spritesheet',
+    'atlas',
+  ];
+
+  /// Whether this asset uses a tile/cell grid (tileset or atlas).
+  bool get hasTileGrid =>
+      mediaType == 'tileset' || mediaType == 'atlas';
+
   factory GameMediaAsset.fromJson(Map<String, dynamic> json) {
     final String parsedType =
         (json['mediaType'] as String? ?? 'image').trim().toLowerCase();
-    final String normalizedType = parsedType == 'tileset' ? 'tileset' : 'image';
+    final String normalizedType =
+        validTypes.contains(parsedType) ? parsedType : 'image';
 
     return GameMediaAsset(
       fileName: json['fileName'] as String,

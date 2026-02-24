@@ -94,6 +94,7 @@ class LayoutZonesState extends State<LayoutZones> {
     required _ZoneDialogData initialData,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
@@ -113,6 +114,12 @@ class LayoutZonesState extends State<LayoutZones> {
         controller.close();
       },
       onCancel: controller.close,
+      onDelete: onDelete != null
+          ? () {
+              controller.close();
+              onDelete();
+            }
+          : null,
     );
 
     if (useArrowedPopover && anchorKey != null) {
@@ -168,7 +175,43 @@ class LayoutZonesState extends State<LayoutZones> {
       return;
     }
     final appData = Provider.of<AppData>(context, listen: false);
+    appData.pushUndo();
     _addZone(appData: appData, data: data);
+    await _autoSaveIfPossible(appData);
+  }
+
+  Future<void> _confirmAndDeleteZone(int index) async {
+    if (!mounted) return;
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1) return;
+    final zones = appData.gameData.levels[appData.selectedLevel].zones;
+    if (index < 0 || index >= zones.length) return;
+    final String zoneName = zones[index].type;
+
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Delete zone'),
+        content: Text('Delete "$zoneName"? This cannot be undone.'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    appData.pushUndo();
+    zones.removeAt(index);
+    appData.selectedZone = -1;
+    appData.update();
     await _autoSaveIfPossible(appData);
   }
 
@@ -195,10 +238,12 @@ class LayoutZonesState extends State<LayoutZones> {
       ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      onDelete: () => _confirmAndDeleteZone(index),
     );
     if (!mounted || data == null) {
       return;
     }
+    appData.pushUndo();
     _updateZone(appData: appData, index: index, data: data);
     await _autoSaveIfPossible(appData);
   }
@@ -226,6 +271,7 @@ class LayoutZonesState extends State<LayoutZones> {
     }
     final zones = appData.gameData.levels[appData.selectedLevel].zones;
     final selectedIndex = appData.selectedZone;
+    appData.pushUndo();
     final item = zones.removeAt(oldIndex);
     zones.insert(newIndex, item);
 
@@ -444,6 +490,7 @@ class _ZoneFormDialog extends StatefulWidget {
     required this.colors,
     required this.onConfirm,
     required this.onCancel,
+    this.onDelete,
   });
 
   final String title;
@@ -452,6 +499,7 @@ class _ZoneFormDialog extends StatefulWidget {
   final List<String> colors;
   final ValueChanged<_ZoneDialogData> onConfirm;
   final VoidCallback onCancel;
+  final VoidCallback? onDelete;
 
   @override
   State<_ZoneFormDialog> createState() => _ZoneFormDialogState();
@@ -527,6 +575,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
         child: Padding(
@@ -637,19 +686,31 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
               ),
               SizedBox(height: spacing.lg + spacing.sm),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CDKButton(
-                    style: CDKButtonStyle.normal,
-                    onPressed: widget.onCancel,
-                    child: const Text('Cancel'),
-                  ),
-                  SizedBox(width: spacing.md),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    enabled: _isValid,
-                    onPressed: _confirm,
-                    child: Text(widget.confirmLabel),
+                  if (widget.onDelete != null)
+                    CDKButton(
+                      style: CDKButtonStyle.destructive,
+                      onPressed: widget.onDelete,
+                      child: const Text('Delete'),
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  Row(
+                    children: [
+                      CDKButton(
+                        style: CDKButtonStyle.normal,
+                        onPressed: widget.onCancel,
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: spacing.md),
+                      CDKButton(
+                        style: CDKButtonStyle.action,
+                        enabled: _isValid,
+                        onPressed: _confirm,
+                        child: Text(widget.confirmLabel),
+                      ),
+                    ],
                   ),
                 ],
               ),

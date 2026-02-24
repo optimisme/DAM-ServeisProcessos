@@ -163,6 +163,19 @@ class LayoutUtils {
     return tilesetImage;
   }
 
+  /// Ensures all tileset images for the current level are loaded into [appData.imagesCache].
+  static Future<void> preloadLayerImages(AppData appData) async {
+    if (appData.selectedLevel == -1) return;
+    final level = appData.gameData.levels[appData.selectedLevel];
+    for (final layer in level.layers) {
+      if (layer.tilesSheetFile.isNotEmpty) {
+        try {
+          await appData.getImage(layer.tilesSheetFile);
+        } catch (_) {}
+      }
+    }
+  }
+
   static Future<ui.Image> drawCanvasImageEmpty(AppData appData) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -525,6 +538,7 @@ class LayoutUtils {
       final rect = Rect.fromLTWH(zone.x.toDouble(), zone.y.toDouble(),
           zone.width.toDouble(), zone.height.toDouble());
       if (rect.contains(levelCoords)) {
+        appData.pushUndo();
         appData.zoneDragOffset =
             levelCoords - Offset(zone.x.toDouble(), zone.y.toDouble());
         break;
@@ -572,6 +586,7 @@ class LayoutUtils {
       final rect = Rect.fromLTWH(sprite.x.toDouble(), sprite.y.toDouble(),
           sprite.spriteWidth.toDouble(), sprite.spriteHeight.toDouble());
       if (rect.contains(levelCoords)) {
+        appData.pushUndo();
         appData.spriteDragOffset =
             levelCoords - Offset(sprite.x.toDouble(), sprite.y.toDouble());
         break;
@@ -589,6 +604,79 @@ class LayoutUtils {
         .gameData.levels[appData.selectedLevel].sprites[appData.selectedSprite];
     sprite.x = (levelCoords.dx - appData.spriteDragOffset.dx).toInt();
     sprite.y = (levelCoords.dy - appData.spriteDragOffset.dy).toInt();
+  }
+
+  /// Hit-tests all layers (topmost first) and returns the index of the first
+  /// layer whose bounds contain [localPosition], or -1 if none.
+  static int selectLayerFromPosition(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1) return -1;
+    final layers = appData.gameData.levels[appData.selectedLevel].layers;
+    final Offset worldPos =
+        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    for (int i = layers.length - 1; i >= 0; i--) {
+      final layer = layers[i];
+      if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) continue;
+      final double w = (layer.tileMap.first.length * layer.tilesWidth).toDouble();
+      final double h = (layer.tileMap.length * layer.tilesHeight).toDouble();
+      final Rect bounds =
+          Rect.fromLTWH(layer.x.toDouble(), layer.y.toDouble(), w, h);
+      if (bounds.contains(worldPos)) return i;
+    }
+    return -1;
+  }
+
+  /// Returns true if [localPosition] (screen coords) hits the selected layer's bounds.
+  static bool hitTestSelectedLayer(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedLayer == -1) {
+      return false;
+    }
+    final layer = appData.gameData.levels[appData.selectedLevel]
+        .layers[appData.selectedLayer];
+    if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) return false;
+    final Offset worldPos =
+        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    final double w =
+        (layer.tileMap.first.length * layer.tilesWidth).toDouble();
+    final double h = (layer.tileMap.length * layer.tilesHeight).toDouble();
+    final Rect bounds =
+        Rect.fromLTWH(layer.x.toDouble(), layer.y.toDouble(), w, h);
+    return bounds.contains(worldPos);
+  }
+
+  /// Start dragging the selected layer: record cursor offset relative to layer origin.
+  static void startDragLayerFromPosition(
+      AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedLayer == -1) return;
+    final Offset worldPos = translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final layer = appData.gameData.levels[appData.selectedLevel]
+        .layers[appData.selectedLayer];
+    appData.pushUndo();
+    appData.layerDragOffset =
+        worldPos - Offset(layer.x.toDouble(), layer.y.toDouble());
+  }
+
+  /// Move the selected layer to follow the cursor.
+  static void dragLayerFromCanvas(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedLayer == -1) return;
+    final Offset worldPos = translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final layers =
+        appData.gameData.levels[appData.selectedLevel].layers;
+    final GameLayer old = layers[appData.selectedLayer];
+    final int newX = (worldPos.dx - appData.layerDragOffset.dx).round();
+    final int newY = (worldPos.dy - appData.layerDragOffset.dy).round();
+    layers[appData.selectedLayer] = GameLayer(
+      name: old.name,
+      x: newX,
+      y: newY,
+      depth: old.depth,
+      tilesSheetFile: old.tilesSheetFile,
+      tilesWidth: old.tilesWidth,
+      tilesHeight: old.tilesHeight,
+      tileMap: old.tileMap,
+      visible: old.visible,
+    );
   }
 
   static Offset? getTilemapCoords(AppData appData, Offset localPosition) {
@@ -639,6 +727,7 @@ class LayoutUtils {
     int row = tileCoords.dx.toInt();
     int col = tileCoords.dy.toInt();
 
+    appData.pushUndo();
     layer.tileMap[row][col] = appData.draggingTileIndex;
   }
 
@@ -655,6 +744,7 @@ class LayoutUtils {
 
     int index = appData.selectedTileIndex;
 
+    appData.pushUndo();
     if (layer.tileMap[row][col] != index) {
       layer.tileMap[row][col] = index;
     } else {
@@ -673,6 +763,7 @@ class LayoutUtils {
     int row = tileCoords.dx.toInt();
     int col = tileCoords.dy.toInt();
 
+    appData.pushUndo();
     layer.tileMap[row][col] = -1;
   }
 

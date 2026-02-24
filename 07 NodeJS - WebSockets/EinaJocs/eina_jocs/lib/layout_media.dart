@@ -81,6 +81,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
     required _MediaDialogData initialData,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
@@ -100,6 +101,12 @@ class _LayoutMediaState extends State<LayoutMedia> {
         controller.close();
       },
       onCancel: controller.close,
+      onDelete: onDelete != null
+          ? () {
+              controller.close();
+              onDelete();
+            }
+          : null,
     );
 
     if (useArrowedPopover && anchorKey != null) {
@@ -107,6 +114,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
         context: context,
         anchorKey: anchorKey,
         isAnimated: true,
+        animateContentResize: false,
         dismissOnEscape: true,
         dismissOnOutsideTap: true,
         showBackgroundShade: false,
@@ -160,7 +168,42 @@ class _LayoutMediaState extends State<LayoutMedia> {
       return;
     }
 
+    appData.pushUndo();
     _addMedia(appData: appData, data: data);
+    await _autoSaveIfPossible(appData);
+  }
+
+  Future<void> _confirmAndDeleteMedia(int index) async {
+    if (!mounted) return;
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    final assets = appData.gameData.mediaAssets;
+    if (index < 0 || index >= assets.length) return;
+    final String fileName = assets[index].fileName;
+
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Delete media'),
+        content: Text('Delete "$fileName"? This cannot be undone.'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    appData.pushUndo();
+    assets.removeAt(index);
+    appData.selectedMedia = -1;
+    appData.update();
     await _autoSaveIfPossible(appData);
   }
 
@@ -184,12 +227,14 @@ class _LayoutMediaState extends State<LayoutMedia> {
       ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      onDelete: () => _confirmAndDeleteMedia(index),
     );
 
     if (!mounted || updated == null) {
       return;
     }
 
+    appData.pushUndo();
     _updateMedia(appData: appData, index: index, data: updated);
     await _autoSaveIfPossible(appData);
   }
@@ -206,6 +251,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
 
     final assets = appData.gameData.mediaAssets;
     final int selectedIndex = appData.selectedMedia;
+    appData.pushUndo();
     final item = assets.removeAt(oldIndex);
     assets.insert(newIndex, item);
 
@@ -295,9 +341,14 @@ class _LayoutMediaState extends State<LayoutMedia> {
                       itemBuilder: (context, index) {
                         final asset = assets[index];
                         final bool isSelected = index == appData.selectedMedia;
-                        final String subtitle = asset.mediaType == 'tileset'
-                            ? 'Tileset (${asset.tileWidth}x${asset.tileHeight})'
-                            : 'Image';
+                        final String subtitle = switch (asset.mediaType) {
+                          'tileset' =>
+                            'Tileset (${asset.tileWidth}x${asset.tileHeight})',
+                          'spritesheet' => 'Spritesheet',
+                          'atlas' =>
+                            'Atlas (${asset.tileWidth}x${asset.tileHeight})',
+                          _ => 'Image',
+                        };
 
                         return GestureDetector(
                           key: ValueKey(asset.fileName + index.toString()),
@@ -314,9 +365,15 @@ class _LayoutMediaState extends State<LayoutMedia> {
                             child: Row(
                               children: [
                                 Icon(
-                                  asset.mediaType == 'tileset'
-                                      ? CupertinoIcons.square_grid_2x2
-                                      : CupertinoIcons.photo,
+                                  switch (asset.mediaType) {
+                                    'tileset' =>
+                                      CupertinoIcons.square_grid_2x2,
+                                    'spritesheet' =>
+                                      CupertinoIcons.film,
+                                    'atlas' =>
+                                      CupertinoIcons.rectangle_grid_2x2,
+                                    _ => CupertinoIcons.photo,
+                                  },
                                   size: 16,
                                   color: cdkColors.colorText,
                                 ),
@@ -419,6 +476,7 @@ class _MediaFormDialog extends StatefulWidget {
     required this.initialData,
     required this.onConfirm,
     required this.onCancel,
+    this.onDelete,
   });
 
   final String title;
@@ -426,24 +484,35 @@ class _MediaFormDialog extends StatefulWidget {
   final _MediaDialogData initialData;
   final ValueChanged<_MediaDialogData> onConfirm;
   final VoidCallback onCancel;
+  final VoidCallback? onDelete;
 
   @override
   State<_MediaFormDialog> createState() => _MediaFormDialogState();
 }
 
 class _MediaFormDialogState extends State<_MediaFormDialog> {
+  static const List<String> _typeValues = [
+    'image',
+    'tileset',
+    'spritesheet',
+    'atlas',
+  ];
+
   late final TextEditingController _tileWidthController =
       TextEditingController(text: widget.initialData.tileWidth.toString());
   late final TextEditingController _tileHeightController =
       TextEditingController(text: widget.initialData.tileHeight.toString());
-  late String _mediaType =
-      widget.initialData.mediaType == 'tileset' ? 'tileset' : 'image';
+  late String _mediaType = GameMediaAsset.validTypes
+          .contains(widget.initialData.mediaType)
+      ? widget.initialData.mediaType
+      : 'image';
   String? _sizeError;
 
-  bool get _isTileset => _mediaType == 'tileset';
+  bool get _hasTileGrid =>
+      _mediaType == 'tileset' || _mediaType == 'atlas';
 
   bool get _isValid {
-    if (!_isTileset) {
+    if (!_hasTileGrid) {
       return true;
     }
     final int? width = int.tryParse(_tileWidthController.text.trim());
@@ -451,8 +520,8 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
     return width != null && height != null && width > 0 && height > 0;
   }
 
-  void _validateTilesetFields() {
-    if (!_isTileset || _isValid) {
+  void _validateTileFields() {
+    if (!_hasTileGrid || _isValid) {
       setState(() {
         _sizeError = null;
       });
@@ -464,7 +533,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
   }
 
   void _confirm() {
-    _validateTilesetFields();
+    _validateTileFields();
     if (!_isValid) {
       return;
     }
@@ -498,6 +567,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 420, maxWidth: 540),
         child: Padding(
@@ -571,7 +641,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
               ),
               const SizedBox(height: 4),
               CDKPickerButtonsSegmented(
-                selectedIndex: _isTileset ? 1 : 0,
+                selectedIndex: _typeValues.indexOf(_mediaType).clamp(0, 3),
                 options: const [
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6),
@@ -581,82 +651,101 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
                     padding: EdgeInsets.symmetric(horizontal: 6),
                     child: CDKText('Tileset', role: CDKTextRole.caption),
                   ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: CDKText('Spritesheet', role: CDKTextRole.caption),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: CDKText('Atlas', role: CDKTextRole.caption),
+                  ),
                 ],
                 onSelected: (selectedIndex) {
                   setState(() {
-                    _mediaType = selectedIndex == 1 ? 'tileset' : 'image';
-                    if (!_isTileset) {
+                    _mediaType = _typeValues[selectedIndex];
+                    if (!_hasTileGrid) {
                       _sizeError = null;
                     }
                   });
                 },
               ),
-              ClipRect(
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: _isTileset
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                clipBehavior: Clip.none,
+                child: _hasTileGrid
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(height: spacing.sm),
+                          CDKText(
+                            'Tile Width (px)',
+                            role: CDKTextRole.caption,
+                            color: cdkColors.colorText,
+                          ),
+                          const SizedBox(height: 4),
+                          CDKFieldText(
+                            placeholder: 'Tile width (px)',
+                            controller: _tileWidthController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => _validateTileFields(),
+                            onSubmitted: (_) => _confirm(),
+                          ),
+                          SizedBox(height: spacing.sm),
+                          CDKText(
+                            'Tile Height (px)',
+                            role: CDKTextRole.caption,
+                            color: cdkColors.colorText,
+                          ),
+                          const SizedBox(height: 4),
+                          CDKFieldText(
+                            placeholder: 'Tile height (px)',
+                            controller: _tileHeightController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => _validateTileFields(),
+                            onSubmitted: (_) => _confirm(),
+                          ),
+                          if (_sizeError != null) ...[
                             SizedBox(height: spacing.sm),
-                            CDKText(
-                              'Tile Width (px)',
-                              role: CDKTextRole.caption,
-                              color: cdkColors.colorText,
-                            ),
-                            const SizedBox(height: 4),
-                            CDKFieldText(
-                              placeholder: 'Tile width (px)',
-                              controller: _tileWidthController,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => _validateTilesetFields(),
-                              onSubmitted: (_) => _confirm(),
-                            ),
-                            SizedBox(height: spacing.sm),
-                            CDKText(
-                              'Tile Height (px)',
-                              role: CDKTextRole.caption,
-                              color: cdkColors.colorText,
-                            ),
-                            const SizedBox(height: 4),
-                            CDKFieldText(
-                              placeholder: 'Tile height (px)',
-                              controller: _tileHeightController,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => _validateTilesetFields(),
-                              onSubmitted: (_) => _confirm(),
-                            ),
-                            if (_sizeError != null) ...[
-                              SizedBox(height: spacing.sm),
-                              Text(
-                                _sizeError!,
-                                style: typography.caption.copyWith(
-                                  color: CDKTheme.red,
-                                ),
+                            Text(
+                              _sizeError!,
+                              style: typography.caption.copyWith(
+                                color: CDKTheme.red,
                               ),
-                            ],
+                            ),
                           ],
-                        )
-                      : const SizedBox.shrink(),
-                ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
               ),
               SizedBox(height: spacing.lg + spacing.sm),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CDKButton(
-                    style: CDKButtonStyle.normal,
-                    onPressed: widget.onCancel,
-                    child: const Text('Cancel'),
-                  ),
-                  SizedBox(width: spacing.md),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    enabled: _isValid,
-                    onPressed: _confirm,
-                    child: Text(widget.confirmLabel),
+                  if (widget.onDelete != null)
+                    CDKButton(
+                      style: CDKButtonStyle.destructive,
+                      onPressed: widget.onDelete,
+                      child: const Text('Delete'),
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  Row(
+                    children: [
+                      CDKButton(
+                        style: CDKButtonStyle.normal,
+                        onPressed: widget.onCancel,
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: spacing.md),
+                      CDKButton(
+                        style: CDKButtonStyle.action,
+                        enabled: _isValid,
+                        onPressed: _confirm,
+                        child: Text(widget.confirmLabel),
+                      ),
+                    ],
                   ),
                 ],
               ),

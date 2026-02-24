@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
@@ -35,6 +38,9 @@ class _LayoutState extends State<Layout> {
   // ignore: unused_field
   Timer? _timer;
   ui.Image? _layerImage;
+  bool _isDraggingLayer = false;
+  bool _isPointerDown = false;
+  final FocusNode _focusNode = FocusNode();
   List<String> sections = [
     'projects',
     'levels',
@@ -52,6 +58,7 @@ class _LayoutState extends State<Layout> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appData = Provider.of<AppData>(context, listen: false);
       appData.selectedSection = 'projects';
+      _focusNode.requestFocus();
     });
 
     _startFrameTimer();
@@ -71,6 +78,7 @@ class _LayoutState extends State<Layout> {
   @override
   void dispose() {
     _timer?.cancel();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -247,7 +255,10 @@ class _LayoutState extends State<Layout> {
       case 'levels':
         image = await LayoutUtils.drawCanvasImageLayers(appData, false);
       case 'layers':
-        image = await LayoutUtils.drawCanvasImageLayers(appData, true);
+        // Layers section renders directly in world space via CanvasPainter.
+        // Just ensure tileset images are loaded into the cache.
+        await LayoutUtils.preloadLayerImages(appData);
+        image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'tilemap':
         image = await LayoutUtils.drawCanvasImageTilemap(appData);
       case 'zones':
@@ -263,6 +274,20 @@ class _LayoutState extends State<Layout> {
     setState(() {
       _layerImage = image;
     });
+  }
+
+  void _applyLayersZoom(AppData appData, Offset cursor, double scrollDy) {
+    if (scrollDy == 0) return;
+    const double zoomSensitivity = 0.01;
+    const double minScale = 0.05;
+    const double maxScale = 20.0;
+    final double oldScale = appData.layersViewScale;
+    final double newScale =
+        (oldScale * (1.0 - scrollDy * zoomSensitivity)).clamp(minScale, maxScale);
+    appData.layersViewOffset =
+        cursor + (appData.layersViewOffset - cursor) * (newScale / oldScale);
+    appData.layersViewScale = newScale;
+    appData.update();
   }
 
   @override
@@ -302,7 +327,26 @@ class _LayoutState extends State<Layout> {
             ],
           ),
         ),
-        child: SafeArea(
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final bool meta = HardwareKeyboard.instance.isMetaPressed;
+            final bool ctrl = HardwareKeyboard.instance.isControlPressed;
+            final bool shift = HardwareKeyboard.instance.isShiftPressed;
+            final bool isZ =
+                event.logicalKey == LogicalKeyboardKey.keyZ;
+            if (!(meta || ctrl) || !isZ) return KeyEventResult.ignored;
+            final appData = Provider.of<AppData>(context, listen: false);
+            if (shift) {
+              appData.redo();
+            } else {
+              appData.undo();
+            }
+            return KeyEventResult.handled;
+          },
+          child: SafeArea(
           child: Stack(
             children: [
               Row(
@@ -316,11 +360,43 @@ class _LayoutState extends State<Layout> {
                           )
                         : Container(
                             color: cdkColors.backgroundSecondary1,
-                            child: GestureDetector(
+                            child: Listener(
+                              onPointerDown: (_) => _isPointerDown = true,
+                              onPointerUp: (_) => _isPointerDown = false,
+                              onPointerCancel: (_) => _isPointerDown = false,
+                              // macOS trackpad: two-finger scroll → PointerScrollEvent
+                              onPointerSignal: (event) {
+                                if (event is! PointerScrollEvent) return;
+                                if (appData.selectedSection != "layers") return;
+                                _applyLayersZoom(appData,
+                                    event.localPosition, event.scrollDelta.dy);
+                              },
+                              // macOS trackpad: two-finger pan-zoom → PointerPanZoomUpdateEvent
+                              onPointerPanZoomUpdate: (event) {
+                                if (appData.selectedSection != "layers") return;
+                                // pan delta from trackpad scroll
+                                final double dy = -event.panDelta.dy;
+                                if (dy == 0) return;
+                                _applyLayersZoom(
+                                    appData, event.localPosition, dy);
+                              },
+                              child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
                               onPanStart: (details) async {
                                 appData.dragging = true;
                                 appData.dragStartDetails = details;
-                                if (appData.selectedSection == "tilemap") {
+                                if (appData.selectedSection == "layers") {
+                                  if (appData.selectedLayer != -1 &&
+                                      LayoutUtils.hitTestSelectedLayer(
+                                          appData, details.localPosition)) {
+                                    _isDraggingLayer = true;
+                                    LayoutUtils.startDragLayerFromPosition(
+                                        appData, details.localPosition);
+                                  } else {
+                                    // Clicked outside selected layer — pan world, keep selection
+                                    _isDraggingLayer = false;
+                                  }
+                                } else if (appData.selectedSection == "tilemap") {
                                   await LayoutUtils.dragTileIndexFromTileset(
                                       appData, details.localPosition);
                                 } else if (appData.selectedSection == "zones") {
@@ -349,7 +425,19 @@ class _LayoutState extends State<Layout> {
                                 }
                               },
                               onPanUpdate: (details) async {
-                                if (appData.selectedSection == "tilemap" &&
+                                if (appData.selectedSection == "layers") {
+                                  if (!_isPointerDown) {
+                                    // scroll-triggered pan — ignore
+                                  } else if (_isDraggingLayer &&
+                                      appData.selectedLayer != -1) {
+                                    LayoutUtils.dragLayerFromCanvas(
+                                        appData, details.localPosition);
+                                    appData.update();
+                                  } else {
+                                    appData.layersViewOffset += details.delta;
+                                    appData.update();
+                                  }
+                                } else if (appData.selectedSection == "tilemap" &&
                                     appData.draggingTileIndex != -1) {
                                   appData.draggingOffset += details.delta;
                                 } else if (appData.selectedSection == "zones" &&
@@ -372,7 +460,11 @@ class _LayoutState extends State<Layout> {
                                 }
                               },
                               onPanEnd: (details) {
-                                if (appData.selectedSection == "tilemap" &&
+                                if (appData.selectedSection == "layers") {
+                                  if (_isDraggingLayer) {
+                                    _isDraggingLayer = false;
+                                  }
+                                } else if (appData.selectedSection == "tilemap" &&
                                     appData.draggingTileIndex != -1) {
                                   LayoutUtils.dropTileIndexFromTileset(
                                       appData, details.localPosition);
@@ -387,7 +479,20 @@ class _LayoutState extends State<Layout> {
                                 appData.draggingTileIndex = -1;
                               },
                               onTapDown: (TapDownDetails details) {
-                                if (appData.selectedSection == "tilemap") {
+                                if (appData.selectedSection == "layers") {
+                                  final int hit = LayoutUtils
+                                      .selectLayerFromPosition(
+                                          appData, details.localPosition);
+                                  if (hit == -1) {
+                                    if (appData.selectedLayer != -1) {
+                                      appData.selectedLayer = -1;
+                                      appData.update();
+                                    }
+                                  } else if (hit != appData.selectedLayer) {
+                                    appData.selectedLayer = hit;
+                                    appData.update();
+                                  }
+                                } else if (appData.selectedSection == "tilemap") {
                                   LayoutUtils.selectTileIndexFromTileset(
                                       appData, details.localPosition);
                                 } else if (appData.selectedSection == "zones") {
@@ -425,6 +530,7 @@ class _LayoutState extends State<Layout> {
                               ),
                             ),
                           ),
+                        ),
                   ),
                   ConstrainedBox(
                     constraints:
@@ -445,6 +551,7 @@ class _LayoutState extends State<Layout> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

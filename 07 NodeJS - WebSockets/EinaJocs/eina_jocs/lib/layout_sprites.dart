@@ -82,6 +82,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required _SpriteDialogData initialData,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
@@ -103,6 +104,12 @@ class LayoutSpritesState extends State<LayoutSprites> {
         controller.close();
       },
       onCancel: controller.close,
+      onDelete: onDelete != null
+          ? () {
+              controller.close();
+              onDelete();
+            }
+          : null,
     );
 
     if (useArrowedPopover && anchorKey != null) {
@@ -158,7 +165,43 @@ class LayoutSpritesState extends State<LayoutSprites> {
       return;
     }
     final appData = Provider.of<AppData>(context, listen: false);
+    appData.pushUndo();
     _addSprite(appData: appData, data: data);
+    await _autoSaveIfPossible(appData);
+  }
+
+  Future<void> _confirmAndDeleteSprite(int index) async {
+    if (!mounted) return;
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1) return;
+    final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
+    if (index < 0 || index >= sprites.length) return;
+    final String spriteName = sprites[index].type;
+
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Delete sprite'),
+        content: Text('Delete "$spriteName"? This cannot be undone.'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    appData.pushUndo();
+    sprites.removeAt(index);
+    appData.selectedSprite = -1;
+    appData.update();
     await _autoSaveIfPossible(appData);
   }
 
@@ -185,10 +228,12 @@ class LayoutSpritesState extends State<LayoutSprites> {
       ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      onDelete: () => _confirmAndDeleteSprite(index),
     );
     if (!mounted || data == null) {
       return;
     }
+    appData.pushUndo();
     _updateSprite(appData: appData, index: index, data: data);
     await _autoSaveIfPossible(appData);
   }
@@ -213,6 +258,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     }
     final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
     final int selectedIndex = appData.selectedSprite;
+    appData.pushUndo();
     final sprite = sprites.removeAt(oldIndex);
     sprites.insert(newIndex, sprite);
 
@@ -417,6 +463,7 @@ class _SpriteFormDialog extends StatefulWidget {
     required this.onPickImage,
     required this.onConfirm,
     required this.onCancel,
+    this.onDelete,
   });
 
   final String title;
@@ -425,6 +472,7 @@ class _SpriteFormDialog extends StatefulWidget {
   final Future<String> Function() onPickImage;
   final ValueChanged<_SpriteDialogData> onConfirm;
   final VoidCallback onCancel;
+  final VoidCallback? onDelete;
 
   @override
   State<_SpriteFormDialog> createState() => _SpriteFormDialogState();
@@ -510,6 +558,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
         child: Padding(
@@ -611,19 +660,31 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
               ),
               SizedBox(height: spacing.lg + spacing.sm),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CDKButton(
-                    style: CDKButtonStyle.normal,
-                    onPressed: widget.onCancel,
-                    child: const Text('Cancel'),
-                  ),
-                  SizedBox(width: spacing.md),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    enabled: _isValid,
-                    onPressed: _confirm,
-                    child: Text(widget.confirmLabel),
+                  if (widget.onDelete != null)
+                    CDKButton(
+                      style: CDKButtonStyle.destructive,
+                      onPressed: widget.onDelete,
+                      child: const Text('Delete'),
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  Row(
+                    children: [
+                      CDKButton(
+                        style: CDKButtonStyle.normal,
+                        onPressed: widget.onCancel,
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: spacing.md),
+                      CDKButton(
+                        style: CDKButtonStyle.action,
+                        enabled: _isValid,
+                        onPressed: _confirm,
+                        child: Text(widget.confirmLabel),
+                      ),
+                    ],
                   ),
                 ],
               ),

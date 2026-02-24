@@ -95,6 +95,42 @@ class AppData extends ChangeNotifier {
   late Offset zoneDragOffset = Offset.zero;
   late Offset spriteDragOffset = Offset.zero;
 
+  // Layers canvas viewport (zoom + pan)
+  double layersViewScale = 1.0;
+  Offset layersViewOffset = Offset.zero;
+  Offset layerDragOffset = Offset.zero;
+
+  // Undo / redo stacks (JSON snapshots of gameData)
+  final List<Map<String, dynamic>> _undoStack = [];
+  final List<Map<String, dynamic>> _redoStack = [];
+  static const int _maxUndoSteps = 50;
+
+  bool get canUndo => _undoStack.isNotEmpty;
+  bool get canRedo => _redoStack.isNotEmpty;
+
+  /// Call this BEFORE mutating gameData to record a checkpoint.
+  void pushUndo() {
+    _undoStack.add(gameData.toJson());
+    if (_undoStack.length > _maxUndoSteps) {
+      _undoStack.removeAt(0);
+    }
+    _redoStack.clear();
+  }
+
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(gameData.toJson());
+    gameData = GameData.fromJson(_undoStack.removeLast());
+    notifyListeners();
+  }
+
+  void redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(gameData.toJson());
+    gameData = GameData.fromJson(_redoStack.removeLast());
+    notifyListeners();
+  }
+
   void update() {
     notifyListeners();
   }
@@ -355,6 +391,11 @@ class AppData extends ChangeNotifier {
     selectedSprite = -1;
     selectedMedia = -1;
     selectedTileIndex = -1;
+    layersViewScale = 1.0;
+    layersViewOffset = Offset.zero;
+    layerDragOffset = Offset.zero;
+    _undoStack.clear();
+    _redoStack.clear();
     imagesCache.clear();
   }
 
@@ -403,6 +444,8 @@ class AppData extends ChangeNotifier {
     selectedSprite = -1;
     selectedMedia = -1;
     selectedTileIndex = -1;
+    _undoStack.clear();
+    _redoStack.clear();
     imagesCache.clear();
 
     filePath = projectDirectory.path;
@@ -515,6 +558,8 @@ class AppData extends ChangeNotifier {
       selectedSprite = -1;
       selectedMedia = -1;
       selectedTileIndex = -1;
+      _undoStack.clear();
+      _redoStack.clear();
       imagesCache.clear();
       if (gameData.name.trim().isNotEmpty) {
         project.name = gameData.name.trim();

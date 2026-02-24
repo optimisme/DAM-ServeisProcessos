@@ -69,6 +69,7 @@ class AppData extends ChangeNotifier {
   int selectedLayer = -1;
   int selectedZone = -1;
   int selectedSprite = -1;
+  int selectedMedia = -1;
 
   bool dragging = false;
   DragUpdateDetails? dragUpdateDetails;
@@ -352,6 +353,7 @@ class AppData extends ChangeNotifier {
     selectedLayer = -1;
     selectedZone = -1;
     selectedSprite = -1;
+    selectedMedia = -1;
     selectedTileIndex = -1;
     imagesCache.clear();
   }
@@ -399,6 +401,7 @@ class AppData extends ChangeNotifier {
     selectedLayer = -1;
     selectedZone = -1;
     selectedSprite = -1;
+    selectedMedia = -1;
     selectedTileIndex = -1;
     imagesCache.clear();
 
@@ -438,7 +441,11 @@ class AppData extends ChangeNotifier {
     }
 
     if (selectedProjectId == projectId) {
-      gameData = GameData(name: cleanName, levels: gameData.levels);
+      gameData = GameData(
+        name: cleanName,
+        levels: gameData.levels,
+        mediaAssets: gameData.mediaAssets,
+      );
     }
 
     await _saveProjectsIndex();
@@ -506,6 +513,7 @@ class AppData extends ChangeNotifier {
       selectedLayer = -1;
       selectedZone = -1;
       selectedSprite = -1;
+      selectedMedia = -1;
       selectedTileIndex = -1;
       imagesCache.clear();
       if (gameData.name.trim().isNotEmpty) {

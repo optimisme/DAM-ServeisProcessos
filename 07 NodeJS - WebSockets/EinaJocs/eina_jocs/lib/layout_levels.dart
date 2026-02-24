@@ -98,6 +98,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
         context: context,
         anchorKey: anchorKey,
         isAnimated: true,
+        animateContentResize: false,
         dismissOnEscape: true,
         dismissOnOutsideTap: true,
         showBackgroundShade: false,
@@ -486,69 +487,74 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
     final typography = CDKThemeNotifier.typographyTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 320, maxWidth: 420),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CDKText(widget.title, role: CDKTextRole.title),
-            SizedBox(height: spacing.md),
-            const CDKText("Enter level details.", role: CDKTextRole.body),
-            SizedBox(height: spacing.md),
-            CDKText(
-              "Name",
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            CDKFieldText(
-              placeholder: "Level name",
-              controller: _nameController,
-              focusNode: _nameFocusNode,
-              onChanged: _validate,
-              onSubmitted: (_) => _confirm(),
-            ),
-            SizedBox(height: spacing.sm),
-            CDKText(
-              "Description",
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            CDKFieldText(
-              placeholder: "Level description (optional)",
-              controller: _descriptionController,
-              onSubmitted: (_) => _confirm(),
-            ),
-            if (_errorText != null) ...[
-              SizedBox(height: spacing.sm),
-              Text(
-                _errorText!,
-                style: typography.caption.copyWith(color: CDKTheme.red),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 320, maxWidth: 420),
+        child: Padding(
+          padding: EdgeInsets.all(spacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CDKText(widget.title, role: CDKTextRole.title),
+              SizedBox(height: spacing.md),
+              const CDKText("Enter level details.", role: CDKTextRole.body),
+              SizedBox(height: spacing.md),
+              CDKText(
+                "Name",
+                role: CDKTextRole.caption,
+                color: cdkColors.colorText,
               ),
-            ],
-            SizedBox(height: spacing.lg + spacing.sm),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  onPressed: widget.onCancel,
-                  child: const Text("Cancel"),
-                ),
-                SizedBox(width: spacing.md),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  enabled: _isValid,
-                  onPressed: _confirm,
-                  child: Text(widget.confirmLabel),
+              const SizedBox(height: 4),
+              CDKFieldText(
+                placeholder: "Level name",
+                controller: _nameController,
+                focusNode: _nameFocusNode,
+                onChanged: _validate,
+                onSubmitted: (_) => _confirm(),
+              ),
+              SizedBox(height: spacing.sm),
+              CDKText(
+                "Description",
+                role: CDKTextRole.caption,
+                color: cdkColors.colorText,
+              ),
+              const SizedBox(height: 4),
+              CDKFieldText(
+                placeholder: "Level description (optional)",
+                controller: _descriptionController,
+                onSubmitted: (_) => _confirm(),
+              ),
+              if (_errorText != null) ...[
+                SizedBox(height: spacing.sm),
+                Text(
+                  _errorText!,
+                  style: typography.caption.copyWith(color: CDKTheme.red),
                 ),
               ],
-            ),
-          ],
+              SizedBox(height: spacing.lg + spacing.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  CDKButton(
+                    style: CDKButtonStyle.normal,
+                    onPressed: widget.onCancel,
+                    child: const Text("Cancel"),
+                  ),
+                  SizedBox(width: spacing.md),
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    enabled: _isValid,
+                    onPressed: _confirm,
+                    child: Text(widget.confirmLabel),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

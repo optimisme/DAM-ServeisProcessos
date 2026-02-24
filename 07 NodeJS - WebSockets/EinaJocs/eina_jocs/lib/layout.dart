@@ -144,6 +144,12 @@ class _LayoutState extends State<Layout> {
       }
     }
 
+    if (appData.selectedMedia >= 0 &&
+        appData.selectedMedia < appData.gameData.mediaAssets.length) {
+      final mediaAsset = appData.gameData.mediaAssets[appData.selectedMedia];
+      parts.add(MapEntry('Media', mediaAsset.fileName));
+    }
+
     if (parts.isEmpty) {
       return const [MapEntry('Selection', 'None')];
     }
@@ -153,6 +159,7 @@ class _LayoutState extends State<Layout> {
   Widget _buildBreadcrumb(AppData appData, BuildContext context) {
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
+    const Color breadcrumbLabelColor = Color(0xFF66B2FF);
     final List<MapEntry<String, String>> parts =
         _selectedBreadcrumbParts(appData);
     final List<InlineSpan> spans = [];
@@ -163,7 +170,7 @@ class _LayoutState extends State<Layout> {
           TextSpan(
             text: ' > ',
             style: typography.caption.copyWith(
-              color: cdkColors.colorTextSecondary,
+              color: breadcrumbLabelColor,
             ),
           ),
         );
@@ -172,7 +179,7 @@ class _LayoutState extends State<Layout> {
         TextSpan(
           text: '${parts[i].key}: ',
           style: typography.caption.copyWith(
-            color: cdkColors.colorTextSecondary,
+            color: breadcrumbLabelColor,
           ),
         ),
       );
@@ -248,7 +255,7 @@ class _LayoutState extends State<Layout> {
       case 'sprites':
         image = await LayoutUtils.drawCanvasImageLayers(appData, true);
       case 'media':
-        image = await LayoutUtils.drawCanvasImageEmpty(appData);
+        image = await LayoutUtils.drawCanvasImageMedia(appData);
       default:
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
     }

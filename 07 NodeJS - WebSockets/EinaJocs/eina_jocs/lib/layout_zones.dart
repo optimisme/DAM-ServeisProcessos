@@ -120,6 +120,7 @@ class LayoutZonesState extends State<LayoutZones> {
         context: context,
         anchorKey: anchorKey,
         isAnimated: true,
+        animateContentResize: false,
         dismissOnEscape: true,
         dismissOnOutsideTap: true,
         showBackgroundShade: false,
@@ -522,133 +523,138 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
       );
     }
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CDKText(widget.title, role: CDKTextRole.title),
-            SizedBox(height: spacing.md),
-            const CDKText('Configure zone details.', role: CDKTextRole.body),
-            SizedBox(height: spacing.md),
-            labeledField(
-              'Zone Type',
-              CDKFieldText(
-                placeholder: 'Zone type',
-                controller: _typeController,
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _confirm(),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
+        child: Padding(
+          padding: EdgeInsets.all(spacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CDKText(widget.title, role: CDKTextRole.title),
+              SizedBox(height: spacing.md),
+              const CDKText('Configure zone details.', role: CDKTextRole.body),
+              SizedBox(height: spacing.md),
+              labeledField(
+                'Zone Type',
+                CDKFieldText(
+                  placeholder: 'Zone type',
+                  controller: _typeController,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _confirm(),
+                ),
               ),
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'X (px)',
-                    CDKFieldText(
-                      placeholder: 'X (px)',
-                      controller: _xController,
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Y (px)',
-                    CDKFieldText(
-                      placeholder: 'Y (px)',
-                      controller: _yController,
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'Width (px)',
-                    CDKFieldText(
-                      placeholder: 'Width (px)',
-                      controller: _widthController,
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Height (px)',
-                    CDKFieldText(
-                      placeholder: 'Height (px)',
-                      controller: _heightController,
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.md),
-            CDKText(
-              'Zone Color',
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: spacing.sm,
-              children: widget.colors.map((colorName) {
-                return CupertinoButton(
-                  padding: const EdgeInsets.all(2),
-                  minimumSize: Size.zero,
-                  onPressed: () {
-                    setState(() {
-                      _selectedColor = colorName;
-                    });
-                  },
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: LayoutUtils.getColorFromName(colorName),
-                        width: 4,
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'X (px)',
+                      CDKFieldText(
+                        placeholder: 'X (px)',
+                        controller: _xController,
+                        keyboardType: TextInputType.number,
                       ),
-                      color: _selectedColor == colorName
-                          ? LayoutUtils.getColorFromName(colorName)
-                          : cdkColors.background,
-                      shape: BoxShape.circle,
                     ),
                   ),
-                );
-              }).toList(growable: false),
-            ),
-            SizedBox(height: spacing.lg + spacing.sm),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  onPressed: widget.onCancel,
-                  child: const Text('Cancel'),
-                ),
-                SizedBox(width: spacing.md),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  enabled: _isValid,
-                  onPressed: _confirm,
-                  child: Text(widget.confirmLabel),
-                ),
-              ],
-            ),
-          ],
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Y (px)',
+                      CDKFieldText(
+                        placeholder: 'Y (px)',
+                        controller: _yController,
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'Width (px)',
+                      CDKFieldText(
+                        placeholder: 'Width (px)',
+                        controller: _widthController,
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Height (px)',
+                      CDKFieldText(
+                        placeholder: 'Height (px)',
+                        controller: _heightController,
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.md),
+              CDKText(
+                'Zone Color',
+                role: CDKTextRole.caption,
+                color: cdkColors.colorText,
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: spacing.sm,
+                children: widget.colors.map((colorName) {
+                  return CupertinoButton(
+                    padding: const EdgeInsets.all(2),
+                    minimumSize: Size.zero,
+                    onPressed: () {
+                      setState(() {
+                        _selectedColor = colorName;
+                      });
+                    },
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: LayoutUtils.getColorFromName(colorName),
+                          width: 4,
+                        ),
+                        color: _selectedColor == colorName
+                            ? LayoutUtils.getColorFromName(colorName)
+                            : cdkColors.background,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                }).toList(growable: false),
+              ),
+              SizedBox(height: spacing.lg + spacing.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  CDKButton(
+                    style: CDKButtonStyle.normal,
+                    onPressed: widget.onCancel,
+                    child: const Text('Cancel'),
+                  ),
+                  SizedBox(width: spacing.md),
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    enabled: _isValid,
+                    onPressed: _confirm,
+                    child: Text(widget.confirmLabel),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

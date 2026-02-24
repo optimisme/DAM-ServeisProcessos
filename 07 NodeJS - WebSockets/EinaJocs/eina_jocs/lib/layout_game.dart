@@ -75,6 +75,7 @@ class LayoutGameState extends State<LayoutGame> {
                           appData.gameData = GameData(
                             name: value,
                             levels: appData.gameData.levels,
+                            mediaAssets: appData.gameData.mediaAssets,
                           );
                         });
                       },

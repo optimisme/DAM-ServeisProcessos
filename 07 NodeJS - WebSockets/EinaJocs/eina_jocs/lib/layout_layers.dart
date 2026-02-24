@@ -138,6 +138,7 @@ class LayoutLayersState extends State<LayoutLayers> {
         context: context,
         anchorKey: anchorKey,
         isAnimated: true,
+        animateContentResize: false,
         dismissOnEscape: true,
         dismissOnOutsideTap: true,
         showBackgroundShade: false,
@@ -595,175 +596,180 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
       );
     }
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 380, maxWidth: 520),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CDKText(widget.title, role: CDKTextRole.title),
-            SizedBox(height: spacing.md),
-            const CDKText('Configure layer details.', role: CDKTextRole.body),
-            SizedBox(height: spacing.md),
-            labeledField(
-              'Layer Name',
-              CDKFieldText(
-                placeholder: 'Layer name',
-                controller: _nameController,
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _confirm(),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 380, maxWidth: 520),
+        child: Padding(
+          padding: EdgeInsets.all(spacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CDKText(widget.title, role: CDKTextRole.title),
+              SizedBox(height: spacing.md),
+              const CDKText('Configure layer details.', role: CDKTextRole.body),
+              SizedBox(height: spacing.md),
+              labeledField(
+                'Layer Name',
+                CDKFieldText(
+                  placeholder: 'Layer name',
+                  controller: _nameController,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _confirm(),
+                ),
               ),
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'X (px)',
-                    CDKFieldText(
-                      placeholder: 'X (px)',
-                      controller: _xController,
-                      keyboardType: TextInputType.number,
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'X (px)',
+                      CDKFieldText(
+                        placeholder: 'X (px)',
+                        controller: _xController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Y (px)',
-                    CDKFieldText(
-                      placeholder: 'Y (px)',
-                      controller: _yController,
-                      keyboardType: TextInputType.number,
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Y (px)',
+                      CDKFieldText(
+                        placeholder: 'Y (px)',
+                        controller: _yController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Depth (z-index)',
-                    CDKFieldText(
-                      placeholder: 'Depth (z-index)',
-                      controller: _depthController,
-                      keyboardType: TextInputType.number,
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Depth (z-index)',
+                      CDKFieldText(
+                        placeholder: 'Depth (z-index)',
+                        controller: _depthController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'Tile Width (px)',
-                    CDKFieldText(
-                      placeholder: 'Tile width (px)',
-                      controller: _tileWidthController,
-                      keyboardType: TextInputType.number,
+                ],
+              ),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'Tile Width (px)',
+                      CDKFieldText(
+                        placeholder: 'Tile width (px)',
+                        controller: _tileWidthController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Tile Height (px)',
-                    CDKFieldText(
-                      placeholder: 'Tile height (px)',
-                      controller: _tileHeightController,
-                      keyboardType: TextInputType.number,
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Tile Height (px)',
+                      CDKFieldText(
+                        placeholder: 'Tile height (px)',
+                        controller: _tileHeightController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'Tilemap Width (tiles)',
-                    CDKFieldText(
-                      placeholder: 'Tilemap width (tiles)',
-                      controller: _tilemapWidthController,
-                      keyboardType: TextInputType.number,
+                ],
+              ),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'Tilemap Width (tiles)',
+                      CDKFieldText(
+                        placeholder: 'Tilemap width (tiles)',
+                        controller: _tilemapWidthController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Tilemap Height (tiles)',
-                    CDKFieldText(
-                      placeholder: 'Tilemap height (tiles)',
-                      controller: _tilemapHeightController,
-                      keyboardType: TextInputType.number,
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Tilemap Height (tiles)',
+                      CDKFieldText(
+                        placeholder: 'Tilemap height (tiles)',
+                        controller: _tilemapHeightController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.md),
-            CDKText(
-              'Tilesheet Image',
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: CDKText(
-                    _tilesSheetFile.isEmpty
-                        ? 'No file selected'
-                        : _tilesSheetFile,
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
+                ],
+              ),
+              SizedBox(height: spacing.md),
+              CDKText(
+                'Tilesheet Image',
+                role: CDKTextRole.caption,
+                color: cdkColors.colorText,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: CDKText(
+                      _tilesSheetFile.isEmpty
+                          ? 'No file selected'
+                          : _tilesSheetFile,
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                    ),
                   ),
-                ),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  onPressed: _pickTilesSheet,
-                  child: const Text('Choose File'),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                const CDKText('Visible', role: CDKTextRole.body),
-                SizedBox(width: spacing.sm),
-                CupertinoSwitch(
-                  value: _visible,
-                  onChanged: (bool value) {
-                    setState(() {
-                      _visible = value;
-                    });
-                  },
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.lg + spacing.sm),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  onPressed: widget.onCancel,
-                  child: const Text('Cancel'),
-                ),
-                SizedBox(width: spacing.md),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  enabled: _isValid,
-                  onPressed: _confirm,
-                  child: Text(widget.confirmLabel),
-                ),
-              ],
-            ),
-          ],
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    onPressed: _pickTilesSheet,
+                    child: const Text('Choose File'),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  const CDKText('Visible', role: CDKTextRole.body),
+                  SizedBox(width: spacing.sm),
+                  CupertinoSwitch(
+                    value: _visible,
+                    onChanged: (bool value) {
+                      setState(() {
+                        _visible = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.lg + spacing.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  CDKButton(
+                    style: CDKButtonStyle.normal,
+                    onPressed: widget.onCancel,
+                    child: const Text('Cancel'),
+                  ),
+                  SizedBox(width: spacing.md),
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    enabled: _isValid,
+                    onPressed: _confirm,
+                    child: Text(widget.confirmLabel),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

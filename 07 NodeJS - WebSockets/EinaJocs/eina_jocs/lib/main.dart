@@ -35,8 +35,8 @@ Future<void> _configureDesktopWindow() async {
 
     const windowOptions = WindowOptions(
       title: _windowTitle,
-      size: Size(1600, 980),
-      minimumSize: Size(1280, 820),
+      size: Size(900, 700),
+      minimumSize: Size(900, 700),
       center: true,
     );
 

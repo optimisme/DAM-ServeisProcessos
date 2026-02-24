@@ -110,6 +110,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
         context: context,
         anchorKey: anchorKey,
         isAnimated: true,
+        animateContentResize: false,
         dismissOnEscape: true,
         dismissOnOutsideTap: true,
         showBackgroundShade: false,
@@ -505,121 +506,129 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       );
     }
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CDKText(widget.title, role: CDKTextRole.title),
-            SizedBox(height: spacing.md),
-            const CDKText('Configure sprite details.', role: CDKTextRole.body),
-            SizedBox(height: spacing.md),
-            labeledField(
-              'Sprite Type',
-              CDKFieldText(
-                placeholder: 'Sprite type',
-                controller: _typeController,
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _confirm(),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
+        child: Padding(
+          padding: EdgeInsets.all(spacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CDKText(widget.title, role: CDKTextRole.title),
+              SizedBox(height: spacing.md),
+              const CDKText(
+                'Configure sprite details.',
+                role: CDKTextRole.body,
               ),
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'Start X (px)',
-                    CDKFieldText(
-                      placeholder: 'Start X (px)',
-                      controller: _xController,
-                      keyboardType: TextInputType.number,
+              SizedBox(height: spacing.md),
+              labeledField(
+                'Sprite Type',
+                CDKFieldText(
+                  placeholder: 'Sprite type',
+                  controller: _typeController,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _confirm(),
+                ),
+              ),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'Start X (px)',
+                      CDKFieldText(
+                        placeholder: 'Start X (px)',
+                        controller: _xController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Start Y (px)',
-                    CDKFieldText(
-                      placeholder: 'Start Y (px)',
-                      controller: _yController,
-                      keyboardType: TextInputType.number,
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Start Y (px)',
+                      CDKFieldText(
+                        placeholder: 'Start Y (px)',
+                        controller: _yController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: labeledField(
-                    'Sprite Width (px)',
-                    CDKFieldText(
-                      placeholder: 'Sprite Width (px)',
-                      controller: _widthController,
-                      keyboardType: TextInputType.number,
+                ],
+              ),
+              SizedBox(height: spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: labeledField(
+                      'Sprite Width (px)',
+                      CDKFieldText(
+                        placeholder: 'Sprite Width (px)',
+                        controller: _widthController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                Expanded(
-                  child: labeledField(
-                    'Sprite Height (px)',
-                    CDKFieldText(
-                      placeholder: 'Sprite Height (px)',
-                      controller: _heightController,
-                      keyboardType: TextInputType.number,
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: labeledField(
+                      'Sprite Height (px)',
+                      CDKFieldText(
+                        placeholder: 'Sprite Height (px)',
+                        controller: _heightController,
+                        keyboardType: TextInputType.number,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.md),
-            CDKText(
-              'Sprite Image',
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: CDKText(
-                    _imageFile.isEmpty ? 'No file selected' : _imageFile,
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
+                ],
+              ),
+              SizedBox(height: spacing.md),
+              CDKText(
+                'Sprite Image',
+                role: CDKTextRole.caption,
+                color: cdkColors.colorText,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: CDKText(
+                      _imageFile.isEmpty ? 'No file selected' : _imageFile,
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                    ),
                   ),
-                ),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  onPressed: _pickImage,
-                  child: const Text('Choose File'),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing.lg + spacing.sm),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  onPressed: widget.onCancel,
-                  child: const Text('Cancel'),
-                ),
-                SizedBox(width: spacing.md),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  enabled: _isValid,
-                  onPressed: _confirm,
-                  child: Text(widget.confirmLabel),
-                ),
-              ],
-            ),
-          ],
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    onPressed: _pickImage,
+                    child: const Text('Choose File'),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.lg + spacing.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  CDKButton(
+                    style: CDKButtonStyle.normal,
+                    onPressed: widget.onCancel,
+                    child: const Text('Cancel'),
+                  ),
+                  SizedBox(width: spacing.md),
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    enabled: _isValid,
+                    onPressed: _confirm,
+                    child: Text(widget.confirmLabel),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

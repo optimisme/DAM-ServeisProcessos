@@ -721,14 +721,18 @@ class _LayoutState extends State<Layout> {
                                             "sprites") {
                                           _didModifySpriteDuringGesture = false;
                                           _isDraggingSprite = false;
-                                          final bool startsOnSelectedSprite =
-                                              appData.selectedSprite != -1 &&
-                                                  LayoutUtils
-                                                      .hitTestSelectedSprite(
-                                                    appData,
-                                                    details.localPosition,
-                                                  );
-                                          if (startsOnSelectedSprite) {
+                                          final int hitSpriteIndex = LayoutUtils
+                                              .spriteIndexFromPosition(
+                                            appData,
+                                            details.localPosition,
+                                          );
+                                          if (hitSpriteIndex != -1) {
+                                            if (appData.selectedSprite !=
+                                                hitSpriteIndex) {
+                                              appData.selectedSprite =
+                                                  hitSpriteIndex;
+                                              appData.update();
+                                            }
                                             _isDraggingSprite = true;
                                             LayoutUtils
                                                 .startDragSpriteFromPosition(
@@ -1023,10 +1027,17 @@ class _LayoutState extends State<Layout> {
                                           );
                                         } else if (appData.selectedSection ==
                                             "sprites") {
-                                          LayoutUtils.selectSpriteFromPosition(
-                                              appData,
-                                              details.localPosition,
-                                              layoutSpritesKey);
+                                          final int hitSpriteIndex = LayoutUtils
+                                              .spriteIndexFromPosition(
+                                            appData,
+                                            details.localPosition,
+                                          );
+                                          layoutSpritesKey.currentState
+                                              ?.selectSprite(
+                                            appData,
+                                            hitSpriteIndex,
+                                            false,
+                                          );
                                         } else if (appData.selectedSection ==
                                             "animations") {
                                           unawaited(() async {

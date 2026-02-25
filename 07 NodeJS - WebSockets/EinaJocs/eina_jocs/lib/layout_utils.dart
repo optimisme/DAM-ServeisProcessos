@@ -840,8 +840,9 @@ class LayoutUtils {
       layoutZonesKey.currentState?.selectZone(appData, -1, false);
       return;
     }
-    final bool isSelected = appData.selectedZone == hitIndex;
-    layoutZonesKey.currentState?.selectZone(appData, hitIndex, isSelected);
+    // Canvas clicks should select the hit zone directly. Deselect only on
+    // empty-space clicks.
+    layoutZonesKey.currentState?.selectZone(appData, hitIndex, false);
   }
 
   static void startDragZoneFromPosition(AppData appData, Offset localPosition) {
@@ -963,8 +964,9 @@ class LayoutUtils {
       layoutSpritesKey.currentState?.selectSprite(appData, -1, false);
       return;
     }
-    final bool isSelected = appData.selectedSprite == hitIndex;
-    layoutSpritesKey.currentState?.selectSprite(appData, hitIndex, isSelected);
+    // Canvas clicks should select the hit sprite directly. Deselect only on
+    // empty-space clicks.
+    layoutSpritesKey.currentState?.selectSprite(appData, hitIndex, false);
   }
 
   static void startDragSpriteFromPosition(

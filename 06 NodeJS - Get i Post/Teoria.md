@@ -233,7 +233,8 @@ L'exemple mostra com configurar diversos tipus de crides *GET/POST* amb **NodeJS
 
 Normalment les crides es fan des de les aplicacions o des de servidors, però quan les estàs configurant necessites fer proves ràpides, que es poden fer amb *Postman*.
 
-**Descarrega i instal·la [Postman](https://www.postman.com/downloads/)** de la web oficial.
+**Descarrega i instal·la [Bruno](https://www.usebruno.com)** de la web oficial. ([Tutorial](https://codoid.com/api-testing/comprehensive-bruno-tutorial-for-api-testing/))
+
 
 Posa en funcionament el servidor d'exemple en **mode desenvolupament**:
 ```bash
@@ -246,11 +247,7 @@ El codi del servidor està a:
 ./server/app.js
 ```
 
-A) Fes servir *Postman*, per demanar l'arxiu "web.html" de la carpeta *"public"*:
-
-<center><img src="./assets/exemple00.png" style="max-width: 90%; max-height: 400px;" alt="">
-<br/></center>
-<br/>
+A) Fes servir *Bruno*, per demanar l'arxiu "web.html" de la carpeta *"public"*:
 
 La resposta ha de ser *"Hello Web HTML"*
 
@@ -260,11 +257,7 @@ La configuració dels arxius estàtics a *"./server/app.js"*:
 app.use(express.static('public'))
 ```
 
-B) Fes servir *Postman*, per demanar els continguts per defecte del servidor.
-
-<center><img src="./assets/exemple01.png" style="max-width: 90%; max-height: 400px;" alt="">
-<br/></center>
-<br/>
+B) Fes servir *Bruno*, per demanar els continguts per defecte del servidor.
 
 La resposta ha de ser *"Hello World /"*
 

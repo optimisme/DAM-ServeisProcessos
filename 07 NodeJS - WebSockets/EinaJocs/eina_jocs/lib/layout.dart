@@ -39,9 +39,14 @@ class _LayoutState extends State<Layout> {
   Timer? _timer;
   ui.Image? _layerImage;
   bool _isDraggingLayer = false;
+  bool _isDraggingZone = false;
+  bool _isResizingZone = false;
   bool _isPaintingTilemap = false;
+  bool _didModifyZoneDuringGesture = false;
   bool _didModifyTilemapDuringGesture = false;
   bool _isPointerDown = false;
+  bool _isHoveringSelectedTilemapLayer = false;
+  bool _isDragGestureActive = false;
   bool _pendingLayersViewportCenter = false;
   final FocusNode _focusNode = FocusNode();
   List<String> sections = [
@@ -180,7 +185,7 @@ class _LayoutState extends State<Layout> {
         spans.add(
           TextSpan(
             text: ' > ',
-            style: typography.caption.copyWith(
+            style: typography.body.copyWith(
               color: breadcrumbLabelColor,
             ),
           ),
@@ -189,7 +194,7 @@ class _LayoutState extends State<Layout> {
       spans.add(
         TextSpan(
           text: '${parts[i].key}: ',
-          style: typography.caption.copyWith(
+          style: typography.body.copyWith(
             color: breadcrumbLabelColor,
           ),
         ),
@@ -263,9 +268,13 @@ class _LayoutState extends State<Layout> {
         await LayoutUtils.preloadLayerImages(appData);
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'tilemap':
-        image = await LayoutUtils.drawCanvasImageTilemap(appData);
+        // Tilemap section now renders in world space via CanvasPainter.
+        await LayoutUtils.preloadLayerImages(appData);
+        image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'zones':
-        image = await LayoutUtils.drawCanvasImageLayers(appData, true);
+        // Zones section reuses the world viewport rendering from layers.
+        await LayoutUtils.preloadLayerImages(appData);
+        image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'sprites':
         image = await LayoutUtils.drawCanvasImageLayers(appData, true);
       case 'media':
@@ -285,8 +294,8 @@ class _LayoutState extends State<Layout> {
     const double minScale = 0.05;
     const double maxScale = 20.0;
     final double oldScale = appData.layersViewScale;
-    final double newScale =
-        (oldScale * (1.0 - scrollDy * zoomSensitivity)).clamp(minScale, maxScale);
+    final double newScale = (oldScale * (1.0 - scrollDy * zoomSensitivity))
+        .clamp(minScale, maxScale);
     appData.layersViewOffset =
         cursor + (appData.layersViewOffset - cursor) * (newScale / oldScale);
     appData.layersViewScale = newScale;
@@ -301,7 +310,11 @@ class _LayoutState extends State<Layout> {
   }
 
   void _queueInitialLayersViewportCenter(AppData appData, Size viewportSize) {
-    if (appData.selectedSection != 'layers') return;
+    if (appData.selectedSection != 'layers' &&
+        appData.selectedSection != 'tilemap' &&
+        appData.selectedSection != 'zones') {
+      return;
+    }
     if (appData.layersViewScale != 1.0 ||
         appData.layersViewOffset != Offset.zero) {
       return;
@@ -315,7 +328,11 @@ class _LayoutState extends State<Layout> {
       if (!mounted) return;
 
       final latestAppData = Provider.of<AppData>(context, listen: false);
-      if (latestAppData.selectedSection != 'layers') return;
+      if (latestAppData.selectedSection != 'layers' &&
+          latestAppData.selectedSection != 'tilemap' &&
+          latestAppData.selectedSection != 'zones') {
+        return;
+      }
       if (latestAppData.layersViewScale != 1.0 ||
           latestAppData.layersViewOffset != Offset.zero) {
         return;
@@ -329,6 +346,23 @@ class _LayoutState extends State<Layout> {
     });
   }
 
+  MouseCursor _tilemapCursor(AppData appData) {
+    if (appData.selectedSection != 'tilemap') {
+      return SystemMouseCursors.basic;
+    }
+    if (_isDragGestureActive) {
+      return SystemMouseCursors.basic;
+    }
+    if (appData.tilemapEraserEnabled && _isHoveringSelectedTilemapLayer) {
+      return SystemMouseCursors.disappearing;
+    }
+    if (LayoutUtils.hasTilePatternSelection(appData) &&
+        _isHoveringSelectedTilemapLayer) {
+      return SystemMouseCursors.copy;
+    }
+    return SystemMouseCursors.basic;
+  }
+
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
@@ -338,54 +372,48 @@ class _LayoutState extends State<Layout> {
       _drawCanvasImage(appData);
     }
 
-    final media = MediaQuery.of(context);
-
-    return MediaQuery(
-      data: media.copyWith(textScaler: const TextScaler.linear(0.9)),
-      child: CupertinoPageScaffold(
-        navigationBar: CupertinoNavigationBar(
-          middle: Row(
-            children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _buildBreadcrumb(appData, context),
-                ),
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: Row(
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _buildBreadcrumb(appData, context),
               ),
-              const SizedBox(width: 8),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: CDKPickerButtonsSegmented(
-                  selectedIndex: _selectedSectionIndex(appData.selectedSection),
-                  options: _buildSegmentedOptions(context),
-                  onSelected: (index) =>
-                      _onTabSelected(appData, sections[index]),
-                ),
+            ),
+            const SizedBox(width: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: CDKPickerButtonsSegmented(
+                selectedIndex: _selectedSectionIndex(appData.selectedSection),
+                options: _buildSegmentedOptions(context),
+                onSelected: (index) => _onTabSelected(appData, sections[index]),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        child: Focus(
-          focusNode: _focusNode,
-          autofocus: true,
-          onKeyEvent: (node, event) {
-            if (event is! KeyDownEvent) return KeyEventResult.ignored;
-            final bool meta = HardwareKeyboard.instance.isMetaPressed;
-            final bool ctrl = HardwareKeyboard.instance.isControlPressed;
-            final bool shift = HardwareKeyboard.instance.isShiftPressed;
-            final bool isZ =
-                event.logicalKey == LogicalKeyboardKey.keyZ;
-            if (!(meta || ctrl) || !isZ) return KeyEventResult.ignored;
-            final appData = Provider.of<AppData>(context, listen: false);
-            if (shift) {
-              appData.redo();
-            } else {
-              appData.undo();
-            }
-            return KeyEventResult.handled;
-          },
-          child: SafeArea(
+      ),
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          final bool meta = HardwareKeyboard.instance.isMetaPressed;
+          final bool ctrl = HardwareKeyboard.instance.isControlPressed;
+          final bool shift = HardwareKeyboard.instance.isShiftPressed;
+          final bool isZ = event.logicalKey == LogicalKeyboardKey.keyZ;
+          if (!(meta || ctrl) || !isZ) return KeyEventResult.ignored;
+          final appData = Provider.of<AppData>(context, listen: false);
+          if (shift) {
+            appData.redo();
+          } else {
+            appData.undo();
+          }
+          return KeyEventResult.handled;
+        },
+        child: SafeArea(
           child: Stack(
             children: [
               Row(
@@ -401,194 +429,408 @@ class _LayoutState extends State<Layout> {
                             builder: (context, constraints) {
                               _queueInitialLayersViewportCenter(
                                 appData,
-                                Size(constraints.maxWidth, constraints.maxHeight),
+                                Size(constraints.maxWidth,
+                                    constraints.maxHeight),
                               );
                               return Container(
                                 color: cdkColors.backgroundSecondary1,
                                 child: Listener(
-                              onPointerDown: (_) => _isPointerDown = true,
-                              onPointerUp: (_) => _isPointerDown = false,
-                              onPointerCancel: (_) => _isPointerDown = false,
-                              // macOS trackpad: two-finger scroll → PointerScrollEvent
-                              onPointerSignal: (event) {
-                                if (event is! PointerScrollEvent) return;
-                                if (appData.selectedSection != "layers") return;
-                                _applyLayersZoom(appData,
-                                    event.localPosition, event.scrollDelta.dy);
-                              },
-                              // macOS trackpad: two-finger pan-zoom → PointerPanZoomUpdateEvent
-                              onPointerPanZoomUpdate: (event) {
-                                if (appData.selectedSection != "layers") return;
-                                // pan delta from trackpad scroll
-                                final double dy = -event.panDelta.dy;
-                                if (dy == 0) return;
-                                _applyLayersZoom(
-                                    appData, event.localPosition, dy);
-                              },
-                              child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onPanStart: (details) async {
-                                appData.dragging = true;
-                                appData.dragStartDetails = details;
-                                if (appData.selectedSection == "layers") {
-                                  if (appData.selectedLayer != -1 &&
-                                      LayoutUtils.hitTestSelectedLayer(
-                                          appData, details.localPosition)) {
-                                    _isDraggingLayer = true;
-                                    LayoutUtils.startDragLayerFromPosition(
-                                        appData, details.localPosition);
-                                  } else {
-                                    // Clicked outside selected layer — pan world, keep selection
-                                    _isDraggingLayer = false;
-                                  }
-                                } else if (appData.selectedSection == "tilemap") {
-                                  _isPaintingTilemap =
-                                      LayoutUtils.pasteSelectedTilePatternAtTilemap(
-                                    appData,
-                                    details.localPosition,
-                                    pushUndo: true,
-                                  );
-                                  if (_isPaintingTilemap) {
-                                    _didModifyTilemapDuringGesture = true;
-                                    appData.update();
-                                  }
-                                } else if (appData.selectedSection == "zones") {
-                                  LayoutUtils.selectZoneFromPosition(appData,
-                                      details.localPosition, layoutZonesKey);
-                                  if (appData.selectedZone != -1) {
-                                    LayoutUtils.startDragZoneFromPosition(
+                                  onPointerDown: (_) => _isPointerDown = true,
+                                  onPointerUp: (_) => _isPointerDown = false,
+                                  onPointerCancel: (_) =>
+                                      _isPointerDown = false,
+                                  // macOS trackpad: two-finger scroll → PointerScrollEvent
+                                  onPointerSignal: (event) {
+                                    if (event is! PointerScrollEvent) return;
+                                    if (appData.selectedSection != "layers" &&
+                                        appData.selectedSection != "tilemap" &&
+                                        appData.selectedSection != "zones") {
+                                      return;
+                                    }
+                                    _applyLayersZoom(
                                         appData,
-                                        details.localPosition,
-                                        layoutZonesKey);
-                                    layoutZonesKey.currentState
-                                        ?.updateForm(appData);
-                                  }
-                                } else if (appData.selectedSection ==
-                                    "sprites") {
-                                  LayoutUtils.selectSpriteFromPosition(appData,
-                                      details.localPosition, layoutSpritesKey);
-                                  if (appData.selectedSprite != -1) {
-                                    LayoutUtils.startDragSpriteFromPosition(
-                                        appData,
-                                        details.localPosition,
-                                        layoutSpritesKey);
-                                    layoutSpritesKey.currentState
-                                        ?.updateForm(appData);
-                                  }
-                                }
-                              },
-                              onPanUpdate: (details) async {
-                                if (appData.selectedSection == "layers") {
-                                  if (!_isPointerDown) {
-                                    // scroll-triggered pan — ignore
-                                  } else if (_isDraggingLayer &&
-                                      appData.selectedLayer != -1) {
-                                    LayoutUtils.dragLayerFromCanvas(
-                                        appData, details.localPosition);
-                                    appData.update();
-                                  } else {
-                                    appData.layersViewOffset += details.delta;
-                                    appData.update();
-                                  }
-                                } else if (appData.selectedSection == "tilemap" &&
-                                    _isPaintingTilemap) {
-                                  final bool changed =
-                                      LayoutUtils.pasteSelectedTilePatternAtTilemap(
-                                    appData,
-                                    details.localPosition,
-                                  );
-                                  if (changed) {
-                                    _didModifyTilemapDuringGesture = true;
-                                    appData.update();
-                                  }
-                                } else if (appData.selectedSection == "zones" &&
-                                    appData.selectedZone != -1) {
-                                  if (appData.selectedZone != -1) {
-                                    LayoutUtils.dragZoneFromCanvas(
-                                        appData, details.localPosition);
-                                    layoutZonesKey.currentState
-                                        ?.updateForm(appData);
-                                  }
-                                } else if (appData.selectedSection ==
-                                        "sprites" &&
-                                    appData.selectedSprite != -1) {
-                                  if (appData.selectedSprite != -1) {
-                                    LayoutUtils.dragSpriteFromCanvas(
-                                        appData, details.localPosition);
-                                    layoutSpritesKey.currentState
-                                        ?.updateForm(appData);
-                                  }
-                                }
-                              },
-                              onPanEnd: (details) {
-                                if (appData.selectedSection == "layers") {
-                                  if (_isDraggingLayer) {
-                                    _isDraggingLayer = false;
-                                  }
-                                } else if (appData.selectedSection == "tilemap" &&
-                                    _isPaintingTilemap) {
-                                  _isPaintingTilemap = false;
-                                  if (_didModifyTilemapDuringGesture) {
-                                    _didModifyTilemapDuringGesture = false;
-                                    unawaited(_autoSaveIfPossible(appData));
-                                  }
-                                } else if (appData.selectedSection == "zones") {
-                                  appData.zoneDragOffset = Offset.zero;
-                                } else if (appData.selectedSection ==
-                                    "sprites") {
-                                  appData.zoneDragOffset = Offset.zero;
-                                }
+                                        event.localPosition,
+                                        event.scrollDelta.dy);
+                                  },
+                                  // macOS trackpad: two-finger pan-zoom → PointerPanZoomUpdateEvent
+                                  onPointerPanZoomUpdate: (event) {
+                                    if (appData.selectedSection != "layers" &&
+                                        appData.selectedSection != "tilemap" &&
+                                        appData.selectedSection != "zones") {
+                                      return;
+                                    }
+                                    // pan delta from trackpad scroll
+                                    final double dy = -event.panDelta.dy;
+                                    if (dy == 0) return;
+                                    _applyLayersZoom(
+                                        appData, event.localPosition, dy);
+                                  },
+                                  child: MouseRegion(
+                                    cursor: _tilemapCursor(appData),
+                                    onHover: (event) {
+                                      final bool hoveringTilemapLayer =
+                                          appData.selectedSection ==
+                                                  'tilemap' &&
+                                              LayoutUtils.getTilemapCoords(
+                                                      appData,
+                                                      event.localPosition) !=
+                                                  null;
+                                      if (hoveringTilemapLayer !=
+                                          _isHoveringSelectedTilemapLayer) {
+                                        setState(() {
+                                          _isHoveringSelectedTilemapLayer =
+                                              hoveringTilemapLayer;
+                                        });
+                                      }
+                                    },
+                                    onExit: (_) {
+                                      if (_isHoveringSelectedTilemapLayer) {
+                                        setState(() {
+                                          _isHoveringSelectedTilemapLayer =
+                                              false;
+                                        });
+                                      }
+                                    },
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPanStart: (details) async {
+                                        if (!_isDragGestureActive) {
+                                          setState(() {
+                                            _isDragGestureActive = true;
+                                          });
+                                        }
+                                        appData.dragging = true;
+                                        appData.dragStartDetails = details;
+                                        if (appData.selectedSection ==
+                                            "layers") {
+                                          if (appData.selectedLayer != -1 &&
+                                              LayoutUtils.hitTestSelectedLayer(
+                                                  appData,
+                                                  details.localPosition)) {
+                                            _isDraggingLayer = true;
+                                            LayoutUtils
+                                                .startDragLayerFromPosition(
+                                                    appData,
+                                                    details.localPosition);
+                                          } else {
+                                            // Clicked outside selected layer — pan world, keep selection
+                                            _isDraggingLayer = false;
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "tilemap") {
+                                          final bool useEraser =
+                                              appData.tilemapEraserEnabled;
+                                          final bool hasTileSelection =
+                                              LayoutUtils
+                                                  .hasTilePatternSelection(
+                                                      appData);
+                                          final bool startsInsideLayer =
+                                              LayoutUtils.getTilemapCoords(
+                                                      appData,
+                                                      details.localPosition) !=
+                                                  null;
+                                          _isPaintingTilemap =
+                                              startsInsideLayer &&
+                                                  (useEraser ||
+                                                      hasTileSelection);
+                                          _didModifyTilemapDuringGesture =
+                                              false;
+                                          if (_isPaintingTilemap) {
+                                            final bool changed = useEraser
+                                                ? LayoutUtils
+                                                    .eraseTileAtTilemap(
+                                                    appData,
+                                                    details.localPosition,
+                                                    pushUndo: true,
+                                                  )
+                                                : LayoutUtils
+                                                    .pasteSelectedTilePatternAtTilemap(
+                                                    appData,
+                                                    details.localPosition,
+                                                    pushUndo: true,
+                                                  );
+                                            if (changed) {
+                                              _didModifyTilemapDuringGesture =
+                                                  true;
+                                              appData.update();
+                                            }
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "zones") {
+                                          _didModifyZoneDuringGesture = false;
+                                          _isDraggingZone = false;
+                                          _isResizingZone = false;
+                                          final int selectedZone =
+                                              appData.selectedZone;
+                                          final bool startsOnResizeHandle =
+                                              selectedZone != -1 &&
+                                                  LayoutUtils
+                                                      .isPointInZoneResizeHandle(
+                                                    appData,
+                                                    selectedZone,
+                                                    details.localPosition,
+                                                  );
+                                          if (startsOnResizeHandle) {
+                                            _isResizingZone = true;
+                                            LayoutUtils
+                                                .startResizeZoneFromPosition(
+                                              appData,
+                                              details.localPosition,
+                                            );
+                                            layoutZonesKey.currentState
+                                                ?.updateForm(appData);
+                                            return;
+                                          }
+                                          final int hitZone =
+                                              LayoutUtils.zoneIndexFromPosition(
+                                            appData,
+                                            details.localPosition,
+                                          );
+                                          if (hitZone != -1) {
+                                            if (appData.selectedZone !=
+                                                hitZone) {
+                                              appData.selectedZone = hitZone;
+                                              appData.update();
+                                            }
+                                            _isDraggingZone = true;
+                                            LayoutUtils
+                                                .startDragZoneFromPosition(
+                                              appData,
+                                              details.localPosition,
+                                            );
+                                            layoutZonesKey.currentState
+                                                ?.updateForm(appData);
+                                          } else {
+                                            _isDraggingZone = false;
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "sprites") {
+                                          LayoutUtils.selectSpriteFromPosition(
+                                              appData,
+                                              details.localPosition,
+                                              layoutSpritesKey);
+                                          if (appData.selectedSprite != -1) {
+                                            LayoutUtils
+                                                .startDragSpriteFromPosition(
+                                                    appData,
+                                                    details.localPosition,
+                                                    layoutSpritesKey);
+                                            layoutSpritesKey.currentState
+                                                ?.updateForm(appData);
+                                          }
+                                        }
+                                      },
+                                      onPanUpdate: (details) async {
+                                        if (appData.selectedSection ==
+                                            "layers") {
+                                          if (!_isPointerDown) {
+                                            // scroll-triggered pan — ignore
+                                          } else if (_isDraggingLayer &&
+                                              appData.selectedLayer != -1) {
+                                            LayoutUtils.dragLayerFromCanvas(
+                                                appData, details.localPosition);
+                                            appData.update();
+                                          } else {
+                                            appData.layersViewOffset +=
+                                                details.delta;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "tilemap") {
+                                          final bool useEraser =
+                                              appData.tilemapEraserEnabled;
+                                          if (!_isPointerDown) {
+                                            // scroll-triggered pan — ignore
+                                          } else if (_isPaintingTilemap) {
+                                            final bool isInsideLayer =
+                                                LayoutUtils.getTilemapCoords(
+                                                        appData,
+                                                        details
+                                                            .localPosition) !=
+                                                    null;
+                                            if (!isInsideLayer) {
+                                              _isPaintingTilemap = false;
+                                              appData.layersViewOffset +=
+                                                  details.delta;
+                                              appData.update();
+                                              return;
+                                            }
+                                            final bool changed = useEraser
+                                                ? LayoutUtils
+                                                    .eraseTileAtTilemap(
+                                                    appData,
+                                                    details.localPosition,
+                                                    pushUndo:
+                                                        !_didModifyTilemapDuringGesture,
+                                                  )
+                                                : LayoutUtils
+                                                    .pasteSelectedTilePatternAtTilemap(
+                                                    appData,
+                                                    details.localPosition,
+                                                    pushUndo:
+                                                        !_didModifyTilemapDuringGesture,
+                                                  );
+                                            if (changed) {
+                                              _didModifyTilemapDuringGesture =
+                                                  true;
+                                              appData.update();
+                                            }
+                                          } else {
+                                            appData.layersViewOffset +=
+                                                details.delta;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "zones") {
+                                          if (!_isPointerDown) {
+                                            // scroll-triggered pan — ignore
+                                          } else if (_isResizingZone &&
+                                              appData.selectedZone != -1) {
+                                            LayoutUtils.resizeZoneFromCanvas(
+                                                appData, details.localPosition);
+                                            _didModifyZoneDuringGesture = true;
+                                            appData.update();
+                                            layoutZonesKey.currentState
+                                                ?.updateForm(appData);
+                                          } else if (_isDraggingZone &&
+                                              appData.selectedZone != -1) {
+                                            LayoutUtils.dragZoneFromCanvas(
+                                                appData, details.localPosition);
+                                            _didModifyZoneDuringGesture = true;
+                                            appData.update();
+                                            layoutZonesKey.currentState
+                                                ?.updateForm(appData);
+                                          } else {
+                                            appData.layersViewOffset +=
+                                                details.delta;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
+                                                "sprites" &&
+                                            appData.selectedSprite != -1) {
+                                          if (appData.selectedSprite != -1) {
+                                            LayoutUtils.dragSpriteFromCanvas(
+                                                appData, details.localPosition);
+                                            layoutSpritesKey.currentState
+                                                ?.updateForm(appData);
+                                          }
+                                        }
+                                      },
+                                      onPanEnd: (details) {
+                                        if (_isDragGestureActive) {
+                                          setState(() {
+                                            _isDragGestureActive = false;
+                                          });
+                                        }
+                                        if (appData.selectedSection ==
+                                            "layers") {
+                                          if (_isDraggingLayer) {
+                                            _isDraggingLayer = false;
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "tilemap") {
+                                          _isPaintingTilemap = false;
+                                          if (_didModifyTilemapDuringGesture) {
+                                            _didModifyTilemapDuringGesture =
+                                                false;
+                                            unawaited(
+                                                _autoSaveIfPossible(appData));
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "zones") {
+                                          appData.zoneDragOffset = Offset.zero;
+                                          if (_isDraggingZone) {
+                                            _isDraggingZone = false;
+                                          }
+                                          if (_isResizingZone) {
+                                            _isResizingZone = false;
+                                          }
+                                          if (_didModifyZoneDuringGesture) {
+                                            _didModifyZoneDuringGesture = false;
+                                            unawaited(
+                                                _autoSaveIfPossible(appData));
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "sprites") {
+                                          appData.zoneDragOffset = Offset.zero;
+                                        }
 
-                                appData.dragging = false;
-                                appData.draggingTileIndex = -1;
-                              },
-                              onTapDown: (TapDownDetails details) {
-                                if (appData.selectedSection == "layers") {
-                                  final int hit = LayoutUtils
-                                      .selectLayerFromPosition(
-                                          appData, details.localPosition);
-                                  if (hit == -1) {
-                                    if (appData.selectedLayer != -1) {
-                                      appData.selectedLayer = -1;
-                                      appData.update();
-                                    }
-                                  } else if (hit != appData.selectedLayer) {
-                                    appData.selectedLayer = hit;
-                                    appData.update();
-                                  }
-                                } else if (appData.selectedSection == "zones") {
-                                  LayoutUtils.selectZoneFromPosition(appData,
-                                      details.localPosition, layoutZonesKey);
-                                } else if (appData.selectedSection ==
-                                    "sprites") {
-                                  LayoutUtils.selectSpriteFromPosition(appData,
-                                      details.localPosition, layoutSpritesKey);
-                                }
-                              },
-                              onTapUp: (TapUpDetails details) {
-                                if (appData.selectedSection == "tilemap") {
-                                  if (!_isPaintingTilemap) {
-                                    final bool changed =
-                                        LayoutUtils.pasteSelectedTilePatternAtTilemap(
-                                      appData,
-                                      details.localPosition,
-                                      pushUndo: true,
-                                    );
-                                    if (changed) {
-                                      appData.update();
-                                      unawaited(_autoSaveIfPossible(appData));
-                                    }
-                                  }
-                                }
-                              },
-                              child: CustomPaint(
-                                painter: _layerImage != null
-                                    ? CanvasPainter(_layerImage!, appData)
-                                    : null,
-                                child: Container(),
-                              ),
-                            ),
-                          ),
+                                        appData.dragging = false;
+                                        appData.draggingTileIndex = -1;
+                                      },
+                                      onTapDown: (TapDownDetails details) {
+                                        if (appData.selectedSection ==
+                                            "layers") {
+                                          final int hit = LayoutUtils
+                                              .selectLayerFromPosition(appData,
+                                                  details.localPosition);
+                                          if (hit == -1) {
+                                            if (appData.selectedLayer != -1) {
+                                              appData.selectedLayer = -1;
+                                              appData.update();
+                                            }
+                                          } else if (hit !=
+                                              appData.selectedLayer) {
+                                            appData.selectedLayer = hit;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "zones") {
+                                          if (appData.selectedZone != -1 &&
+                                              LayoutUtils
+                                                  .isPointInZoneResizeHandle(
+                                                appData,
+                                                appData.selectedZone,
+                                                details.localPosition,
+                                              )) {
+                                            return;
+                                          }
+                                          LayoutUtils.selectZoneFromPosition(
+                                            appData,
+                                            details.localPosition,
+                                            layoutZonesKey,
+                                          );
+                                        } else if (appData.selectedSection ==
+                                            "sprites") {
+                                          LayoutUtils.selectSpriteFromPosition(
+                                              appData,
+                                              details.localPosition,
+                                              layoutSpritesKey);
+                                        }
+                                      },
+                                      onTapUp: (TapUpDetails details) {
+                                        if (appData.selectedSection ==
+                                            "tilemap") {
+                                          final bool changed = appData
+                                                  .tilemapEraserEnabled
+                                              ? LayoutUtils.eraseTileAtTilemap(
+                                                  appData,
+                                                  details.localPosition,
+                                                  pushUndo: true,
+                                                )
+                                              : LayoutUtils
+                                                  .pasteSelectedTilePatternAtTilemap(
+                                                  appData,
+                                                  details.localPosition,
+                                                  pushUndo: true,
+                                                );
+                                          if (changed) {
+                                            appData.update();
+                                            unawaited(
+                                                _autoSaveIfPossible(appData));
+                                          }
+                                        }
+                                      },
+                                      child: CustomPaint(
+                                        painter: _layerImage != null
+                                            ? CanvasPainter(
+                                                _layerImage!, appData)
+                                            : null,
+                                        child: Container(),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               );
                             },
                           ),
@@ -612,7 +854,6 @@ class _LayoutState extends State<Layout> {
               ),
             ],
           ),
-        ),
         ),
       ),
     );

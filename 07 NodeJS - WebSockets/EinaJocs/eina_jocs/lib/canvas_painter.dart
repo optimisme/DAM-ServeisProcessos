@@ -12,8 +12,14 @@ class CanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (appData.selectedSection == 'layers') {
-      _paintLayersViewport(canvas, size);
+    if (appData.selectedSection == 'layers' ||
+        appData.selectedSection == 'tilemap' ||
+        appData.selectedSection == 'zones') {
+      _paintWorldViewport(
+        canvas,
+        size,
+        renderingTilemap: appData.selectedSection == 'tilemap',
+      );
     } else {
       _paintDefault(canvas, size);
     }
@@ -66,7 +72,8 @@ class CanvasPainter extends CustomPainter {
 
         canvas.drawImageRect(
           tilesetImage,
-          Rect.fromLTWH(tileCol * tileWidth, tileRow * tileHeight, tileWidth, tileHeight),
+          Rect.fromLTWH(
+              tileCol * tileWidth, tileRow * tileHeight, tileWidth, tileHeight),
           Rect.fromLTWH(
             appData.draggingOffset.dx - tileWidth / 2,
             appData.draggingOffset.dy - tileHeight / 2,
@@ -79,9 +86,13 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
-  // ─── Layers viewport: zoom + pan + axis ─────────────────────────────────────
+  // ─── World viewport: zoom + pan + axis ─────────────────────────────────────
 
-  void _paintLayersViewport(Canvas canvas, Size size) {
+  void _paintWorldViewport(
+    Canvas canvas,
+    Size size, {
+    required bool renderingTilemap,
+  }) {
     final double vScale = appData.layersViewScale;
     final Offset vOffset = appData.layersViewOffset;
 
@@ -123,7 +134,11 @@ class CanvasPainter extends CustomPainter {
         final double lw = cols * tw;
         final double lh = rows * th;
 
-        final Paint tilePaint = Paint()..color = const Color(0xFFFFFFFF);
+        final double opacity =
+            renderingTilemap && li != appData.selectedLayer ? 0.5 : 1.0;
+        final int alpha = (255 * opacity).round().clamp(0, 255);
+        final Paint tilePaint = Paint()
+          ..color = Color.fromARGB(alpha, 255, 255, 255);
 
         for (int row = 0; row < rows; row++) {
           for (int col = 0; col < cols; col++) {
@@ -149,7 +164,8 @@ class CanvasPainter extends CustomPainter {
 
         // Draw grid lines over the layer
         final Paint gridPaint = Paint()
-          ..color = const Color(0x33000000)
+          ..color =
+              Color.fromARGB((51 * opacity).round().clamp(0, 255), 0, 0, 0)
           ..strokeWidth = 0.5
           ..style = PaintingStyle.stroke;
         for (int r = 0; r <= rows; r++) {
@@ -167,16 +183,69 @@ class CanvasPainter extends CustomPainter {
           );
         }
 
-        // Draw selection border for selected layer
-        if (li == appData.selectedLayer) {
+        // Draw selection border only in layers/tilemap views.
+        if ((appData.selectedSection == 'layers' ||
+                appData.selectedSection == 'tilemap') &&
+            li == appData.selectedLayer) {
+          final Color selectedColor = renderingTilemap
+              ? appData.tilesetSelectionColorForFile(layer.tilesSheetFile)
+              : const Color(0xFF2196F3);
           final Paint selPaint = Paint()
-            ..color = const Color(0xFF2196F3)
+            ..color = selectedColor
             ..strokeWidth = 2.0 / vScale
             ..style = PaintingStyle.stroke;
           canvas.drawRect(
             Rect.fromLTWH(drawLx + 1, drawLy + 1, lw - 2, lh - 2),
             selPaint,
           );
+        }
+      }
+
+      if (appData.selectedSection == 'zones') {
+        for (int i = 0; i < level.zones.length; i++) {
+          final zone = level.zones[i];
+          final Rect zoneRect = Rect.fromLTWH(
+            zone.x.toDouble(),
+            zone.y.toDouble(),
+            zone.width.toDouble(),
+            zone.height.toDouble(),
+          );
+          final Color zoneColor = LayoutUtils.getColorFromName(zone.color);
+          final Paint fillPaint = Paint()
+            ..color = zoneColor.withValues(alpha: 0.5)
+            ..style = PaintingStyle.fill;
+          canvas.drawRect(zoneRect, fillPaint);
+
+          if (i == appData.selectedZone) {
+            final Paint selectedPaint = Paint()
+              ..color = zoneColor
+              ..strokeWidth = 2.0 / vScale
+              ..style = PaintingStyle.stroke;
+            canvas.drawRect(zoneRect, selectedPaint);
+
+            final double maxHandleSize = zone.width <= 0 || zone.height <= 0
+                ? 0
+                : zone.width < zone.height
+                    ? zone.width.toDouble()
+                    : zone.height.toDouble();
+            final double handleSize = maxHandleSize <= 0
+                ? 0
+                : LayoutUtils.zoneResizeHandleSizeWorld(appData)
+                    .clamp(0, maxHandleSize);
+            if (handleSize > 0) {
+              final double right = zoneRect.right;
+              final double bottom = zoneRect.bottom;
+              final Path handlePath = Path()
+                ..moveTo(right, bottom)
+                ..lineTo(right - handleSize, bottom)
+                ..lineTo(right, bottom - handleSize)
+                ..close();
+              final Paint handlePaint = Paint()
+                ..color = zoneColor
+                ..style = PaintingStyle.fill;
+              canvas.drawPath(handlePath, handlePaint);
+            }
+          }
         }
       }
     }
@@ -290,7 +359,8 @@ class CanvasPainter extends CustomPainter {
     );
   }
 
-  void _drawLabel(Canvas canvas, String text, Offset position, TextStyle style) {
+  void _drawLabel(
+      Canvas canvas, String text, Offset position, TextStyle style) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,

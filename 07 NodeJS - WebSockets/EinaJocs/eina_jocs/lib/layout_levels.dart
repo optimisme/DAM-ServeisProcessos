@@ -282,6 +282,10 @@ class LayoutLevelsState extends State<LayoutLevels> {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final TextStyle listItemTitleStyle = typography.body.copyWith(
+      fontSize: (typography.body.fontSize ?? 14) + 2,
+      fontWeight: FontWeight.w700,
+    );
     final levels = appData.gameData.levels;
 
     return Column(
@@ -294,10 +298,6 @@ class LayoutLevelsState extends State<LayoutLevels> {
               CDKText(
                 'Game Levels',
                 role: CDKTextRole.title,
-                style: typography.title.copyWith(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                ),
               ),
               const Spacer(),
               CDKButton(
@@ -360,17 +360,12 @@ class LayoutLevelsState extends State<LayoutLevels> {
                                           role: isSelected
                                               ? CDKTextRole.bodyStrong
                                               : CDKTextRole.body,
-                                          style: TextStyle(
-                                            fontSize: isSelected ? 17 : 16,
-                                            fontWeight: isSelected
-                                                ? FontWeight.w700
-                                                : FontWeight.w600,
-                                          ),
+                                          style: listItemTitleStyle,
                                         ),
                                         const SizedBox(height: 2),
                                         CDKText(
                                           levels[index].description,
-                                          role: CDKTextRole.caption,
+                                          role: CDKTextRole.body,
                                           color: cdkColors.colorText,
                                         ),
                                       ],

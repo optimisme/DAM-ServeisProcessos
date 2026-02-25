@@ -335,6 +335,10 @@ class LayoutLayersState extends State<LayoutLayers> {
     final AppData appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final TextStyle listItemTitleStyle = typography.body.copyWith(
+      fontSize: (typography.body.fontSize ?? 14) + 2,
+      fontWeight: FontWeight.w700,
+    );
 
     if (appData.selectedLevel == -1) {
       return const Center(
@@ -363,10 +367,6 @@ class LayoutLayersState extends State<LayoutLayers> {
               CDKText(
                 'Layers',
                 role: CDKTextRole.title,
-                style: typography.title.copyWith(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                ),
               ),
               const Spacer(),
               if (hasTilesets)
@@ -445,23 +445,18 @@ class LayoutLayersState extends State<LayoutLayers> {
                                         role: isSelected
                                             ? CDKTextRole.bodyStrong
                                             : CDKTextRole.body,
-                                        style: TextStyle(
-                                          fontSize: isSelected ? 17 : 16,
-                                          fontWeight: isSelected
-                                              ? FontWeight.w700
-                                              : FontWeight.w600,
-                                        ),
+                                        style: listItemTitleStyle,
                                       ),
                                       const SizedBox(height: 2),
                                       CDKText(
                                         subtitle,
-                                        role: CDKTextRole.caption,
+                                        role: CDKTextRole.body,
                                         color: cdkColors.colorText,
                                       ),
                                       const SizedBox(height: 2),
                                       CDKText(
                                         details,
-                                        role: CDKTextRole.caption,
+                                        role: CDKTextRole.body,
                                         color: cdkColors.colorText,
                                       ),
                                     ],
@@ -594,8 +589,8 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
   int _resolveInitialAssetIndex() {
     final String current = widget.initialData.tilesSheetFile;
     if (current.isNotEmpty) {
-      final int found = widget.tilesetAssets
-          .indexWhere((a) => a.fileName == current);
+      final int found =
+          widget.tilesetAssets.indexWhere((a) => a.fileName == current);
       if (found != -1) return found;
     }
     return 0;
@@ -640,8 +635,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
         tileWidth: asset.tileWidth,
         tileHeight: asset.tileHeight,
         tilemapWidth: int.tryParse(_tilemapWidthController.text.trim()) ?? 32,
-        tilemapHeight:
-            int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
+        tilemapHeight: int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
         visible: _visible,
       ),
     );

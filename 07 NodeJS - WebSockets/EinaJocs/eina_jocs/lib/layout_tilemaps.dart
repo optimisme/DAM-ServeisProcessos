@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -40,7 +41,6 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
   bool _isDraggingSelection = false;
   Future<ui.Image>? _tilesetImageFuture;
   String _tilesetImagePath = '';
-  final GlobalKey _settingsAnchorKey = GlobalKey();
 
   void _ensureTilesetImageFuture(AppData appData, String tilesheetPath) {
     if (_tilesetImageFuture != null && _tilesetImagePath == tilesheetPath) {
@@ -56,33 +56,7 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
     _tilesetImageFuture = appData.getImage(tilesheetPath);
   }
 
-  void _showSelectionColorPopover(AppData appData) {
-    if (Overlay.maybeOf(context) == null) return;
-    final CDKDialogController controller = CDKDialogController();
-    CDKDialogsManager.showPopoverArrowed(
-      context: context,
-      anchorKey: _settingsAnchorKey,
-      isAnimated: true,
-      animateContentResize: false,
-      dismissOnEscape: true,
-      dismissOnOutsideTap: true,
-      showBackgroundShade: false,
-      controller: controller,
-      child: _TilesetSelectionColorPopover(
-        selectedColor: appData.tilesetSelectionAccentColor,
-        onSelect: (Color color) {
-          appData.tilesetSelectionAccentColor = color;
-          appData.update();
-          controller.close();
-        },
-      ),
-    );
-  }
-
-  Widget _buildHeader({
-    required AppData appData,
-    required TextStyle titleStyle,
-  }) {
+  Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
       child: Row(
@@ -90,16 +64,61 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
           CDKText(
             'Tileset',
             role: CDKTextRole.title,
-            style: titleStyle,
           ),
-          const Spacer(),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _setSelectionColorForLayer(
+      AppData appData, GameLayer layer, Color color) async {
+    final bool changed =
+        appData.setTilesetSelectionColorForFile(layer.tilesSheetFile, color);
+    if (!changed) {
+      return;
+    }
+    appData.update();
+    if (appData.selectedProject != null) {
+      await appData.saveGame();
+    }
+  }
+
+  Widget _buildSelectionColorRow(AppData appData, GameLayer layer) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: _TilesetSelectionColorPicker(
+        selectedColor:
+            appData.tilesetSelectionColorForFile(layer.tilesSheetFile),
+        onSelect: (Color color) {
+          unawaited(_setSelectionColorForLayer(appData, layer, color));
+        },
+      ),
+    );
+  }
+
+  Widget _buildToolRow(AppData appData) {
+    void toggleEraser() {
+      appData.tilemapEraserEnabled = !appData.tilemapEraserEnabled;
+      appData.update();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Row(
+        children: [
+          const CDKText(
+            'Erase',
+            role: CDKTextRole.caption,
+          ),
+          const SizedBox(width: 8),
           CDKButton(
-            key: _settingsAnchorKey,
-            style: CDKButtonStyle.normal,
-            onPressed: () => _showSelectionColorPopover(appData),
+            style: appData.tilemapEraserEnabled
+                ? CDKButtonStyle.action
+                : CDKButtonStyle.normal,
+            onPressed: toggleEraser,
             child: const Icon(
-              CupertinoIcons.gear,
-              size: 16,
+              CupertinoIcons.trash,
+              size: 14,
             ),
           ),
         ],
@@ -160,14 +179,10 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
       return;
     }
 
-    final int startCol =
-        startTile.dx.toInt().clamp(0, cols - 1);
-    final int startRow =
-        startTile.dy.toInt().clamp(0, rows - 1);
-    final int endCol =
-        endTile.dx.toInt().clamp(0, cols - 1);
-    final int endRow =
-        endTile.dy.toInt().clamp(0, rows - 1);
+    final int startCol = startTile.dx.toInt().clamp(0, cols - 1);
+    final int startRow = startTile.dy.toInt().clamp(0, rows - 1);
+    final int endCol = endTile.dx.toInt().clamp(0, cols - 1);
+    final int endRow = endTile.dy.toInt().clamp(0, rows - 1);
 
     final int left = math.min(startCol, endCol);
     final int right = math.max(startCol, endCol);
@@ -215,16 +230,25 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
 
     final int col = tile.dx.toInt();
     final int row = tile.dy.toInt();
-    final bool isSameSingle = appData.selectedTilePattern.length == 1 &&
-        appData.selectedTilePattern.first.length == 1 &&
-        appData.tilesetSelectionColStart == col &&
-        appData.tilesetSelectionRowStart == row &&
-        appData.tilesetSelectionColEnd == col &&
-        appData.tilesetSelectionRowEnd == row;
-
-    if (isSameSingle) {
-      _clearTileSelection(appData);
-      return;
+    if (appData.selectedTilePattern.isNotEmpty &&
+        appData.tilesetSelectionColStart >= 0 &&
+        appData.tilesetSelectionRowStart >= 0 &&
+        appData.tilesetSelectionColEnd >= 0 &&
+        appData.tilesetSelectionRowEnd >= 0) {
+      final int left = math.min(
+          appData.tilesetSelectionColStart, appData.tilesetSelectionColEnd);
+      final int right = math.max(
+          appData.tilesetSelectionColStart, appData.tilesetSelectionColEnd);
+      final int top = math.min(
+          appData.tilesetSelectionRowStart, appData.tilesetSelectionRowEnd);
+      final int bottom = math.max(
+          appData.tilesetSelectionRowStart, appData.tilesetSelectionRowEnd);
+      final bool isInsideCurrentSelection =
+          col >= left && col <= right && row >= top && row <= bottom;
+      if (isInsideCurrentSelection) {
+        _clearTileSelection(appData);
+        return;
+      }
     }
 
     _setRectTileSelection(
@@ -240,7 +264,6 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    final typography = CDKThemeNotifier.typographyTokensOf(context);
 
     final bool hasLevel = appData.selectedLevel != -1;
     final bool hasLayer = hasLevel && appData.selectedLayer != -1;
@@ -251,13 +274,7 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(
-            appData: appData,
-            titleStyle: typography.title.copyWith(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          _buildHeader(),
           Expanded(
             child: Center(
               child: CDKText(
@@ -272,26 +289,27 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
       );
     }
 
-    final GameLayer layer =
-        appData.gameData.levels[appData.selectedLevel].layers[appData.selectedLayer];
+    final GameLayer layer = appData
+        .gameData.levels[appData.selectedLevel].layers[appData.selectedLayer];
     _ensureTilesetImageFuture(appData, layer.tilesSheetFile);
     final int selectedRows = appData.selectedTilePattern.length;
     final int selectedCols =
         selectedRows == 0 ? 0 : appData.selectedTilePattern.first.length;
-    final String selectionLabel = selectedRows == 0
-        ? 'Selection: none'
-        : 'Selection: ${selectedCols}x$selectedRows tile(s)';
+    final bool hasSelection = selectedRows > 0;
+    final String selectionLabel = appData.tilemapEraserEnabled && hasSelection
+        ? 'Selection: hidden while erasing'
+        : selectedRows == 0
+            ? 'Selection: none'
+            : 'Selection: ${selectedCols}x$selectedRows tile(s)';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHeader(
-          appData: appData,
-          titleStyle: typography.title.copyWith(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        _buildHeader(),
+        _buildSelectionColorRow(appData, layer),
+        const SizedBox(height: 6),
+        _buildToolRow(appData),
+        const SizedBox(height: 6),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: CDKText(
@@ -342,8 +360,10 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
               return LayoutBuilder(
                 builder: (context, constraints) {
                   const double padding = 8.0;
-                  final double maxWidth = math.max(1, constraints.maxWidth - padding * 2);
-                  final double maxHeight = math.max(1, constraints.maxHeight - padding * 2);
+                  final double maxWidth =
+                      math.max(1, constraints.maxWidth - padding * 2);
+                  final double maxHeight =
+                      math.max(1, constraints.maxHeight - padding * 2);
                   final double imageScale = math.min(
                     maxWidth / image.width,
                     maxHeight / image.height,
@@ -358,6 +378,9 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTapUp: (details) {
+                      if (appData.tilemapEraserEnabled) {
+                        return;
+                      }
                       _toggleSingleTileSelection(
                         appData: appData,
                         layer: layer,
@@ -368,6 +391,11 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
                       );
                     },
                     onPanStart: (details) {
+                      if (appData.tilemapEraserEnabled) {
+                        _dragSelectionStartTile = null;
+                        _isDraggingSelection = false;
+                        return;
+                      }
                       final Offset? tile = _tileFromLocalPosition(
                         localPosition: details.localPosition,
                         imageOffset: imageOffset,
@@ -391,7 +419,8 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
                       );
                     },
                     onPanUpdate: (details) {
-                      if (!_isDraggingSelection || _dragSelectionStartTile == null) {
+                      if (!_isDraggingSelection ||
+                          _dragSelectionStartTile == null) {
                         return;
                       }
                       final Offset? tile = _tileFromLocalPosition(
@@ -421,11 +450,20 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
                         imageScale: imageScale,
                         tileWidth: layer.tilesWidth.toDouble(),
                         tileHeight: layer.tilesHeight.toDouble(),
-                        selectionColStart: appData.tilesetSelectionColStart,
-                        selectionRowStart: appData.tilesetSelectionRowStart,
-                        selectionColEnd: appData.tilesetSelectionColEnd,
-                        selectionRowEnd: appData.tilesetSelectionRowEnd,
-                        selectionColor: appData.tilesetSelectionAccentColor,
+                        selectionColStart: appData.tilemapEraserEnabled
+                            ? -1
+                            : appData.tilesetSelectionColStart,
+                        selectionRowStart: appData.tilemapEraserEnabled
+                            ? -1
+                            : appData.tilesetSelectionRowStart,
+                        selectionColEnd: appData.tilemapEraserEnabled
+                            ? -1
+                            : appData.tilesetSelectionColEnd,
+                        selectionRowEnd: appData.tilemapEraserEnabled
+                            ? -1
+                            : appData.tilesetSelectionRowEnd,
+                        selectionColor: appData
+                            .tilesetSelectionColorForFile(layer.tilesSheetFile),
                       ),
                       child: const SizedBox.expand(),
                     ),
@@ -548,8 +586,8 @@ class _TilesetSelectionPainter extends CustomPainter {
   }
 }
 
-class _TilesetSelectionColorPopover extends StatelessWidget {
-  const _TilesetSelectionColorPopover({
+class _TilesetSelectionColorPicker extends StatelessWidget {
+  const _TilesetSelectionColorPicker({
     required this.selectedColor,
     required this.onSelect,
   });
@@ -560,46 +598,64 @@ class _TilesetSelectionColorPopover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 250),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.md),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CDKText(
-              'Selection Color',
-              role: CDKTextRole.bodyStrong,
-            ),
-            SizedBox(height: spacing.sm),
-            Wrap(
-              spacing: spacing.sm,
-              runSpacing: spacing.sm,
-              children: _tilesetAccentOptions.map((option) {
-                final bool isSelected = option.color == selectedColor;
-                return GestureDetector(
-                  onTap: () => onSelect(option.color),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: option.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected
-                            ? CupertinoColors.black
-                            : CupertinoColors.white,
-                        width: isSelected ? 2.5 : 1,
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    const double swatchSize = 20;
+    const double selectionGap = 1.5;
+    const double selectionStroke = 2;
+    const double slotSize = swatchSize + (selectionGap + selectionStroke) * 2;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const CDKText(
+          'Selection Color',
+          role: CDKTextRole.caption,
+        ),
+        SizedBox(height: spacing.xs),
+        Wrap(
+          spacing: spacing.xs,
+          runSpacing: spacing.xs,
+          children: _tilesetAccentOptions.map((option) {
+            final bool isSelected = option.color == selectedColor;
+            return GestureDetector(
+              onTap: () => onSelect(option.color),
+              child: SizedBox(
+                width: slotSize,
+                height: slotSize,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (isSelected)
+                      Container(
+                        width: slotSize,
+                        height: slotSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: cdkColors.accent,
+                            width: selectionStroke,
+                          ),
+                        ),
+                      ),
+                    Container(
+                      width: swatchSize,
+                      height: swatchSize,
+                      decoration: BoxDecoration(
+                        color: option.color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: CupertinoColors.systemGrey
+                              .withValues(alpha: 0.45),
+                          width: 1,
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }).toList(growable: false),
-            ),
-          ],
+                  ],
+                ),
+              ),
+            );
+          }).toList(growable: false),
         ),
-      ),
+      ],
     );
   }
 }

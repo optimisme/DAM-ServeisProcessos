@@ -70,6 +70,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
       mediaType: data.mediaType,
       tileWidth: data.tileWidth,
       tileHeight: data.tileHeight,
+      selectionColorHex: assets[index].selectionColorHex,
     );
     appData.selectedMedia = index;
     appData.update();
@@ -263,6 +264,10 @@ class _LayoutMediaState extends State<LayoutMedia> {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final TextStyle listItemTitleStyle = typography.body.copyWith(
+      fontSize: (typography.body.fontSize ?? 14) + 2,
+      fontWeight: FontWeight.w700,
+    );
 
     if (appData.selectedProject == null) {
       return const Center(
@@ -290,10 +295,6 @@ class _LayoutMediaState extends State<LayoutMedia> {
               CDKText(
                 'Media',
                 role: CDKTextRole.title,
-                style: typography.title.copyWith(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                ),
               ),
               const Spacer(),
               CDKButton(
@@ -357,10 +358,8 @@ class _LayoutMediaState extends State<LayoutMedia> {
                               children: [
                                 Icon(
                                   switch (asset.mediaType) {
-                                    'tileset' =>
-                                      CupertinoIcons.square_grid_2x2,
-                                    'spritesheet' =>
-                                      CupertinoIcons.film,
+                                    'tileset' => CupertinoIcons.square_grid_2x2,
+                                    'spritesheet' => CupertinoIcons.film,
                                     'atlas' =>
                                       CupertinoIcons.rectangle_grid_2x2,
                                     _ => CupertinoIcons.photo,
@@ -379,17 +378,12 @@ class _LayoutMediaState extends State<LayoutMedia> {
                                         role: isSelected
                                             ? CDKTextRole.bodyStrong
                                             : CDKTextRole.body,
-                                        style: TextStyle(
-                                          fontSize: isSelected ? 17 : 16,
-                                          fontWeight: isSelected
-                                              ? FontWeight.w700
-                                              : FontWeight.w600,
-                                        ),
+                                        style: listItemTitleStyle,
                                       ),
                                       const SizedBox(height: 2),
                                       CDKText(
                                         subtitle,
-                                        role: CDKTextRole.caption,
+                                        role: CDKTextRole.body,
                                         color: cdkColors.colorText,
                                       ),
                                     ],
@@ -493,14 +487,13 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       TextEditingController(text: widget.initialData.tileWidth.toString());
   late final TextEditingController _tileHeightController =
       TextEditingController(text: widget.initialData.tileHeight.toString());
-  late String _mediaType = GameMediaAsset.validTypes
-          .contains(widget.initialData.mediaType)
-      ? widget.initialData.mediaType
-      : 'image';
+  late String _mediaType =
+      GameMediaAsset.validTypes.contains(widget.initialData.mediaType)
+          ? widget.initialData.mediaType
+          : 'image';
   String? _sizeError;
 
-  bool get _hasTileGrid =>
-      _mediaType == 'tileset' || _mediaType == 'atlas';
+  bool get _hasTileGrid => _mediaType == 'tileset' || _mediaType == 'atlas';
 
   bool get _isValid {
     if (!_hasTileGrid) {

@@ -229,8 +229,8 @@ class LayoutUtils {
       if (layer.visible == false) {
         continue;
       }
-      final tilemapImage = await generateTilemapImage(appData,
-          appData.selectedLevel, layerIndex, drawGrid);
+      final tilemapImage = await generateTilemapImage(
+          appData, appData.selectedLevel, layerIndex, drawGrid);
 
       imgCanvas.drawImage(tilemapImage,
           Offset(layer.x.toDouble(), layer.y.toDouble()), Paint());
@@ -408,7 +408,7 @@ class LayoutUtils {
     return row * tilesetColumns + col;
   }
 
-  static selectTileIndexFromTileset(
+  static Future<void> selectTileIndexFromTileset(
       AppData appData, Offset localPosition) async {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) {
       return;
@@ -466,42 +466,117 @@ class LayoutUtils {
     appData.draggingOffset = localPosition;
   }
 
-  static void selectZoneFromPosition(AppData appData, Offset localPosition,
-      GlobalKey<LayoutZonesState> layoutZonesKey) {
-    Offset levelCoords = LayoutUtils.translateCoords(
+  static int zoneIndexFromPosition(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1) {
+      return -1;
+    }
+    final Offset levelCoords = LayoutUtils.translateCoords(
         localPosition, appData.imageOffset, appData.scaleFactor);
     final zones = appData.gameData.levels[appData.selectedLevel].zones;
-    for (var i = 0; i < zones.length; i++) {
+    for (int i = zones.length - 1; i >= 0; i--) {
       final zone = zones[i];
       final rect = Rect.fromLTWH(zone.x.toDouble(), zone.y.toDouble(),
           zone.width.toDouble(), zone.height.toDouble());
       if (rect.contains(levelCoords)) {
-        layoutZonesKey.currentState?.selectZone(appData, i, false);
-        break;
-      } else {
-        layoutZonesKey.currentState?.selectZone(appData, -1, false);
+        return i;
       }
     }
+    return -1;
   }
 
-  static void startDragZoneFromPosition(AppData appData, Offset localPosition,
-      GlobalKey<LayoutZonesState> layoutZonesKey) {
-    Offset levelCoords = LayoutUtils.translateCoords(
-        localPosition, appData.imageOffset, appData.scaleFactor);
-    final zones = appData.gameData.levels[appData.selectedLevel].zones;
-    for (var i = 0; i < zones.length; i++) {
-      final zone = zones[i];
-      final rect = Rect.fromLTWH(zone.x.toDouble(), zone.y.toDouble(),
-          zone.width.toDouble(), zone.height.toDouble());
-      if (rect.contains(levelCoords)) {
-        appData.pushUndo();
-        appData.zoneDragOffset =
-            levelCoords - Offset(zone.x.toDouble(), zone.y.toDouble());
-        break;
-      } else {
-        appData.zoneDragOffset = Offset.zero;
-      }
+  static double zoneResizeHandleSizeWorld(AppData appData) {
+    final double scale = appData.scaleFactor <= 0 ? 1.0 : appData.scaleFactor;
+    return (14.0 / scale).clamp(6.0, 24.0);
+  }
+
+  static bool isPointInZoneResizeHandle(
+      AppData appData, int zoneIndex, Offset localPosition) {
+    if (appData.selectedLevel == -1) {
+      return false;
     }
+    final zones = appData.gameData.levels[appData.selectedLevel].zones;
+    if (zoneIndex < 0 || zoneIndex >= zones.length) {
+      return false;
+    }
+    final zone = zones[zoneIndex];
+    final double right = zone.x.toDouble() + zone.width.toDouble();
+    final double bottom = zone.y.toDouble() + zone.height.toDouble();
+    final Offset levelCoords = LayoutUtils.translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
+    final double maxHandle = math.min(
+      zone.width.toDouble().abs(),
+      zone.height.toDouble().abs(),
+    );
+    final double handleSize =
+        math.min(zoneResizeHandleSizeWorld(appData), maxHandle);
+    if (handleSize <= 0) {
+      return false;
+    }
+    final bool inBounds = levelCoords.dx >= right - handleSize &&
+        levelCoords.dx <= right &&
+        levelCoords.dy >= bottom - handleSize &&
+        levelCoords.dy <= bottom;
+    if (!inBounds) {
+      return false;
+    }
+    return levelCoords.dx + levelCoords.dy >= right + bottom - handleSize;
+  }
+
+  static void selectZoneFromPosition(AppData appData, Offset localPosition,
+      GlobalKey<LayoutZonesState> layoutZonesKey) {
+    final int hitIndex = zoneIndexFromPosition(appData, localPosition);
+    if (hitIndex == -1) {
+      layoutZonesKey.currentState?.selectZone(appData, -1, false);
+      return;
+    }
+    final bool isSelected = appData.selectedZone == hitIndex;
+    layoutZonesKey.currentState?.selectZone(appData, hitIndex, isSelected);
+  }
+
+  static void startDragZoneFromPosition(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1) {
+      appData.zoneDragOffset = Offset.zero;
+      return;
+    }
+    final int hitIndex = zoneIndexFromPosition(appData, localPosition);
+    if (hitIndex == -1) {
+      appData.zoneDragOffset = Offset.zero;
+      return;
+    }
+    final Offset levelCoords = LayoutUtils.translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    final zone = appData.gameData.levels[appData.selectedLevel].zones[hitIndex];
+    appData.pushUndo();
+    appData.zoneDragOffset =
+        levelCoords - Offset(zone.x.toDouble(), zone.y.toDouble());
+  }
+
+  static void startResizeZoneFromPosition(
+      AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedZone == -1) {
+      appData.zoneDragOffset = Offset.zero;
+      return;
+    }
+    final zones = appData.gameData.levels[appData.selectedLevel].zones;
+    if (appData.selectedZone < 0 || appData.selectedZone >= zones.length) {
+      appData.zoneDragOffset = Offset.zero;
+      return;
+    }
+    final Offset levelCoords = LayoutUtils.translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
+    final zone = zones[appData.selectedZone];
+    final Offset zoneBottomRight = Offset(
+      zone.x.toDouble() + zone.width.toDouble(),
+      zone.y.toDouble() + zone.height.toDouble(),
+    );
+    appData.pushUndo();
+    appData.zoneDragOffset = levelCoords - zoneBottomRight;
   }
 
   static void dragZoneFromCanvas(AppData appData, Offset localPosition) {
@@ -512,6 +587,23 @@ class LayoutUtils {
         .gameData.levels[appData.selectedLevel].zones[appData.selectedZone];
     zone.x = (levelCoords.dx - appData.zoneDragOffset.dx).toInt();
     zone.y = (levelCoords.dy - appData.zoneDragOffset.dy).toInt();
+  }
+
+  static void resizeZoneFromCanvas(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedZone == -1) return;
+    final zones = appData.gameData.levels[appData.selectedLevel].zones;
+    if (appData.selectedZone < 0 || appData.selectedZone >= zones.length) {
+      return;
+    }
+    final Offset levelCoords = translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
+    final GameZone zone = zones[appData.selectedZone];
+    final Offset bottomRight = levelCoords - appData.zoneDragOffset;
+    zone.width = math.max(1, (bottomRight.dx - zone.x.toDouble()).round());
+    zone.height = math.max(1, (bottomRight.dy - zone.y.toDouble()).round());
   }
 
   static void selectSpriteFromPosition(AppData appData, Offset localPosition,
@@ -576,7 +668,8 @@ class LayoutUtils {
         _parallaxImageOffsetForLayer(appData, layer),
         appData.scaleFactor,
       );
-      final double w = (layer.tileMap.first.length * layer.tilesWidth).toDouble();
+      final double w =
+          (layer.tileMap.first.length * layer.tilesWidth).toDouble();
       final double h = (layer.tileMap.length * layer.tilesHeight).toDouble();
       final Rect bounds =
           Rect.fromLTWH(layer.x.toDouble(), layer.y.toDouble(), w, h);
@@ -590,8 +683,8 @@ class LayoutUtils {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) {
       return false;
     }
-    final layer = appData.gameData.levels[appData.selectedLevel]
-        .layers[appData.selectedLayer];
+    final layer = appData
+        .gameData.levels[appData.selectedLevel].layers[appData.selectedLayer];
     if (!layer.visible) return false;
     if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) return false;
     final Offset worldPos = translateCoords(
@@ -599,8 +692,7 @@ class LayoutUtils {
       _parallaxImageOffsetForLayer(appData, layer),
       appData.scaleFactor,
     );
-    final double w =
-        (layer.tileMap.first.length * layer.tilesWidth).toDouble();
+    final double w = (layer.tileMap.first.length * layer.tilesWidth).toDouble();
     final double h = (layer.tileMap.length * layer.tilesHeight).toDouble();
     final Rect bounds =
         Rect.fromLTWH(layer.x.toDouble(), layer.y.toDouble(), w, h);
@@ -611,8 +703,8 @@ class LayoutUtils {
   static void startDragLayerFromPosition(
       AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) return;
-    final layer = appData.gameData.levels[appData.selectedLevel]
-        .layers[appData.selectedLayer];
+    final layer = appData
+        .gameData.levels[appData.selectedLevel].layers[appData.selectedLayer];
     final Offset worldPos = translateCoords(
       localPosition,
       _parallaxImageOffsetForLayer(appData, layer),
@@ -626,8 +718,7 @@ class LayoutUtils {
   /// Move the selected layer to follow the cursor.
   static void dragLayerFromCanvas(AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1 || appData.selectedLayer == -1) return;
-    final layers =
-        appData.gameData.levels[appData.selectedLevel].layers;
+    final layers = appData.gameData.levels[appData.selectedLevel].layers;
     final GameLayer old = layers[appData.selectedLayer];
     final Offset worldPos = translateCoords(
       localPosition,
@@ -656,9 +747,37 @@ class LayoutUtils {
 
     final level = appData.gameData.levels[appData.selectedLevel];
     final layer = level.layers[appData.selectedLayer];
+    if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) {
+      return null;
+    }
 
     if (layer.tilesWidth <= 0 || layer.tilesHeight <= 0) {
       return null;
+    }
+
+    if (appData.selectedSection == "tilemap") {
+      final Offset worldCoords = translateCoords(
+        localPosition,
+        _parallaxImageOffsetForLayer(appData, layer),
+        appData.scaleFactor,
+      );
+      final double localX = worldCoords.dx - layer.x;
+      final double localY = worldCoords.dy - layer.y;
+
+      final double tilemapWidth =
+          layer.tilesWidth * layer.tileMap[0].length.toDouble();
+      final double tilemapHeight =
+          layer.tilesHeight * layer.tileMap.length.toDouble();
+      if (localX < 0 ||
+          localY < 0 ||
+          localX >= tilemapWidth ||
+          localY >= tilemapHeight) {
+        return null;
+      }
+
+      final int col = (localX / layer.tilesWidth).floor();
+      final int row = (localY / layer.tilesHeight).floor();
+      return Offset(row.toDouble(), col.toDouble());
     }
 
     // Convertir de coordenades de canvas a coordenades d'imatge
@@ -744,6 +863,29 @@ class LayoutUtils {
     return changed;
   }
 
+  static bool eraseTileAtTilemap(
+    AppData appData,
+    Offset localPosition, {
+    bool pushUndo = false,
+  }) {
+    final Offset? tileCoords = getTilemapCoords(appData, localPosition);
+    if (tileCoords == null) return false;
+
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final layer = level.layers[appData.selectedLayer];
+    final int row = tileCoords.dx.toInt();
+    final int col = tileCoords.dy.toInt();
+
+    if (layer.tileMap[row][col] == -1) {
+      return false;
+    }
+    if (pushUndo) {
+      appData.pushUndo();
+    }
+    layer.tileMap[row][col] = -1;
+    return true;
+  }
+
   static void setSelectedTileIndexFromTileset(
       AppData appData, Offset localPosition) {
     Offset? tileCoords = getTilemapCoords(appData, localPosition);
@@ -792,17 +934,40 @@ class LayoutUtils {
         return Colors.orange;
       case "red":
         return Colors.red;
-
       case "purple":
         return Colors.purple;
+      case "pink":
+        return Colors.pink;
+      case "indigo":
+        return Colors.indigo;
+      case "teal":
+        return Colors.teal;
+      case "cyan":
+        return Colors.cyan;
+      case "lightBlue":
+        return Colors.lightBlue;
+      case "lightGreen":
+        return Colors.lightGreen;
+      case "lime":
+        return Colors.lime;
+      case "amber":
+        return Colors.amber;
+      case "deepOrange":
+        return Colors.deepOrange;
+      case "brown":
+        return Colors.brown;
+      case "blueGrey":
+        return Colors.blueGrey;
       case "grey":
         return Colors.grey;
+      case "white":
+        return Colors.white;
       default:
         return Colors.black;
     }
   }
 
-  static drawSelectedRect(Canvas cnv, Rect rect, Color color) {
+  static void drawSelectedRect(Canvas cnv, Rect rect, Color color) {
     cnv.drawRect(
       rect,
       Paint()

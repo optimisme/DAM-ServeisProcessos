@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'game_data.dart';
+import 'game_media_asset.dart';
 
 class StoredProject {
   final String id;
@@ -49,6 +50,7 @@ class AppData extends ChangeNotifier {
   static const String appFolderName = "EinaJocs";
   static const String projectsFolderName = "projects";
   static const String projectsIndexFileName = "projects_index.json";
+  static const Color defaultTilesetSelectionColor = Color(0xFFFFCC00);
   int frame = 0;
   final gameFileName = "game_data.json";
 
@@ -91,11 +93,11 @@ class AppData extends ChangeNotifier {
   int draggingTileIndex = -1;
   int selectedTileIndex = -1;
   List<List<int>> selectedTilePattern = [];
+  bool tilemapEraserEnabled = false;
   int tilesetSelectionColStart = -1;
   int tilesetSelectionRowStart = -1;
   int tilesetSelectionColEnd = -1;
   int tilesetSelectionRowEnd = -1;
-  Color tilesetSelectionAccentColor = const Color(0xFF2196F3);
 
   // Drag offsets
   late Offset zoneDragOffset = Offset.zero;
@@ -398,6 +400,7 @@ class AppData extends ChangeNotifier {
     selectedMedia = -1;
     selectedTileIndex = -1;
     selectedTilePattern = [];
+    tilemapEraserEnabled = false;
     tilesetSelectionColStart = -1;
     tilesetSelectionRowStart = -1;
     tilesetSelectionColEnd = -1;
@@ -456,6 +459,7 @@ class AppData extends ChangeNotifier {
     selectedMedia = -1;
     selectedTileIndex = -1;
     selectedTilePattern = [];
+    tilemapEraserEnabled = false;
     tilesetSelectionColStart = -1;
     tilesetSelectionRowStart = -1;
     tilesetSelectionColEnd = -1;
@@ -575,6 +579,7 @@ class AppData extends ChangeNotifier {
       selectedMedia = -1;
       selectedTileIndex = -1;
       selectedTilePattern = [];
+      tilemapEraserEnabled = false;
       tilesetSelectionColStart = -1;
       tilesetSelectionRowStart = -1;
       tilesetSelectionColEnd = -1;
@@ -809,6 +814,55 @@ class AppData extends ChangeNotifier {
         print("Error saving game file: $e");
       }
     }
+  }
+
+  GameMediaAsset? mediaAssetByFileName(String fileName) {
+    for (final asset in gameData.mediaAssets) {
+      if (asset.fileName == fileName) {
+        return asset;
+      }
+    }
+    return null;
+  }
+
+  Color tilesetSelectionColorForFile(String fileName) {
+    final asset = mediaAssetByFileName(fileName);
+    if (asset == null) {
+      return defaultTilesetSelectionColor;
+    }
+    return _parseHexColor(
+        asset.selectionColorHex, defaultTilesetSelectionColor);
+  }
+
+  bool setTilesetSelectionColorForFile(String fileName, Color color) {
+    final asset = mediaAssetByFileName(fileName);
+    if (asset == null) {
+      return false;
+    }
+    final String nextHex = _toHexColor(color);
+    if (asset.selectionColorHex == nextHex) {
+      return false;
+    }
+    asset.selectionColorHex = nextHex;
+    return true;
+  }
+
+  Color _parseHexColor(String hex, Color fallback) {
+    final String cleaned = hex.trim().replaceFirst('#', '').toUpperCase();
+    final RegExp sixHex = RegExp(r'^[0-9A-F]{6}$');
+    if (!sixHex.hasMatch(cleaned)) {
+      return fallback;
+    }
+    final int? rgb = int.tryParse(cleaned, radix: 16);
+    if (rgb == null) {
+      return fallback;
+    }
+    return Color(0xFF000000 | rgb);
+  }
+
+  String _toHexColor(Color color) {
+    final int rgb = color.toARGB32() & 0x00FFFFFF;
+    return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
   }
 
   Future<String> pickImageFile() async {

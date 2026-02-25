@@ -10,6 +10,7 @@ import 'game_level.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
+import 'widgets/section_help_button.dart';
 
 class LayoutLevels extends StatefulWidget {
   const LayoutLevels({super.key});
@@ -320,6 +321,11 @@ class LayoutLevelsState extends State<LayoutLevels> {
                 'Game Levels',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
+              ),
+              const SizedBox(width: 6),
+              const SectionHelpButton(
+                message:
+                    'Levels are independent scenes or maps in your game. Each level has its own layers, zones, and objects.',
               ),
               const Spacer(),
               CDKButton(

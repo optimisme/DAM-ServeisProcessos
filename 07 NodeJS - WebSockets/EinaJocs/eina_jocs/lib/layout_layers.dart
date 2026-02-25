@@ -10,6 +10,7 @@ import 'game_media_asset.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
+import 'widgets/section_help_button.dart';
 
 class LayoutLayers extends StatefulWidget {
   const LayoutLayers({super.key});
@@ -308,6 +309,27 @@ class LayoutLayersState extends State<LayoutLayers> {
     await _autoSaveIfPossible(appData);
   }
 
+  Future<void> _toggleLayerVisibility(AppData appData, int index) async {
+    if (appData.selectedLevel == -1) return;
+    final layers = appData.gameData.levels[appData.selectedLevel].layers;
+    if (index < 0 || index >= layers.length) return;
+    final GameLayer layer = layers[index];
+    appData.pushUndo();
+    layers[index] = GameLayer(
+      name: layer.name,
+      x: layer.x,
+      y: layer.y,
+      depth: layer.depth,
+      tilesSheetFile: layer.tilesSheetFile,
+      tilesWidth: layer.tilesWidth,
+      tilesHeight: layer.tilesHeight,
+      tileMap: layer.tileMap,
+      visible: !layer.visible,
+    );
+    appData.update();
+    await _autoSaveIfPossible(appData);
+  }
+
   void _selectLayer(AppData appData, int index, bool isSelected) {
     if (isSelected) {
       appData.selectedLayer = -1;
@@ -363,7 +385,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     if (appData.selectedLevel == -1) {
       return const Center(
         child: CDKText(
-          'Select a level to edit layers.',
+          'Select a Level to edit its layers.',
           role: CDKTextRole.body,
           secondary: true,
         ),
@@ -388,6 +410,11 @@ class LayoutLayersState extends State<LayoutLayers> {
                 'Labels',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
+              ),
+              const SizedBox(width: 6),
+              const SectionHelpButton(
+                message:
+                    'Layers stack tilemap grids within a level. Each layer uses a tileset and can be positioned and ordered by depth.',
               ),
               const Spacer(),
               if (hasTilesets)
@@ -483,6 +510,30 @@ class LayoutLayersState extends State<LayoutLayers> {
                                     ],
                                   ),
                                 ),
+                                if (isSelected)
+                                  MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: CupertinoButton(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      minimumSize: const Size(20, 20),
+                                      onPressed: () async {
+                                        await _toggleLayerVisibility(
+                                            appData, index);
+                                      },
+                                      child: Icon(
+                                        layer.visible
+                                            ? CupertinoIcons.eye
+                                            : CupertinoIcons.eye_slash,
+                                        size: 16,
+                                        color: layer.visible
+                                            ? cdkColors.colorText
+                                            : cdkColors.colorText
+                                                .withValues(alpha: 0.35),
+                                      ),
+                                    ),
+                                  ),
                                 if (isSelected && hasTilesets)
                                   MouseRegion(
                                     cursor: SystemMouseCursors.click,

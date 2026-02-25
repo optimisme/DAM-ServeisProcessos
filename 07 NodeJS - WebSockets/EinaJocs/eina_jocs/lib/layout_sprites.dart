@@ -11,6 +11,7 @@ import 'game_sprite.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
+import 'widgets/section_help_button.dart';
 
 class LayoutSprites extends StatefulWidget {
   const LayoutSprites({super.key});
@@ -401,9 +402,21 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (appData.selectedLevel == -1) {
       return const Center(
         child: CDKText(
-          'No level selected',
+          'Select a Level and then a Layer to edit its sprites.',
           role: CDKTextRole.body,
           secondary: true,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    if (appData.selectedLayer == -1) {
+      return const Center(
+        child: CDKText(
+          'Select a Layer to edit its sprites.',
+          role: CDKTextRole.body,
+          secondary: true,
+          textAlign: TextAlign.center,
         ),
       );
     }
@@ -424,6 +437,11 @@ class LayoutSpritesState extends State<LayoutSprites> {
                 'Sprites',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
+              ),
+              const SizedBox(width: 6),
+              const SectionHelpButton(
+                message:
+                    'Sprites are game objects that combine animations and properties. They represent characters, items, or any animated entity placed in a level.',
               ),
               const Spacer(),
               CDKButton(

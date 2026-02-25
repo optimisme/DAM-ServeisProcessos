@@ -12,6 +12,7 @@ import 'game_media_asset.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
+import 'widgets/section_help_button.dart';
 
 class LayoutMedia extends StatefulWidget {
   const LayoutMedia({super.key});
@@ -371,6 +372,11 @@ class _LayoutMediaState extends State<LayoutMedia> {
                 'Media',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
+              ),
+              const SizedBox(width: 6),
+              const SectionHelpButton(
+                message:
+                    'Media holds all imported assets: images, spritesheets, and tilesets. Add files here before using them in other sections.',
               ),
               const Spacer(),
               CDKButton(

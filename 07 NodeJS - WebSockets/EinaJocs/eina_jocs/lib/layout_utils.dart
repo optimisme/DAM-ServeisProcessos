@@ -155,11 +155,15 @@ class LayoutUtils {
     final layer = level.layers[layerIndex];
 
     int rows = layer.tileMap.length;
-    int cols = layer.tileMap[0].length;
+    int cols = rows == 0 ? 0 : layer.tileMap[0].length;
     double tileWidth = layer.tilesWidth.toDouble();
     double tileHeight = layer.tilesHeight.toDouble();
     double tilemapWidth = cols * tileWidth;
     double tilemapHeight = rows * tileHeight;
+
+    if (rows == 0 || cols == 0) {
+      return await drawCanvasImageEmpty(appData);
+    }
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);

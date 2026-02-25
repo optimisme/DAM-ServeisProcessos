@@ -7,6 +7,7 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_layer.dart';
+import 'widgets/section_help_button.dart';
 import 'widgets/selectable_color_swatch.dart';
 
 class _AccentColorOption {
@@ -70,6 +71,11 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
             'Tileset',
             role: CDKTextRole.title,
             style: sectionTitleStyle,
+          ),
+          const SizedBox(width: 6),
+          const SectionHelpButton(
+            message:
+                'The Tileset viewer shows the tile grid for the selected layer\'s spritesheet. Click tiles or drag to select a region to paint on the map.',
           ),
         ],
       ),
@@ -275,8 +281,8 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
     final bool hasLayer = hasLevel && appData.selectedLayer != -1;
     if (!hasLayer) {
       final String message = hasLevel
-          ? 'Select a layer to edit its tilemap.'
-          : 'Select a level to edit tilemaps.';
+          ? 'Select a Layer to edit its tilemap.'
+          : 'Select a Level and then a Layer to edit the tilemap.';
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

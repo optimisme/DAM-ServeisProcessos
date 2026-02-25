@@ -11,6 +11,7 @@ import 'layout_utils.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
+import 'widgets/section_help_button.dart';
 import 'widgets/selectable_color_swatch.dart';
 
 const List<String> _zoneTypeColorPalette = [
@@ -482,7 +483,7 @@ class LayoutZonesState extends State<LayoutZones> {
     if (appData.selectedLevel == -1) {
       return const Center(
         child: CDKText(
-          'Select a level to edit zones.',
+          'Select a Level to edit its zones.',
           role: CDKTextRole.body,
           secondary: true,
         ),
@@ -504,6 +505,11 @@ class LayoutZonesState extends State<LayoutZones> {
                 'Zones',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
+              ),
+              const SizedBox(width: 6),
+              const SectionHelpButton(
+                message:
+                    'Zones are named rectangular areas within a level used to trigger events or define regions such as spawn points, triggers, or boundaries.',
               ),
               const Spacer(),
               CDKButton(

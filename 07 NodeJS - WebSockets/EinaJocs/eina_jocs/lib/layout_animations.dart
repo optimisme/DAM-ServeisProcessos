@@ -13,6 +13,7 @@ import 'layout_utils.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
+import 'widgets/section_help_button.dart';
 
 class LayoutAnimations extends StatefulWidget {
   const LayoutAnimations({super.key});
@@ -612,6 +613,11 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                 'Animations',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
+              ),
+              const SizedBox(width: 6),
+              const SectionHelpButton(
+                message:
+                    'Animations define sequences of frames from a spritesheet. They are referenced by sprites to bring game characters and objects to life.',
               ),
               const Spacer(),
               CDKButton(

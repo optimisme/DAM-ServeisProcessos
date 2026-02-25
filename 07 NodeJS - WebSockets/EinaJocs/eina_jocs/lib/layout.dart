@@ -241,7 +241,10 @@ class _LayoutState extends State<Layout> {
       case 'projects':
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'levels':
-        image = await LayoutUtils.drawCanvasImageLayers(appData, false);
+        // Levels section renders in world space via CanvasPainter.
+        await LayoutUtils.preloadLayerImages(appData);
+        await LayoutUtils.preloadSpriteImages(appData);
+        image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'layers':
         // Layers section renders directly in world space via CanvasPainter.
         // Preload tileset and sprite images for the preview.
@@ -446,7 +449,8 @@ class _LayoutState extends State<Layout> {
                                   // macOS trackpad: two-finger scroll → PointerScrollEvent
                                   onPointerSignal: (event) {
                                     if (event is! PointerScrollEvent) return;
-                                    if (appData.selectedSection != "layers" &&
+                                    if (appData.selectedSection != "levels" &&
+                                        appData.selectedSection != "layers" &&
                                         appData.selectedSection != "tilemap" &&
                                         appData.selectedSection != "zones" &&
                                         appData.selectedSection != "sprites") {
@@ -459,7 +463,8 @@ class _LayoutState extends State<Layout> {
                                   },
                                   // macOS trackpad: two-finger pan-zoom → PointerPanZoomUpdateEvent
                                   onPointerPanZoomUpdate: (event) {
-                                    if (appData.selectedSection != "layers" &&
+                                    if (appData.selectedSection != "levels" &&
+                                        appData.selectedSection != "layers" &&
                                         appData.selectedSection != "tilemap" &&
                                         appData.selectedSection != "zones" &&
                                         appData.selectedSection != "sprites") {
@@ -508,6 +513,9 @@ class _LayoutState extends State<Layout> {
                                         appData.dragging = true;
                                         appData.dragStartDetails = details;
                                         if (appData.selectedSection ==
+                                            "levels") {
+                                          // Levels section is preview-only: always pan.
+                                        } else if (appData.selectedSection ==
                                             "layers") {
                                           // Layers section is preview-only: always pan, never drag a layer.
                                           _isDraggingLayer = false;
@@ -649,6 +657,13 @@ class _LayoutState extends State<Layout> {
                                       },
                                       onPanUpdate: (details) async {
                                         if (appData.selectedSection ==
+                                            "levels") {
+                                          if (_isPointerDown) {
+                                            appData.layersViewOffset +=
+                                                details.delta;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
                                             "layers") {
                                           if (!_isPointerDown) {
                                             // scroll-triggered pan — ignore

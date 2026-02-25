@@ -13,7 +13,8 @@ class CanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (appData.selectedSection == 'layers' ||
+    if (appData.selectedSection == 'levels' ||
+        appData.selectedSection == 'layers' ||
         appData.selectedSection == 'tilemap' ||
         appData.selectedSection == 'zones' ||
         appData.selectedSection == 'sprites') {
@@ -22,8 +23,10 @@ class CanvasPainter extends CustomPainter {
         size,
         renderingTilemap: appData.selectedSection == 'tilemap',
         renderingSprites: appData.selectedSection == 'sprites' ||
-            appData.selectedSection == 'layers',
-        renderingLayersPreview: appData.selectedSection == 'layers',
+            appData.selectedSection == 'layers' ||
+            appData.selectedSection == 'levels',
+        renderingLayersPreview: appData.selectedSection == 'layers' ||
+            appData.selectedSection == 'levels',
       );
     } else {
       _paintDefault(canvas, size);

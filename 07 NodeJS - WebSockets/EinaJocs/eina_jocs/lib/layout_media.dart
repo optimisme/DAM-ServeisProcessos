@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +39,34 @@ class _LayoutMediaState extends State<LayoutMedia> {
       return fileName;
     }
     return '${appData.filePath}${Platform.pathSeparator}$fileName';
+  }
+
+  Future<Size?> _readImageSize(String path) async {
+    if (path.isEmpty) {
+      return null;
+    }
+    try {
+      final File file = File(path);
+      if (!file.existsSync()) {
+        return null;
+      }
+      final Uint8List bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        return null;
+      }
+      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      final ui.Image image = frame.image;
+      final Size size = Size(
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
+      image.dispose();
+      codec.dispose();
+      return size;
+    } catch (_) {
+      return null;
+    }
   }
 
   void _addMedia({
@@ -153,15 +183,29 @@ class _LayoutMediaState extends State<LayoutMedia> {
       return;
     }
 
+    final String previewPath = _resolveMediaPreviewPath(appData, fileName);
+    final Size? imageSize = await _readImageSize(previewPath);
+    if (!mounted) {
+      return;
+    }
+    final int defaultWidth = (() {
+      final int value = imageSize?.width.toInt() ?? 32;
+      return value < 1 ? 1 : value;
+    })();
+    final int defaultHeight = (() {
+      final int value = imageSize?.height.toInt() ?? 32;
+      return value < 1 ? 1 : value;
+    })();
+
     final _MediaDialogData? data = await _promptMediaData(
       title: 'New media',
       confirmLabel: 'Add',
       initialData: _MediaDialogData(
         fileName: fileName,
-        mediaType: 'image',
-        tileWidth: 32,
-        tileHeight: 32,
-        previewPath: _resolveMediaPreviewPath(appData, fileName),
+        mediaType: 'tileset',
+        tileWidth: defaultWidth,
+        tileHeight: defaultHeight,
+        previewPath: previewPath,
       ),
     );
 
@@ -335,10 +379,11 @@ class _LayoutMediaState extends State<LayoutMedia> {
                         final bool isSelected = index == appData.selectedMedia;
                         final String subtitle = switch (asset.mediaType) {
                           'tileset' =>
-                            'Tileset (${asset.tileWidth}x${asset.tileHeight})',
-                          'spritesheet' => 'Spritesheet',
+                            'Tileset (Tile ${asset.tileWidth}x${asset.tileHeight})',
+                          'spritesheet' =>
+                            'Spritesheet (Frame ${asset.tileWidth}x${asset.tileHeight})',
                           'atlas' =>
-                            'Atlas (${asset.tileWidth}x${asset.tileHeight})',
+                            'Atlas (Tile/Frame ${asset.tileWidth}x${asset.tileHeight})',
                           _ => 'Image',
                         };
 
@@ -477,7 +522,6 @@ class _MediaFormDialog extends StatefulWidget {
 
 class _MediaFormDialogState extends State<_MediaFormDialog> {
   static const List<String> _typeValues = [
-    'image',
     'tileset',
     'spritesheet',
     'atlas',
@@ -487,13 +531,23 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       TextEditingController(text: widget.initialData.tileWidth.toString());
   late final TextEditingController _tileHeightController =
       TextEditingController(text: widget.initialData.tileHeight.toString());
-  late String _mediaType =
-      GameMediaAsset.validTypes.contains(widget.initialData.mediaType)
-          ? widget.initialData.mediaType
-          : 'image';
+  late String _mediaType = _typeValues.contains(widget.initialData.mediaType)
+      ? widget.initialData.mediaType
+      : 'tileset';
   String? _sizeError;
 
-  bool get _hasTileGrid => _mediaType == 'tileset' || _mediaType == 'atlas';
+  bool get _hasTileGrid => _typeValues.contains(_mediaType);
+
+  String get _sizeLabelPrefix {
+    switch (_mediaType) {
+      case 'spritesheet':
+        return 'Frame';
+      case 'atlas':
+        return 'Tile/Frame';
+      default:
+        return 'Tile';
+    }
+  }
 
   bool get _isValid {
     if (!_hasTileGrid) {
@@ -512,7 +566,8 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       return;
     }
     setState(() {
-      _sizeError = 'Tile width and height must be positive integers.';
+      _sizeError =
+          '$_sizeLabelPrefix width and height must be positive integers.';
     });
   }
 
@@ -545,7 +600,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
-    final File previewFile = File(widget.initialData.previewPath);
+    final String sizeLabelPrefix = _sizeLabelPrefix;
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
@@ -560,62 +615,23 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CDKText(widget.title, role: CDKTextRole.title),
-                        SizedBox(height: spacing.sm),
-                        const CDKText(
-                          'Configure media metadata.',
-                          role: CDKTextRole.body,
-                        ),
-                        SizedBox(height: spacing.sm),
-                        CDKText(
-                          'File',
-                          role: CDKTextRole.caption,
-                          color: cdkColors.colorText,
-                        ),
-                        const SizedBox(height: 4),
-                        CDKText(
-                          widget.initialData.fileName,
-                          role: CDKTextRole.body,
-                          color: cdkColors.colorText,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          width: 132,
-                          height: 96,
-                          color: cdkColors.backgroundSecondary0,
-                          child: previewFile.existsSync()
-                              ? Image.file(
-                                  previewFile,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => Icon(
-                                    CupertinoIcons.photo,
-                                    color: cdkColors.colorTextSecondary,
-                                  ),
-                                )
-                              : Icon(
-                                  CupertinoIcons.photo,
-                                  color: cdkColors.colorTextSecondary,
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              CDKText(widget.title, role: CDKTextRole.title),
+              SizedBox(height: spacing.sm),
+              const CDKText(
+                'Configure media metadata.',
+                role: CDKTextRole.body,
+              ),
+              SizedBox(height: spacing.sm),
+              CDKText(
+                'File',
+                role: CDKTextRole.caption,
+                color: cdkColors.colorText,
+              ),
+              const SizedBox(height: 4),
+              CDKText(
+                widget.initialData.fileName,
+                role: CDKTextRole.body,
+                color: cdkColors.colorText,
               ),
               SizedBox(height: spacing.md),
               CDKText(
@@ -625,12 +641,10 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
               ),
               const SizedBox(height: 4),
               CDKPickerButtonsSegmented(
-                selectedIndex: _typeValues.indexOf(_mediaType).clamp(0, 3),
+                selectedIndex: _typeValues
+                    .indexOf(_mediaType)
+                    .clamp(0, _typeValues.length - 1),
                 options: const [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: CDKText('Image', role: CDKTextRole.caption),
-                  ),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6),
                     child: CDKText('Tileset', role: CDKTextRole.caption),
@@ -664,13 +678,14 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
                         children: [
                           SizedBox(height: spacing.sm),
                           CDKText(
-                            'Tile Width (px)',
+                            '$sizeLabelPrefix Width (px)',
                             role: CDKTextRole.caption,
                             color: cdkColors.colorText,
                           ),
                           const SizedBox(height: 4),
                           CDKFieldText(
-                            placeholder: 'Tile width (px)',
+                            placeholder:
+                                '${sizeLabelPrefix.toLowerCase()} width (px)',
                             controller: _tileWidthController,
                             keyboardType: TextInputType.number,
                             onChanged: (_) => _validateTileFields(),
@@ -678,13 +693,14 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
                           ),
                           SizedBox(height: spacing.sm),
                           CDKText(
-                            'Tile Height (px)',
+                            '$sizeLabelPrefix Height (px)',
                             role: CDKTextRole.caption,
                             color: cdkColors.colorText,
                           ),
                           const SizedBox(height: 4),
                           CDKFieldText(
-                            placeholder: 'Tile height (px)',
+                            placeholder:
+                                '${sizeLabelPrefix.toLowerCase()} height (px)',
                             controller: _tileHeightController,
                             keyboardType: TextInputType.number,
                             onChanged: (_) => _validateTileFields(),

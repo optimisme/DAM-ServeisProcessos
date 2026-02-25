@@ -10,36 +10,21 @@ import 'game_zone_type.dart';
 import 'layout_utils.dart';
 
 const List<String> _zoneTypeColorPalette = [
-  'blue',
-  'blueAccent',
-  'lightBlue',
-  'indigo',
-  'deepPurple',
-  'purpleAccent',
-  'purple',
-  'pink',
-  'pinkAccent',
   'red',
-  'redAccent',
   'deepOrange',
-  'orangeAccent',
   'orange',
   'amber',
-  'yellowAccent',
   'yellow',
   'lime',
-  'greenAccent',
   'lightGreen',
   'green',
-  'tealAccent',
   'teal',
-  'cyanAccent',
   'cyan',
-  'blueGrey',
-  'grey',
-  'brown',
-  'black',
-  'white',
+  'lightBlue',
+  'blue',
+  'indigo',
+  'purple',
+  'pink',
 ];
 
 const GameZoneType _defaultZoneType = GameZoneType(
@@ -72,15 +57,7 @@ class LayoutZonesState extends State<LayoutZones> {
     }
   }
 
-  void _ensureZoneTypesInitialized(AppData appData) {
-    if (appData.gameData.zoneTypes.isNotEmpty) {
-      return;
-    }
-    appData.gameData.zoneTypes.add(_defaultZoneType);
-  }
-
   List<GameZoneType> _zoneTypes(AppData appData) {
-    _ensureZoneTypesInitialized(appData);
     return appData.gameData.zoneTypes;
   }
 
@@ -139,16 +116,6 @@ class LayoutZonesState extends State<LayoutZones> {
       seenNames.add(trimmedName);
     }
 
-    if (cleaned.isEmpty) {
-      cleaned.add(
-        const _ZoneTypeDraft(
-          key: '__default__',
-          name: 'Default',
-          color: 'blue',
-        ),
-      );
-    }
-
     final List<GameZoneType> nextTypes = cleaned
         .map(
           (draft) => GameZoneType(
@@ -158,29 +125,31 @@ class LayoutZonesState extends State<LayoutZones> {
         )
         .toList(growable: false);
 
-    final Map<String, _ZoneTypeDraft> byKey = {
-      for (final draft in cleaned) draft.key: draft
-    };
-    final Map<String, _ZoneTypeDraft> byName = {
-      for (final draft in cleaned) draft.name: draft
-    };
-    final _ZoneTypeDraft fallback = cleaned.first;
+    if (cleaned.isNotEmpty) {
+      final Map<String, _ZoneTypeDraft> byKey = {
+        for (final draft in cleaned) draft.key: draft
+      };
+      final Map<String, _ZoneTypeDraft> byName = {
+        for (final draft in cleaned) draft.name: draft
+      };
+      final _ZoneTypeDraft fallback = cleaned.first;
 
-    for (final level in appData.gameData.levels) {
-      for (final zone in level.zones) {
-        final _ZoneTypeDraft? renamedType = byKey[zone.type];
-        if (renamedType != null) {
-          zone.type = renamedType.name;
-          zone.color = renamedType.color;
-          continue;
+      for (final level in appData.gameData.levels) {
+        for (final zone in level.zones) {
+          final _ZoneTypeDraft? renamedType = byKey[zone.type];
+          if (renamedType != null) {
+            zone.type = renamedType.name;
+            zone.color = renamedType.color;
+            continue;
+          }
+          final _ZoneTypeDraft? existingType = byName[zone.type];
+          if (existingType != null) {
+            zone.color = existingType.color;
+            continue;
+          }
+          zone.type = fallback.name;
+          zone.color = fallback.color;
         }
-        final _ZoneTypeDraft? existingType = byName[zone.type];
-        if (existingType != null) {
-          zone.color = existingType.color;
-          continue;
-        }
-        zone.type = fallback.name;
-        zone.color = fallback.color;
       }
     }
 
@@ -1076,11 +1045,74 @@ class _ZoneTypesPopover extends StatefulWidget {
 class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
   late final List<_ZoneTypeDraft> _drafts =
       widget.initialTypes.map((item) => item.copyWith()).toList(growable: true);
+  final GlobalKey<AnimatedListState> _typesListKey =
+      GlobalKey<AnimatedListState>();
+  static const Duration _rowAnimationDuration = Duration(milliseconds: 220);
   int _selectedIndex = -1;
   int _newKeyCounter = 0;
   late final TextEditingController _nameController = TextEditingController();
   late String _selectedColor = widget.colorPalette.first;
   String? _nameError;
+
+  Widget _buildDraftRow({
+    required BuildContext context,
+    required int index,
+    required _ZoneTypeDraft draft,
+    Animation<double>? animation,
+  }) {
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    final bool selected = index == _selectedIndex;
+    final Widget row = GestureDetector(
+      onTap: () => _selectIndex(index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          vertical: 6,
+          horizontal: 8,
+        ),
+        color: selected
+            ? CupertinoColors.systemBlue.withValues(alpha: 0.18)
+            : Colors.transparent,
+        child: Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: LayoutUtils.getColorFromName(draft.color),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: CDKText(
+                draft.name,
+                role: selected ? CDKTextRole.bodyStrong : CDKTextRole.body,
+                color: cdkColors.colorText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (animation == null) {
+      return row;
+    }
+
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return SizeTransition(
+      sizeFactor: curved,
+      axisAlignment: -1.0,
+      child: FadeTransition(
+        opacity: curved,
+        child: row,
+      ),
+    );
+  }
 
   void _selectIndex(int index) {
     if (index < 0 || index >= _drafts.length) {
@@ -1138,12 +1170,17 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
           color: _selectedColor,
         );
       } else {
+        final int insertIndex = _drafts.length;
         _drafts.add(
           _ZoneTypeDraft(
             key: '__new_${_newKeyCounter++}',
             name: nextName,
             color: _selectedColor,
           ),
+        );
+        _typesListKey.currentState?.insertItem(
+          insertIndex,
+          duration: _rowAnimationDuration,
         );
         _selectedIndex = -1;
         _nameController.clear();
@@ -1158,13 +1195,25 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     if (_selectedIndex < 0 || _selectedIndex >= _drafts.length) {
       return;
     }
+    final int removedIndex = _selectedIndex;
+    final _ZoneTypeDraft removedDraft = _drafts[removedIndex];
     setState(() {
-      _drafts.removeAt(_selectedIndex);
+      _drafts.removeAt(removedIndex);
       _selectedIndex = -1;
       _nameController.clear();
       _selectedColor = widget.colorPalette.first;
       _nameError = null;
     });
+    _typesListKey.currentState?.removeItem(
+      removedIndex,
+      (context, animation) => _buildDraftRow(
+        context: context,
+        index: removedIndex,
+        draft: removedDraft,
+        animation: animation,
+      ),
+      duration: _rowAnimationDuration,
+    );
     _emitChanged();
   }
 
@@ -1185,144 +1234,126 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     final bool canDelete = hasSelection && !selectedTypeIsUsed;
     final bool isUpdateMode = hasSelection;
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 420, maxWidth: 460),
-      child: Padding(
-        padding: EdgeInsets.all(spacing.md),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CDKText('Zone Types', role: CDKTextRole.title),
-            SizedBox(height: spacing.sm),
-            if (_drafts.isEmpty)
-              const CDKText(
-                'No zone types yet. Create one below.',
-                role: CDKTextRole.caption,
-                secondary: true,
-              )
-            else
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 420, maxWidth: 460),
+        child: Padding(
+          padding: EdgeInsets.all(spacing.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const CDKText('Zone Types', role: CDKTextRole.title),
+              SizedBox(height: spacing.sm),
+              if (_drafts.isEmpty)
+                const CDKText(
+                  'No zone types yet. Create one below.',
+                  role: CDKTextRole.caption,
+                  secondary: true,
+                ),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 180),
-                child: ListView.builder(
+                child: AnimatedList(
+                  key: _typesListKey,
                   shrinkWrap: true,
-                  itemCount: _drafts.length,
-                  itemBuilder: (context, index) {
-                    final draft = _drafts[index];
-                    final bool selected = index == _selectedIndex;
-                    return GestureDetector(
-                      onTap: () => _selectIndex(index),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 6,
-                          horizontal: 8,
-                        ),
-                        color: selected
-                            ? CupertinoColors.systemBlue.withValues(alpha: 0.18)
-                            : Colors.transparent,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color:
-                                    LayoutUtils.getColorFromName(draft.color),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: CDKText(
-                                draft.name,
-                                role: selected
-                                    ? CDKTextRole.bodyStrong
-                                    : CDKTextRole.body,
-                                color: cdkColors.colorText,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  initialItemCount: _drafts.length,
+                  itemBuilder: (context, index, animation) {
+                    final _ZoneTypeDraft draft = _drafts[index];
+                    return _buildDraftRow(
+                      context: context,
+                      index: index,
+                      draft: draft,
+                      animation: animation,
                     );
                   },
                 ),
               ),
-            SizedBox(height: spacing.md),
-            CDKText(
-              'Name',
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            CDKFieldText(
-              placeholder: 'Type name',
-              controller: _nameController,
-              onChanged: (_) {
-                if (_nameError != null) {
-                  setState(() {
-                    _nameError = null;
-                  });
-                }
-              },
-              onSubmitted: (_) => _upsertDraft(),
-            ),
-            if (_nameError != null) ...[
-              const SizedBox(height: 4),
+              SizedBox(height: spacing.md),
               CDKText(
-                _nameError!,
+                'Name',
                 role: CDKTextRole.caption,
-                color: CDKTheme.red,
+                color: cdkColors.colorText,
               ),
-            ],
-            SizedBox(height: spacing.sm),
-            CDKText(
-              'Color',
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: spacing.xs,
-              runSpacing: spacing.xs,
-              children: widget.colorPalette.map((colorName) {
-                return _ZoneTypeColorSwatch(
-                  color: LayoutUtils.getColorFromName(colorName),
-                  selected: _selectedColor == colorName,
-                  onTap: () {
+              const SizedBox(height: 4),
+              CDKFieldText(
+                placeholder: 'Type name',
+                controller: _nameController,
+                onChanged: (_) {
+                  if (_nameError != null) {
                     setState(() {
-                      _selectedColor = colorName;
+                      _nameError = null;
                     });
-                  },
-                );
-              }).toList(growable: false),
-            ),
-            if (selectedTypeIsUsed) ...[
-              const SizedBox(height: 6),
-              const CDKText(
-                'This type is used by one or more zones and cannot be deleted.',
+                  }
+                },
+                onSubmitted: (_) => _upsertDraft(),
+              ),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 18,
+                child: _nameError == null
+                    ? const SizedBox.shrink()
+                    : CDKText(
+                        _nameError!,
+                        role: CDKTextRole.caption,
+                        color: CDKTheme.red,
+                      ),
+              ),
+              SizedBox(height: spacing.sm),
+              CDKText(
+                'Color',
                 role: CDKTextRole.caption,
-                secondary: true,
+                color: cdkColors.colorText,
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: spacing.xs,
+                runSpacing: spacing.xs,
+                children: widget.colorPalette.map((colorName) {
+                  return _ZoneTypeColorSwatch(
+                    color: LayoutUtils.getColorFromName(colorName),
+                    selected: _selectedColor == colorName,
+                    onTap: () {
+                      setState(() {
+                        _selectedColor = colorName;
+                      });
+                    },
+                  );
+                }).toList(growable: false),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 18,
+                child: selectedTypeIsUsed
+                    ? const CDKText(
+                        'Type is in use and cannot be deleted.',
+                        role: CDKTextRole.caption,
+                        secondary: true,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              SizedBox(height: spacing.md),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CDKButton(
+                    style: CDKButtonStyle.normal,
+                    enabled: canDelete,
+                    onPressed: _deleteSelected,
+                    child: const Text('Delete type'),
+                  ),
+                  CDKButton(
+                    style: CDKButtonStyle.action,
+                    onPressed: _upsertDraft,
+                    child: Text(isUpdateMode ? 'Update' : 'Add type'),
+                  ),
+                ],
               ),
             ],
-            SizedBox(height: spacing.md),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  enabled: canDelete,
-                  onPressed: _deleteSelected,
-                  child: const Text('Delete type'),
-                ),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  onPressed: _upsertDraft,
-                  child: Text(isUpdateMode ? 'Update' : 'Add type'),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

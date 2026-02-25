@@ -471,6 +471,9 @@ class LayoutZonesState extends State<LayoutZones> {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final TextStyle sectionTitleStyle = typography.title.copyWith(
+      fontSize: (typography.title.fontSize ?? 17) + 2,
+    );
     final TextStyle listItemTitleStyle = typography.body.copyWith(
       fontSize: (typography.body.fontSize ?? 14) + 2,
       fontWeight: FontWeight.w700,
@@ -497,9 +500,10 @@ class LayoutZonesState extends State<LayoutZones> {
           padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
           child: Row(
             children: [
-              const CDKText(
+              CDKText(
                 'Zones',
                 role: CDKTextRole.title,
+                style: sectionTitleStyle,
               ),
               const Spacer(),
               CDKButton(

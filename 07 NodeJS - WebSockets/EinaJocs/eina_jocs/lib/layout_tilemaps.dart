@@ -58,6 +58,10 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
   }
 
   Widget _buildHeader() {
+    final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final TextStyle sectionTitleStyle = typography.title.copyWith(
+      fontSize: (typography.title.fontSize ?? 17) + 2,
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
       child: Row(
@@ -65,6 +69,7 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
           CDKText(
             'Tileset',
             role: CDKTextRole.title,
+            style: sectionTitleStyle,
           ),
         ],
       ),

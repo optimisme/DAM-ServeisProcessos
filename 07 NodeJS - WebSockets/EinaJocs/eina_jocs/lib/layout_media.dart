@@ -331,6 +331,9 @@ class _LayoutMediaState extends State<LayoutMedia> {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
+    final TextStyle sectionTitleStyle = typography.title.copyWith(
+      fontSize: (typography.title.fontSize ?? 17) + 2,
+    );
     final TextStyle listItemTitleStyle = typography.body.copyWith(
       fontSize: (typography.body.fontSize ?? 14) + 2,
       fontWeight: FontWeight.w700,
@@ -362,6 +365,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
               CDKText(
                 'Media',
                 role: CDKTextRole.title,
+                style: sectionTitleStyle,
               ),
               const Spacer(),
               CDKButton(

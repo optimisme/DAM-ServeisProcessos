@@ -283,8 +283,12 @@ class CanvasPainter extends CustomPainter {
             totalFrames: frames,
           );
           final double spriteFrameX = frameIndex * spriteWidth;
-          final double spriteX = sprite.x.toDouble();
-          final double spriteY = sprite.y.toDouble();
+          final double spriteParallax =
+              LayoutUtils.parallaxFactorForDepth(sprite.depth);
+          final double spriteX = sprite.x.toDouble() +
+              (vOffset.dx * (spriteParallax - 1.0)) / vScale;
+          final double spriteY = sprite.y.toDouble() +
+              (vOffset.dy * (spriteParallax - 1.0)) / vScale;
 
           final Rect srcRect =
               Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight);

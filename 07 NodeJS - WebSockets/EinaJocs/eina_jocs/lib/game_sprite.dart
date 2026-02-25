@@ -8,6 +8,7 @@ class GameSprite {
   String imageFile;
   bool flipX;
   bool flipY;
+  double depth;
 
   GameSprite({
     required this.name,
@@ -19,6 +20,7 @@ class GameSprite {
     required this.imageFile,
     this.flipX = false,
     this.flipY = false,
+    this.depth = 0.0,
   });
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
@@ -37,6 +39,7 @@ class GameSprite {
       imageFile: json['imageFile'] as String,
       flipX: json['flipX'] as bool? ?? false,
       flipY: json['flipY'] as bool? ?? false,
+      depth: (json['depth'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -53,11 +56,12 @@ class GameSprite {
       'imageFile': imageFile,
       'flipX': flipX,
       'flipY': flipY,
+      'depth': depth,
     };
   }
 
   @override
   String toString() {
-    return 'GameItem(name: $name, animationId: $animationId, x: $x, y: $y, width: $spriteWidth, height: $spriteHeight, imageFile: $imageFile, flipX: $flipX, flipY: $flipY)';
+    return 'GameItem(name: $name, animationId: $animationId, x: $x, y: $y, width: $spriteWidth, height: $spriteHeight, imageFile: $imageFile, flipX: $flipX, flipY: $flipY, depth: $depth)';
   }
 }

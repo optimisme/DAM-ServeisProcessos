@@ -65,6 +65,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required AppData appData,
     bool flipX = false,
     bool flipY = false,
+    double depth = 0.0,
   }) {
     final GameMediaAsset? media =
         appData.mediaAssetByFileName(animation.mediaFile);
@@ -72,6 +73,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       name: name,
       x: x,
       y: y,
+      depth: depth,
       animationId: animation.id,
       width: media?.tileWidth ?? 32,
       height: media?.tileHeight ?? 32,
@@ -103,6 +105,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
         appData: appData,
         flipX: sprite.flipX,
         flipY: sprite.flipY,
+        depth: sprite.depth,
       );
     }
 
@@ -110,6 +113,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       name: sprite.name,
       x: sprite.x,
       y: sprite.y,
+      depth: sprite.depth,
       animationId: sprite.animationId,
       width: sprite.spriteWidth,
       height: sprite.spriteHeight,
@@ -132,6 +136,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
         animationId: data.animationId,
         x: data.x,
         y: data.y,
+        depth: data.depth,
         spriteWidth: data.width,
         spriteHeight: data.height,
         imageFile: data.imageFile,
@@ -160,6 +165,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       animationId: data.animationId,
       x: data.x,
       y: data.y,
+      depth: data.depth,
       spriteWidth: data.width,
       spriteHeight: data.height,
       imageFile: data.imageFile,
@@ -402,18 +408,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (appData.selectedLevel == -1) {
       return const Center(
         child: CDKText(
-          'Select a Level and then a Layer to edit its sprites.',
-          role: CDKTextRole.body,
-          secondary: true,
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    if (appData.selectedLayer == -1) {
-      return const Center(
-        child: CDKText(
-          'Select a Layer to edit its sprites.',
+          'Select a Level to edit its sprites.',
           role: CDKTextRole.body,
           secondary: true,
           textAlign: TextAlign.center,
@@ -495,7 +490,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                 animation.mediaFile,
                               );
                         final String subtitle =
-                            '${sprite.x}, ${sprite.y} - $animationName';
+                            '${sprite.x}, ${sprite.y} | Depth ${sprite.depth} - $animationName';
                         final String details =
                             '$mediaName | ${sprite.spriteWidth}x${sprite.spriteHeight} px | FlipX ${sprite.flipX ? 'on' : 'off'} | FlipY ${sprite.flipY ? 'on' : 'off'}';
                         return GestureDetector(
@@ -595,6 +590,7 @@ class _SpriteDialogData {
     required this.name,
     required this.x,
     required this.y,
+    required this.depth,
     required this.animationId,
     required this.width,
     required this.height,
@@ -606,6 +602,7 @@ class _SpriteDialogData {
   final String name;
   final int x;
   final int y;
+  final double depth;
   final String animationId;
   final int width;
   final int height;
@@ -655,6 +652,9 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
   late final TextEditingController _yController = TextEditingController(
     text: widget.initialData.y.toString(),
   );
+  late final TextEditingController _depthController = TextEditingController(
+    text: widget.initialData.depth.toString(),
+  );
   late int _selectedAnimationIndex = _resolveInitialAnimationIndex();
   late bool _flipX = widget.initialData.flipX;
   late bool _flipY = widget.initialData.flipY;
@@ -703,6 +703,11 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     return _nameController.text.trim().isNotEmpty && _selectedAnimation != null;
   }
 
+  double _parseDepth() {
+    final String cleaned = _depthController.text.trim().replaceAll(',', '.');
+    return double.tryParse(cleaned) ?? 0.0;
+  }
+
   _SpriteDialogData _currentData() {
     final GameAnimation? animation = _selectedAnimation;
     final GameMediaAsset? media = _selectedMedia;
@@ -710,6 +715,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       name: _nameController.text.trim(),
       x: int.tryParse(_xController.text.trim()) ?? 0,
       y: int.tryParse(_yController.text.trim()) ?? 0,
+      depth: _parseDepth(),
       animationId: animation?.id ?? widget.initialData.animationId,
       width: media?.tileWidth ?? widget.initialData.width,
       height: media?.tileHeight ?? widget.initialData.height,
@@ -754,6 +760,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
             a.name == b.name &&
             a.x == b.x &&
             a.y == b.y &&
+            a.depth == b.depth &&
             a.animationId == b.animationId &&
             a.width == b.width &&
             a.height == b.height &&
@@ -773,6 +780,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     _nameController.dispose();
     _xController.dispose();
     _yController.dispose();
+    _depthController.dispose();
     super.dispose();
   }
 
@@ -841,6 +849,21 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
                     placeholder: 'Start Y (px)',
                     controller: _yController,
                     keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Depth displacement',
+                  child: CDKFieldText(
+                    placeholder: 'Depth',
+                    controller: _depthController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
                     onChanged: (_) => _onInputChanged(),
                   ),
                 ),

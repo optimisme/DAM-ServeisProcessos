@@ -342,64 +342,101 @@ class CanvasPainter extends CustomPainter {
   void _paintViewportOverlay(
       Canvas canvas, Size size, double vScale, Offset vOffset) {
     final level = appData.gameData.levels[appData.selectedLevel];
-    final double vx = level.viewportX.toDouble();
-    final double vy = level.viewportY.toDouble();
     final double vw = level.viewportWidth.toDouble();
     final double vh = level.viewportHeight.toDouble();
 
-    // Convert viewport world rect to screen space
-    final double sx = vOffset.dx + vx * vScale;
-    final double sy = vOffset.dy + vy * vScale;
-    final double sw = vw * vScale;
-    final double sh = vh * vScale;
+    if (appData.viewportIsDragging) {
+      // Committed position — blue, dimmed
+      _paintViewportRect(
+        canvas, vScale, vOffset,
+        wx: level.viewportX.toDouble(),
+        wy: level.viewportY.toDouble(),
+        ww: vw, wh: vh,
+        fillColor: const Color(0x0D2196F3),
+        borderColor: const Color(0x882196F3),
+        handleColor: const Color(0x882196F3),
+        label: '${level.viewportWidth}×${level.viewportHeight}',
+        labelColor: const Color(0x882196F3),
+      );
+      // Live drag position — green
+      _paintViewportRect(
+        canvas, vScale, vOffset,
+        wx: appData.viewportDragX.toDouble(),
+        wy: appData.viewportDragY.toDouble(),
+        ww: vw, wh: vh,
+        fillColor: const Color(0x1A4CAF50),
+        borderColor: const Color(0xFF4CAF50),
+        handleColor: const Color(0xFF4CAF50),
+        label: 'X: ${appData.viewportDragX}, Y: ${appData.viewportDragY}',
+        labelColor: const Color(0xFF4CAF50),
+      );
+    } else {
+      // Normal — blue
+      _paintViewportRect(
+        canvas, vScale, vOffset,
+        wx: level.viewportX.toDouble(),
+        wy: level.viewportY.toDouble(),
+        ww: vw, wh: vh,
+        fillColor: const Color(0x1A2196F3),
+        borderColor: const Color(0xFF2196F3),
+        handleColor: const Color(0xFF2196F3),
+        label: '${level.viewportWidth}×${level.viewportHeight}',
+        labelColor: const Color(0xFF2196F3),
+      );
+    }
+  }
+
+  void _paintViewportRect(
+    Canvas canvas,
+    double vScale,
+    Offset vOffset, {
+    required double wx,
+    required double wy,
+    required double ww,
+    required double wh,
+    required Color fillColor,
+    required Color borderColor,
+    required Color handleColor,
+    required String label,
+    required Color labelColor,
+  }) {
+    final double sx = vOffset.dx + wx * vScale;
+    final double sy = vOffset.dy + wy * vScale;
+    final double sw = ww * vScale;
+    final double sh = wh * vScale;
     final Rect screenRect = Rect.fromLTWH(sx, sy, sw, sh);
 
-    // Semi-transparent fill to show the camera view area
-    canvas.drawRect(
-      screenRect,
-      Paint()
-        ..color = const Color(0x1A2196F3)
-        ..style = PaintingStyle.fill,
-    );
+    canvas.drawRect(screenRect,
+        Paint()
+          ..color = fillColor
+          ..style = PaintingStyle.fill);
+    canvas.drawRect(screenRect,
+        Paint()
+          ..color = borderColor
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke);
 
-    // Solid border
-    canvas.drawRect(
-      screenRect,
-      Paint()
-        ..color = const Color(0xFF2196F3)
-        ..strokeWidth = 2.0
-        ..style = PaintingStyle.stroke,
-    );
-
-    // Corner handles (small filled squares at the four corners)
     const double handleSize = 6.0;
-    final List<Offset> corners = [
+    final Paint handlePaint = Paint()
+      ..color = handleColor
+      ..style = PaintingStyle.fill;
+    for (final corner in [
       Offset(sx, sy),
       Offset(sx + sw, sy),
       Offset(sx, sy + sh),
       Offset(sx + sw, sy + sh),
-    ];
-    final Paint handlePaint = Paint()
-      ..color = const Color(0xFF2196F3)
-      ..style = PaintingStyle.fill;
-    for (final corner in corners) {
+    ]) {
       canvas.drawRect(
-        Rect.fromCenter(
-            center: corner, width: handleSize, height: handleSize),
+        Rect.fromCenter(center: corner, width: handleSize, height: handleSize),
         handlePaint,
       );
     }
 
-    // Label showing viewport size
     _drawLabel(
       canvas,
-      '${level.viewportWidth}×${level.viewportHeight}',
+      label,
       Offset(sx + 4, sy + 4),
-      TextStyle(
-        color: const Color(0xFF2196F3),
-        fontSize: 9.0,
-        fontFamily: 'monospace',
-      ),
+      TextStyle(color: labelColor, fontSize: 9.0, fontFamily: 'monospace'),
     );
   }
 

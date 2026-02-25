@@ -1000,6 +1000,68 @@ class LayoutUtils {
     sprite.y = (levelCoords.dy - appData.spriteDragOffset.dy).toInt();
   }
 
+  // ── Viewport drag ────────────────────────────────────────────────────────
+
+  /// Returns true if [localPosition] (screen space) is inside the viewport rect.
+  static bool isPointInViewportRect(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return false;
+    }
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final Offset world =
+        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    final Rect rect = Rect.fromLTWH(
+      level.viewportX.toDouble(),
+      level.viewportY.toDouble(),
+      level.viewportWidth.toDouble(),
+      level.viewportHeight.toDouble(),
+    );
+    return rect.contains(world);
+  }
+
+  /// Initialises a viewport drag. Records offset from viewport top-left to
+  /// the grab point so the rect doesn't jump.
+  static void startDragViewportFromPosition(
+      AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1) return;
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final Offset world =
+        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    appData.viewportDragOffset =
+        world - Offset(level.viewportX.toDouble(), level.viewportY.toDouble());
+    appData.viewportDragX = level.viewportX;
+    appData.viewportDragY = level.viewportY;
+    appData.viewportIsDragging = true;
+  }
+
+  /// Updates the live drag position. Does NOT modify level.viewportX/Y.
+  static void dragViewportFromCanvas(AppData appData, Offset localPosition) {
+    if (!appData.viewportIsDragging) return;
+    final Offset world =
+        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    appData.viewportDragX =
+        (world.dx - appData.viewportDragOffset.dx).round();
+    appData.viewportDragY =
+        (world.dy - appData.viewportDragOffset.dy).round();
+  }
+
+  /// Commits the drag: writes the drag position into level.viewportX/Y and
+  /// clears all drag state.
+  static void commitViewportDrag(AppData appData) {
+    if (!appData.viewportIsDragging) return;
+    if (appData.selectedLevel == -1) {
+      appData.viewportIsDragging = false;
+      return;
+    }
+    appData.pushUndo();
+    final level = appData.gameData.levels[appData.selectedLevel];
+    level.viewportX = appData.viewportDragX;
+    level.viewportY = appData.viewportDragY;
+    appData.viewportIsDragging = false;
+    appData.viewportDragOffset = Offset.zero;
+  }
+
   /// Hit-tests visible layers (topmost first) and returns the index of the first
   /// layer whose bounds contain [localPosition], or -1 if none.
   static int selectLayerFromPosition(AppData appData, Offset localPosition) {

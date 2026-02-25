@@ -36,11 +36,15 @@ class _LayoutState extends State<Layout> {
       GlobalKey<LayoutSpritesState>();
   final GlobalKey<LayoutZonesState> layoutZonesKey =
       GlobalKey<LayoutZonesState>();
+  final GlobalKey<LayoutViewportState> layoutViewportKey =
+      GlobalKey<LayoutViewportState>();
 
   // ignore: unused_field
   Timer? _timer;
   ui.Image? _layerImage;
   bool _isDraggingLayer = false;
+  bool _isDraggingViewport = false;
+  bool _didModifyViewportDuringGesture = false;
   bool _isDraggingZone = false;
   bool _isResizingZone = false;
   bool _isDraggingSprite = false;
@@ -225,7 +229,7 @@ class _LayoutState extends State<Layout> {
       case 'sprites':
         return LayoutSprites(key: layoutSpritesKey);
       case 'viewport':
-        return const LayoutViewport();
+        return LayoutViewport(key: layoutViewportKey);
       case 'media':
         return const LayoutMedia();
       default:
@@ -528,7 +532,18 @@ class _LayoutState extends State<Layout> {
                                           // Levels section is preview-only: always pan.
                                         } else if (appData.selectedSection ==
                                             "viewport") {
-                                          // Viewport section: pan the editor view.
+                                          _isDraggingViewport = false;
+                                          _didModifyViewportDuringGesture =
+                                              false;
+                                          if (LayoutUtils.isPointInViewportRect(
+                                              appData, details.localPosition)) {
+                                            _isDraggingViewport = true;
+                                            LayoutUtils
+                                                .startDragViewportFromPosition(
+                                              appData,
+                                              details.localPosition,
+                                            );
+                                          }
                                         } else if (appData.selectedSection ==
                                             "layers") {
                                           // Layers section is preview-only: always pan, never drag a layer.
@@ -679,7 +694,20 @@ class _LayoutState extends State<Layout> {
                                           }
                                         } else if (appData.selectedSection ==
                                             "viewport") {
-                                          if (_isPointerDown) {
+                                          if (!_isPointerDown) {
+                                            // scroll-triggered pan — ignore
+                                          } else if (_isDraggingViewport) {
+                                            LayoutUtils.dragViewportFromCanvas(
+                                                appData, details.localPosition);
+                                            _didModifyViewportDuringGesture =
+                                                true;
+                                            layoutViewportKey.currentState
+                                                ?.syncDragPosition(
+                                              appData.viewportDragX,
+                                              appData.viewportDragY,
+                                            );
+                                            appData.update();
+                                          } else {
                                             appData.layersViewOffset +=
                                                 details.delta;
                                             appData.update();
@@ -825,6 +853,34 @@ class _LayoutState extends State<Layout> {
                                           });
                                         }
                                         if (appData.selectedSection ==
+                                            "viewport") {
+                                          if (_isDraggingViewport) {
+                                            _isDraggingViewport = false;
+                                            if (_didModifyViewportDuringGesture) {
+                                              _didModifyViewportDuringGesture =
+                                                  false;
+                                              LayoutUtils.commitViewportDrag(
+                                                  appData);
+                                              // Sync toolbar fields back to
+                                              // committed values.
+                                              layoutViewportKey.currentState
+                                                  ?.syncDragPosition(
+                                                appData.gameData
+                                                    .levels[appData.selectedLevel]
+                                                    .viewportX,
+                                                appData.gameData
+                                                    .levels[appData.selectedLevel]
+                                                    .viewportY,
+                                              );
+                                              appData.update();
+                                              unawaited(
+                                                  _autoSaveIfPossible(appData));
+                                            } else {
+                                              // No movement: just clear drag state
+                                              appData.viewportIsDragging = false;
+                                            }
+                                          }
+                                        } else if (appData.selectedSection ==
                                             "layers") {
                                           if (_isDraggingLayer) {
                                             _isDraggingLayer = false;

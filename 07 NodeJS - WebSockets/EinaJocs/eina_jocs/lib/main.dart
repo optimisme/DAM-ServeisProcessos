@@ -68,8 +68,11 @@ class _LoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Brightness brightness = MediaQuery.platformBrightnessOf(context);
     return Container(
-      color: CupertinoColors.white,
+      color: brightness == Brightness.dark
+          ? CupertinoColors.black
+          : CupertinoColors.white,
     );
   }
 }

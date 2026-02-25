@@ -8,6 +8,12 @@ class GameLevel {
   final List<GameLayer> layers;
   final List<GameZone> zones;
   final List<GameSprite> sprites;
+  int viewportWidth;
+  int viewportHeight;
+  int viewportX;
+  int viewportY;
+  // 'letterbox', 'expand', 'stretch'
+  String viewportAdaptation;
 
   GameLevel({
     required this.name,
@@ -15,6 +21,11 @@ class GameLevel {
     required this.layers,
     required this.zones,
     required this.sprites,
+    this.viewportWidth = 320,
+    this.viewportHeight = 180,
+    this.viewportX = 0,
+    this.viewportY = 0,
+    this.viewportAdaptation = 'letterbox',
   });
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
@@ -31,6 +42,12 @@ class GameLevel {
       sprites: (json['sprites'] as List<dynamic>)
           .map((item) => GameSprite.fromJson(item))
           .toList(),
+      viewportWidth: (json['viewportWidth'] as int?) ?? 320,
+      viewportHeight: (json['viewportHeight'] as int?) ?? 180,
+      viewportX: (json['viewportX'] as int?) ?? 0,
+      viewportY: (json['viewportY'] as int?) ?? 0,
+      viewportAdaptation:
+          (json['viewportAdaptation'] as String?) ?? 'letterbox',
     );
   }
 
@@ -42,11 +59,16 @@ class GameLevel {
       'layers': layers.map((layer) => layer.toJson()).toList(),
       'zones': zones.map((zone) => zone.toJson()).toList(),
       'sprites': sprites.map((item) => item.toJson()).toList(),
+      'viewportWidth': viewportWidth,
+      'viewportHeight': viewportHeight,
+      'viewportX': viewportX,
+      'viewportY': viewportY,
+      'viewportAdaptation': viewportAdaptation,
     };
   }
 
   @override
   String toString() {
-    return 'GameLevel(name: $name, description: $description, layers: $layers, zones: $zones, sprites: $sprites)';
+    return 'GameLevel(name: $name, description: $description, layers: $layers, zones: $zones, sprites: $sprites, viewport: ${viewportWidth}x$viewportHeight at ($viewportX,$viewportY) [$viewportAdaptation])';
   }
 }

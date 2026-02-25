@@ -17,16 +17,20 @@ class CanvasPainter extends CustomPainter {
         appData.selectedSection == 'layers' ||
         appData.selectedSection == 'tilemap' ||
         appData.selectedSection == 'zones' ||
-        appData.selectedSection == 'sprites') {
+        appData.selectedSection == 'sprites' ||
+        appData.selectedSection == 'viewport') {
       _paintWorldViewport(
         canvas,
         size,
         renderingTilemap: appData.selectedSection == 'tilemap',
         renderingSprites: appData.selectedSection == 'sprites' ||
             appData.selectedSection == 'layers' ||
-            appData.selectedSection == 'levels',
+            appData.selectedSection == 'levels' ||
+            appData.selectedSection == 'viewport',
         renderingLayersPreview: appData.selectedSection == 'layers' ||
-            appData.selectedSection == 'levels',
+            appData.selectedSection == 'levels' ||
+            appData.selectedSection == 'viewport',
+        renderingViewport: appData.selectedSection == 'viewport',
       );
     } else {
       _paintDefault(canvas, size);
@@ -102,6 +106,7 @@ class CanvasPainter extends CustomPainter {
     required bool renderingTilemap,
     required bool renderingSprites,
     bool renderingLayersPreview = false,
+    bool renderingViewport = false,
   }) {
     final double vScale = appData.layersViewScale;
     final Offset vOffset = appData.layersViewOffset;
@@ -323,8 +328,79 @@ class CanvasPainter extends CustomPainter {
 
     canvas.restore();
 
+    // Draw viewport rectangle overlay (in screen space, on top of the world)
+    if (renderingViewport &&
+        appData.selectedLevel != -1 &&
+        appData.selectedLevel < appData.gameData.levels.length) {
+      _paintViewportOverlay(canvas, size, vScale, vOffset);
+    }
+
     // Draw axes on top (in screen space)
     _paintAxes(canvas, size, vScale, vOffset);
+  }
+
+  void _paintViewportOverlay(
+      Canvas canvas, Size size, double vScale, Offset vOffset) {
+    final level = appData.gameData.levels[appData.selectedLevel];
+    final double vx = level.viewportX.toDouble();
+    final double vy = level.viewportY.toDouble();
+    final double vw = level.viewportWidth.toDouble();
+    final double vh = level.viewportHeight.toDouble();
+
+    // Convert viewport world rect to screen space
+    final double sx = vOffset.dx + vx * vScale;
+    final double sy = vOffset.dy + vy * vScale;
+    final double sw = vw * vScale;
+    final double sh = vh * vScale;
+    final Rect screenRect = Rect.fromLTWH(sx, sy, sw, sh);
+
+    // Semi-transparent fill to show the camera view area
+    canvas.drawRect(
+      screenRect,
+      Paint()
+        ..color = const Color(0x1A2196F3)
+        ..style = PaintingStyle.fill,
+    );
+
+    // Solid border
+    canvas.drawRect(
+      screenRect,
+      Paint()
+        ..color = const Color(0xFF2196F3)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke,
+    );
+
+    // Corner handles (small filled squares at the four corners)
+    const double handleSize = 6.0;
+    final List<Offset> corners = [
+      Offset(sx, sy),
+      Offset(sx + sw, sy),
+      Offset(sx, sy + sh),
+      Offset(sx + sw, sy + sh),
+    ];
+    final Paint handlePaint = Paint()
+      ..color = const Color(0xFF2196F3)
+      ..style = PaintingStyle.fill;
+    for (final corner in corners) {
+      canvas.drawRect(
+        Rect.fromCenter(
+            center: corner, width: handleSize, height: handleSize),
+        handlePaint,
+      );
+    }
+
+    // Label showing viewport size
+    _drawLabel(
+      canvas,
+      '${level.viewportWidth}×${level.viewportHeight}',
+      Offset(sx + 4, sy + 4),
+      TextStyle(
+        color: const Color(0xFF2196F3),
+        fontSize: 9.0,
+        fontFamily: 'monospace',
+      ),
+    );
   }
 
   void _paintAxes(Canvas canvas, Size size, double vScale, Offset vOffset) {

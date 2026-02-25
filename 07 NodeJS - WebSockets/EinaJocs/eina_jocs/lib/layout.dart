@@ -18,6 +18,7 @@ import 'layout_projects.dart';
 import 'layout_projects_main.dart';
 import 'layout_tilemaps.dart';
 import 'layout_zones.dart';
+import 'layout_viewport.dart';
 import 'layout_utils.dart';
 
 class Layout extends StatefulWidget {
@@ -63,7 +64,8 @@ class _LayoutState extends State<Layout> {
     'tilemap',
     'zones',
     'animations',
-    'sprites'
+    'sprites',
+    'viewport',
   ];
 
   @override
@@ -222,6 +224,8 @@ class _LayoutState extends State<Layout> {
         return const LayoutAnimations();
       case 'sprites':
         return LayoutSprites(key: layoutSpritesKey);
+      case 'viewport':
+        return const LayoutViewport();
       case 'media':
         return const LayoutMedia();
       default:
@@ -260,6 +264,11 @@ class _LayoutState extends State<Layout> {
         await LayoutUtils.preloadLayerImages(appData);
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'sprites':
+        await LayoutUtils.preloadLayerImages(appData);
+        await LayoutUtils.preloadSpriteImages(appData);
+        image = await LayoutUtils.drawCanvasImageEmpty(appData);
+      case 'viewport':
+        // Viewport section renders in world space via CanvasPainter.
         await LayoutUtils.preloadLayerImages(appData);
         await LayoutUtils.preloadSpriteImages(appData);
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
@@ -453,7 +462,8 @@ class _LayoutState extends State<Layout> {
                                         appData.selectedSection != "layers" &&
                                         appData.selectedSection != "tilemap" &&
                                         appData.selectedSection != "zones" &&
-                                        appData.selectedSection != "sprites") {
+                                        appData.selectedSection != "sprites" &&
+                                        appData.selectedSection != "viewport") {
                                       return;
                                     }
                                     _applyLayersZoom(
@@ -467,7 +477,8 @@ class _LayoutState extends State<Layout> {
                                         appData.selectedSection != "layers" &&
                                         appData.selectedSection != "tilemap" &&
                                         appData.selectedSection != "zones" &&
-                                        appData.selectedSection != "sprites") {
+                                        appData.selectedSection != "sprites" &&
+                                        appData.selectedSection != "viewport") {
                                       return;
                                     }
                                     // pan delta from trackpad scroll
@@ -515,6 +526,9 @@ class _LayoutState extends State<Layout> {
                                         if (appData.selectedSection ==
                                             "levels") {
                                           // Levels section is preview-only: always pan.
+                                        } else if (appData.selectedSection ==
+                                            "viewport") {
+                                          // Viewport section: pan the editor view.
                                         } else if (appData.selectedSection ==
                                             "layers") {
                                           // Layers section is preview-only: always pan, never drag a layer.
@@ -658,6 +672,13 @@ class _LayoutState extends State<Layout> {
                                       onPanUpdate: (details) async {
                                         if (appData.selectedSection ==
                                             "levels") {
+                                          if (_isPointerDown) {
+                                            appData.layersViewOffset +=
+                                                details.delta;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "viewport") {
                                           if (_isPointerDown) {
                                             appData.layersViewOffset +=
                                                 details.delta;

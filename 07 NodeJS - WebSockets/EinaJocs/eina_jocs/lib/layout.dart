@@ -244,8 +244,9 @@ class _LayoutState extends State<Layout> {
         image = await LayoutUtils.drawCanvasImageLayers(appData, false);
       case 'layers':
         // Layers section renders directly in world space via CanvasPainter.
-        // Just ensure tileset images are loaded into the cache.
+        // Preload tileset and sprite images for the preview.
         await LayoutUtils.preloadLayerImages(appData);
+        await LayoutUtils.preloadSpriteImages(appData);
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'tilemap':
         // Tilemap section now renders in world space via CanvasPainter.
@@ -508,19 +509,8 @@ class _LayoutState extends State<Layout> {
                                         appData.dragStartDetails = details;
                                         if (appData.selectedSection ==
                                             "layers") {
-                                          if (appData.selectedLayer != -1 &&
-                                              LayoutUtils.hitTestSelectedLayer(
-                                                  appData,
-                                                  details.localPosition)) {
-                                            _isDraggingLayer = true;
-                                            LayoutUtils
-                                                .startDragLayerFromPosition(
-                                                    appData,
-                                                    details.localPosition);
-                                          } else {
-                                            // Clicked outside selected layer — pan world, keep selection
-                                            _isDraggingLayer = false;
-                                          }
+                                          // Layers section is preview-only: always pan, never drag a layer.
+                                          _isDraggingLayer = false;
                                         } else if (appData.selectedSection ==
                                             "tilemap") {
                                           final bool useEraser =
@@ -867,19 +857,7 @@ class _LayoutState extends State<Layout> {
                                       onTapDown: (TapDownDetails details) {
                                         if (appData.selectedSection ==
                                             "layers") {
-                                          final int hit = LayoutUtils
-                                              .selectLayerFromPosition(appData,
-                                                  details.localPosition);
-                                          if (hit == -1) {
-                                            if (appData.selectedLayer != -1) {
-                                              appData.selectedLayer = -1;
-                                              appData.update();
-                                            }
-                                          } else if (hit !=
-                                              appData.selectedLayer) {
-                                            appData.selectedLayer = hit;
-                                            appData.update();
-                                          }
+                                          // Layers section is preview-only: no selection via canvas tap.
                                         } else if (appData.selectedSection ==
                                             "zones") {
                                           if (appData.selectedZone != -1 &&

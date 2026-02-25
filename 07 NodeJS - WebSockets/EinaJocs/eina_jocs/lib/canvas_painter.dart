@@ -21,7 +21,9 @@ class CanvasPainter extends CustomPainter {
         canvas,
         size,
         renderingTilemap: appData.selectedSection == 'tilemap',
-        renderingSprites: appData.selectedSection == 'sprites',
+        renderingSprites: appData.selectedSection == 'sprites' ||
+            appData.selectedSection == 'layers',
+        renderingLayersPreview: appData.selectedSection == 'layers',
       );
     } else {
       _paintDefault(canvas, size);
@@ -96,6 +98,7 @@ class CanvasPainter extends CustomPainter {
     Size size, {
     required bool renderingTilemap,
     required bool renderingSprites,
+    bool renderingLayersPreview = false,
   }) {
     final double vScale = appData.layersViewScale;
     final Offset vOffset = appData.layersViewOffset;
@@ -187,8 +190,9 @@ class CanvasPainter extends CustomPainter {
           );
         }
 
-        // Draw selection border only in layers/tilemap views.
-        if ((appData.selectedSection == 'layers' ||
+        // Draw selection border only in tilemap view (not in layers preview).
+        if (!renderingLayersPreview &&
+            (appData.selectedSection == 'layers' ||
                 appData.selectedSection == 'tilemap') &&
             li == appData.selectedLayer) {
           final Color selectedColor = renderingTilemap
@@ -296,7 +300,7 @@ class CanvasPainter extends CustomPainter {
             canvas.drawImageRect(spriteImage, srcRect, dstRect, Paint());
           }
 
-          if (i == appData.selectedSprite) {
+          if (!renderingLayersPreview && i == appData.selectedSprite) {
             final Paint selectedPaint = Paint()
               ..color = const Color(0xFF2196F3)
               ..strokeWidth = 2.0 / vScale

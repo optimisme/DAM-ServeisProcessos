@@ -4,7 +4,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'app_data.dart';
+import 'game_animation.dart';
 import 'game_layer.dart';
+import 'game_media_asset.dart';
 import 'game_sprite.dart';
 import 'game_zone.dart';
 import 'layout_sprites.dart';
@@ -14,6 +16,123 @@ class LayoutUtils {
   static const double _depthParallaxStep = 0.08;
   static const double _minParallaxFactor = 0.25;
   static const double _maxParallaxFactor = 4.0;
+  static const double _editorTicksPerSecond = 10.0;
+
+  static Future<_AnimationGridInfo?> _selectedAnimationGridInfo(
+      AppData appData) async {
+    if (appData.selectedAnimation < 0 ||
+        appData.selectedAnimation >= appData.gameData.animations.length) {
+      return null;
+    }
+    final GameAnimation animation =
+        appData.gameData.animations[appData.selectedAnimation];
+    final GameMediaAsset? media =
+        appData.mediaAssetByFileName(animation.mediaFile);
+    if (media == null || media.tileWidth <= 0 || media.tileHeight <= 0) {
+      return null;
+    }
+    final ui.Image image = await appData.getImage(animation.mediaFile);
+    final int cols = math.max(1, (image.width / media.tileWidth).floor());
+    final int rows = math.max(1, (image.height / media.tileHeight).floor());
+    return _AnimationGridInfo(
+      animation: animation,
+      media: media,
+      image: image,
+      cols: cols,
+      rows: rows,
+      totalFrames: math.max(1, cols * rows),
+    );
+  }
+
+  static bool hasAnimationFrameSelection(AppData appData) {
+    return appData.animationSelectionStartFrame >= 0 &&
+        appData.animationSelectionEndFrame >= 0;
+  }
+
+  static void clearAnimationFrameSelection(AppData appData) {
+    appData.animationSelectionStartFrame = -1;
+    appData.animationSelectionEndFrame = -1;
+  }
+
+  static Future<int> animationFrameIndexFromCanvas(
+    AppData appData,
+    Offset localPosition,
+  ) async {
+    final _AnimationGridInfo? gridInfo =
+        await _selectedAnimationGridInfo(appData);
+    if (gridInfo == null) {
+      return -1;
+    }
+    final Offset imageCoords = translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
+    if (imageCoords.dx < 0 ||
+        imageCoords.dy < 0 ||
+        imageCoords.dx >= gridInfo.image.width ||
+        imageCoords.dy >= gridInfo.image.height) {
+      return -1;
+    }
+    final int col = (imageCoords.dx / gridInfo.media.tileWidth).floor();
+    final int row = (imageCoords.dy / gridInfo.media.tileHeight).floor();
+    final int frame = row * gridInfo.cols + col;
+    if (frame < 0 || frame >= gridInfo.totalFrames) {
+      return -1;
+    }
+    return frame;
+  }
+
+  static Future<bool> setAnimationSelectionFromEndpoints({
+    required AppData appData,
+    required int startFrame,
+    required int endFrame,
+  }) async {
+    final _AnimationGridInfo? gridInfo =
+        await _selectedAnimationGridInfo(appData);
+    if (gridInfo == null) {
+      return false;
+    }
+    final int clampedStart = startFrame.clamp(0, gridInfo.totalFrames - 1);
+    final int clampedEnd = endFrame.clamp(0, gridInfo.totalFrames - 1);
+    final int nextStart = math.min(clampedStart, clampedEnd);
+    final int nextEnd = math.max(clampedStart, clampedEnd);
+    if (appData.animationSelectionStartFrame == nextStart &&
+        appData.animationSelectionEndFrame == nextEnd) {
+      return false;
+    }
+    appData.animationSelectionStartFrame = nextStart;
+    appData.animationSelectionEndFrame = nextEnd;
+    return true;
+  }
+
+  static Future<bool> applyAnimationFrameSelectionToCurrentAnimation(
+    AppData appData, {
+    bool pushUndo = false,
+  }) async {
+    if (!hasAnimationFrameSelection(appData)) {
+      return false;
+    }
+    final _AnimationGridInfo? gridInfo =
+        await _selectedAnimationGridInfo(appData);
+    if (gridInfo == null) {
+      return false;
+    }
+    final int nextStart =
+        appData.animationSelectionStartFrame.clamp(0, gridInfo.totalFrames - 1);
+    final int nextEnd = appData.animationSelectionEndFrame
+        .clamp(nextStart, gridInfo.totalFrames - 1);
+    if (gridInfo.animation.startFrame == nextStart &&
+        gridInfo.animation.endFrame == nextEnd) {
+      return false;
+    }
+    if (pushUndo) {
+      appData.pushUndo();
+    }
+    gridInfo.animation.startFrame = nextStart;
+    gridInfo.animation.endFrame = nextEnd;
+    return true;
+  }
 
   /// Maps depth displacement to a parallax factor.
   /// Negative depth => closer (moves faster), positive depth => farther (moves slower).
@@ -196,6 +315,74 @@ class LayoutUtils {
     }
   }
 
+  /// Ensures all sprite images for the current level are loaded into [appData.imagesCache].
+  static Future<void> preloadSpriteImages(AppData appData) async {
+    if (appData.selectedLevel == -1) return;
+    final level = appData.gameData.levels[appData.selectedLevel];
+    for (final sprite in level.sprites) {
+      final String imageFile = spriteImageFile(appData, sprite);
+      if (imageFile.isNotEmpty) {
+        try {
+          await appData.getImage(imageFile);
+        } catch (_) {}
+      }
+    }
+  }
+
+  static GameAnimation? spriteAnimation(AppData appData, GameSprite sprite) {
+    return appData.animationById(sprite.animationId);
+  }
+
+  static String spriteImageFile(AppData appData, GameSprite sprite) {
+    final GameAnimation? animation = spriteAnimation(appData, sprite);
+    final String fromAnimation = animation?.mediaFile.trim() ?? '';
+    if (fromAnimation.isNotEmpty) {
+      return fromAnimation;
+    }
+    return sprite.imageFile;
+  }
+
+  static GameMediaAsset? spriteMediaAsset(AppData appData, GameSprite sprite) {
+    final String file = spriteImageFile(appData, sprite);
+    if (file.trim().isEmpty) {
+      return null;
+    }
+    return appData.mediaAssetByFileName(file);
+  }
+
+  static Size spriteFrameSize(AppData appData, GameSprite sprite) {
+    final GameMediaAsset? media = spriteMediaAsset(appData, sprite);
+    if (media != null && media.tileWidth > 0 && media.tileHeight > 0) {
+      return Size(media.tileWidth.toDouble(), media.tileHeight.toDouble());
+    }
+    final double width =
+        sprite.spriteWidth > 0 ? sprite.spriteWidth.toDouble() : 1.0;
+    final double height =
+        sprite.spriteHeight > 0 ? sprite.spriteHeight.toDouble() : 1.0;
+    return Size(width, height);
+  }
+
+  static int spriteFrameIndex({
+    required AppData appData,
+    required GameSprite sprite,
+    required int totalFrames,
+  }) {
+    final int safeTotal = math.max(1, totalFrames);
+    final GameAnimation? animation = spriteAnimation(appData, sprite);
+    if (animation == null) {
+      return appData.frame % safeTotal;
+    }
+
+    final int start = animation.startFrame.clamp(0, safeTotal - 1);
+    final int end = animation.endFrame.clamp(start, safeTotal - 1);
+    final int span = math.max(1, end - start + 1);
+    final int ticks =
+        ((appData.frame / _editorTicksPerSecond) * animation.fps).floor();
+    final int offset =
+        animation.loop ? ticks % span : math.min(ticks, span - 1);
+    return start + offset;
+  }
+
   static Future<ui.Image> drawCanvasImageEmpty(AppData appData) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -267,14 +454,24 @@ class LayoutUtils {
         cntSprite < level.sprites.length;
         cntSprite = cntSprite + 1) {
       final sprite = level.sprites[cntSprite];
-      final spriteImage = await appData.getImage(sprite.imageFile);
-      double spriteX = sprite.x.toDouble();
+      final String imageFile = spriteImageFile(appData, sprite);
+      if (imageFile.isEmpty) {
+        continue;
+      }
+      final spriteImage = await appData.getImage(imageFile);
+      final double spriteX = sprite.x.toDouble();
       final spriteY = sprite.y.toDouble();
-      final spriteWidth = sprite.spriteWidth.toDouble();
-      final spriteHeight = sprite.spriteHeight.toDouble();
+      final Size frameSize = spriteFrameSize(appData, sprite);
+      final double spriteWidth = frameSize.width;
+      final double spriteHeight = frameSize.height;
 
-      double frames = spriteImage.width / spriteWidth;
-      final spriteFrameX = ((appData.frame % frames) * spriteWidth);
+      final int frames = math.max(1, (spriteImage.width / spriteWidth).floor());
+      final int frameIndex = spriteFrameIndex(
+        appData: appData,
+        sprite: sprite,
+        totalFrames: frames,
+      );
+      final double spriteFrameX = frameIndex * spriteWidth;
 
       imgCanvas.drawImageRect(
         spriteImage,
@@ -368,6 +565,100 @@ class LayoutUtils {
           Offset(image.width.toDouble(), y.toDouble()),
           gridPaint,
         );
+      }
+    }
+
+    final picture = recorder.endRecording();
+    return await picture.toImage(image.width, image.height);
+  }
+
+  static Future<ui.Image> drawCanvasImageAnimations(AppData appData) async {
+    if (appData.selectedAnimation < 0 ||
+        appData.selectedAnimation >= appData.gameData.animations.length) {
+      return await drawCanvasImageEmpty(appData);
+    }
+
+    final GameAnimation animation =
+        appData.gameData.animations[appData.selectedAnimation];
+    if (animation.mediaFile.trim().isEmpty) {
+      return await drawCanvasImageEmpty(appData);
+    }
+
+    ui.Image image;
+    try {
+      image = await appData.getImage(animation.mediaFile);
+    } catch (_) {
+      return await drawCanvasImageEmpty(appData);
+    }
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawImage(image, Offset.zero, Paint());
+
+    final _AnimationGridInfo? gridInfo =
+        await _selectedAnimationGridInfo(appData);
+    if (gridInfo != null) {
+      final double tileWidth = gridInfo.media.tileWidth.toDouble();
+      final double tileHeight = gridInfo.media.tileHeight.toDouble();
+      final int cols = gridInfo.cols;
+      final int start = animation.startFrame.clamp(0, gridInfo.totalFrames - 1);
+      final int end = animation.endFrame.clamp(start, gridInfo.totalFrames - 1);
+
+      final Paint gridPaint = Paint()
+        ..color = Colors.black.withValues(alpha: 0.55)
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke;
+      for (int x = 0; x <= image.width; x += gridInfo.media.tileWidth) {
+        canvas.drawLine(
+          Offset(x.toDouble(), 0),
+          Offset(x.toDouble(), image.height.toDouble()),
+          gridPaint,
+        );
+      }
+      for (int y = 0; y <= image.height; y += gridInfo.media.tileHeight) {
+        canvas.drawLine(
+          Offset(0, y.toDouble()),
+          Offset(image.width.toDouble(), y.toDouble()),
+          gridPaint,
+        );
+      }
+
+      final Paint rangeFill = Paint()
+        ..color = Colors.orange.withValues(alpha: 0.2)
+        ..style = PaintingStyle.fill;
+      final Paint rangeStroke = Paint()
+        ..color = Colors.orange
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke;
+
+      for (int frame = start; frame <= end; frame++) {
+        final int row = frame ~/ cols;
+        final int col = frame % cols;
+        final Rect rect = Rect.fromLTWH(
+            col * tileWidth, row * tileHeight, tileWidth, tileHeight);
+        canvas.drawRect(rect, rangeFill);
+        canvas.drawRect(rect, rangeStroke);
+      }
+
+      if (hasAnimationFrameSelection(appData)) {
+        final int selectedStart = appData.animationSelectionStartFrame
+            .clamp(0, gridInfo.totalFrames - 1);
+        final int selectedEnd = appData.animationSelectionEndFrame
+            .clamp(selectedStart, gridInfo.totalFrames - 1);
+        final Paint selectedStroke = Paint()
+          ..color = Colors.blue
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke;
+        for (int frame = selectedStart; frame <= selectedEnd; frame++) {
+          final int row = frame ~/ cols;
+          final int col = frame % cols;
+          final Rect rect = Rect.fromLTWH(
+            col * tileWidth,
+            row * tileHeight,
+            tileWidth,
+            tileHeight,
+          );
+          canvas.drawRect(rect, selectedStroke);
+        }
       }
     }
 
@@ -606,42 +897,80 @@ class LayoutUtils {
     zone.height = math.max(1, (bottomRight.dy - zone.y.toDouble()).round());
   }
 
-  static void selectSpriteFromPosition(AppData appData, Offset localPosition,
-      GlobalKey<LayoutSpritesState> layoutSpritesKey) {
-    Offset levelCoords = LayoutUtils.translateCoords(
-        localPosition, appData.imageOffset, appData.scaleFactor);
+  static int spriteIndexFromPosition(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1) {
+      return -1;
+    }
+    final Offset levelCoords = LayoutUtils.translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
     final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
-    for (var i = 0; i < sprites.length; i++) {
+    for (int i = sprites.length - 1; i >= 0; i--) {
       final sprite = sprites[i];
-      final rect = Rect.fromLTWH(sprite.x.toDouble(), sprite.y.toDouble(),
-          sprite.spriteWidth.toDouble(), sprite.spriteHeight.toDouble());
+      final Size frameSize = spriteFrameSize(appData, sprite);
+      final rect = Rect.fromLTWH(
+        sprite.x.toDouble(),
+        sprite.y.toDouble(),
+        frameSize.width,
+        frameSize.height,
+      );
       if (rect.contains(levelCoords)) {
-        layoutSpritesKey.currentState?.selectSprite(appData, i, false);
-        break;
-      } else {
-        layoutSpritesKey.currentState?.selectSprite(appData, -1, false);
+        return i;
       }
     }
+    return -1;
   }
 
-  static void startDragSpriteFromPosition(AppData appData, Offset localPosition,
-      GlobalKey<LayoutSpritesState> layoutSpritesKey) {
-    Offset levelCoords = LayoutUtils.translateCoords(
-        localPosition, appData.imageOffset, appData.scaleFactor);
-    final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
-    for (var i = 0; i < sprites.length; i++) {
-      final sprite = sprites[i];
-      final rect = Rect.fromLTWH(sprite.x.toDouble(), sprite.y.toDouble(),
-          sprite.spriteWidth.toDouble(), sprite.spriteHeight.toDouble());
-      if (rect.contains(levelCoords)) {
-        appData.pushUndo();
-        appData.spriteDragOffset =
-            levelCoords - Offset(sprite.x.toDouble(), sprite.y.toDouble());
-        break;
-      } else {
-        appData.spriteDragOffset = Offset.zero;
-      }
+  static bool hitTestSelectedSprite(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedSprite == -1) {
+      return false;
     }
+    final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
+    if (appData.selectedSprite < 0 ||
+        appData.selectedSprite >= sprites.length) {
+      return false;
+    }
+    return spriteIndexFromPosition(appData, localPosition) ==
+        appData.selectedSprite;
+  }
+
+  static void selectSpriteFromPosition(
+    AppData appData,
+    Offset localPosition,
+    GlobalKey<LayoutSpritesState> layoutSpritesKey,
+  ) {
+    final int hitIndex = spriteIndexFromPosition(appData, localPosition);
+    if (hitIndex == -1) {
+      layoutSpritesKey.currentState?.selectSprite(appData, -1, false);
+      return;
+    }
+    final bool isSelected = appData.selectedSprite == hitIndex;
+    layoutSpritesKey.currentState?.selectSprite(appData, hitIndex, isSelected);
+  }
+
+  static void startDragSpriteFromPosition(
+      AppData appData, Offset localPosition) {
+    if (appData.selectedLevel == -1 || appData.selectedSprite == -1) {
+      appData.spriteDragOffset = Offset.zero;
+      return;
+    }
+    final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
+    if (appData.selectedSprite < 0 ||
+        appData.selectedSprite >= sprites.length) {
+      appData.spriteDragOffset = Offset.zero;
+      return;
+    }
+    final Offset levelCoords = LayoutUtils.translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
+    final sprite = sprites[appData.selectedSprite];
+    appData.pushUndo();
+    appData.spriteDragOffset =
+        levelCoords - Offset(sprite.x.toDouble(), sprite.y.toDouble());
   }
 
   static void dragSpriteFromCanvas(AppData appData, Offset localPosition) {
@@ -996,4 +1325,22 @@ class LayoutUtils {
         ..strokeWidth = 2,
     );
   }
+}
+
+class _AnimationGridInfo {
+  const _AnimationGridInfo({
+    required this.animation,
+    required this.media,
+    required this.image,
+    required this.cols,
+    required this.rows,
+    required this.totalFrames,
+  });
+
+  final GameAnimation animation;
+  final GameMediaAsset media;
+  final ui.Image image;
+  final int cols;
+  final int rows;
+  final int totalFrames;
 }

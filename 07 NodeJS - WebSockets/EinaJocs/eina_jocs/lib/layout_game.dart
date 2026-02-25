@@ -76,6 +76,8 @@ class LayoutGameState extends State<LayoutGame> {
                             name: value,
                             levels: appData.gameData.levels,
                             mediaAssets: appData.gameData.mediaAssets,
+                            animations: appData.gameData.animations,
+                            zoneTypes: appData.gameData.zoneTypes,
                           );
                         });
                       },

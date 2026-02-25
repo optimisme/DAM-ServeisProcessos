@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
@@ -14,11 +15,13 @@ class CanvasPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (appData.selectedSection == 'layers' ||
         appData.selectedSection == 'tilemap' ||
-        appData.selectedSection == 'zones') {
+        appData.selectedSection == 'zones' ||
+        appData.selectedSection == 'sprites') {
       _paintWorldViewport(
         canvas,
         size,
         renderingTilemap: appData.selectedSection == 'tilemap',
+        renderingSprites: appData.selectedSection == 'sprites',
       );
     } else {
       _paintDefault(canvas, size);
@@ -92,6 +95,7 @@ class CanvasPainter extends CustomPainter {
     Canvas canvas,
     Size size, {
     required bool renderingTilemap,
+    required bool renderingSprites,
   }) {
     final double vScale = appData.layersViewScale;
     final Offset vOffset = appData.layersViewOffset;
@@ -245,6 +249,52 @@ class CanvasPainter extends CustomPainter {
                 ..style = PaintingStyle.fill;
               canvas.drawPath(handlePath, handlePaint);
             }
+          }
+        }
+      }
+
+      if (renderingSprites) {
+        for (int i = 0; i < level.sprites.length; i++) {
+          final sprite = level.sprites[i];
+          final String imageFile = LayoutUtils.spriteImageFile(appData, sprite);
+          if (imageFile.isEmpty ||
+              !appData.imagesCache.containsKey(imageFile)) {
+            continue;
+          }
+          final ui.Image spriteImage = appData.imagesCache[imageFile]!;
+          final Size frameSize = LayoutUtils.spriteFrameSize(appData, sprite);
+          final double spriteWidth = frameSize.width;
+          final double spriteHeight = frameSize.height;
+          if (spriteWidth <= 0 || spriteHeight <= 0) {
+            continue;
+          }
+          final int frames =
+              math.max(1, (spriteImage.width / spriteWidth).floor());
+          final int frameIndex = LayoutUtils.spriteFrameIndex(
+            appData: appData,
+            sprite: sprite,
+            totalFrames: frames,
+          );
+          final double spriteFrameX = frameIndex * spriteWidth;
+          final double spriteX = sprite.x.toDouble();
+          final double spriteY = sprite.y.toDouble();
+
+          canvas.drawImageRect(
+            spriteImage,
+            Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight),
+            Rect.fromLTWH(spriteX, spriteY, spriteWidth, spriteHeight),
+            Paint(),
+          );
+
+          if (i == appData.selectedSprite) {
+            final Paint selectedPaint = Paint()
+              ..color = const Color(0xFF2196F3)
+              ..strokeWidth = 2.0 / vScale
+              ..style = PaintingStyle.stroke;
+            canvas.drawRect(
+              Rect.fromLTWH(spriteX, spriteY, spriteWidth, spriteHeight),
+              selectedPaint,
+            );
           }
         }
       }

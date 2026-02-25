@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'game_animation.dart';
 import 'game_data.dart';
 import 'game_media_asset.dart';
 
@@ -76,7 +77,10 @@ class AppData extends ChangeNotifier {
   int selectedLayer = -1;
   int selectedZone = -1;
   int selectedSprite = -1;
+  int selectedAnimation = -1;
   int selectedMedia = -1;
+  int animationSelectionStartFrame = -1;
+  int animationSelectionEndFrame = -1;
 
   static const Duration _autosaveDebounceDelay = Duration(milliseconds: 320);
   static const Duration _autosaveFollowupDelay = Duration(milliseconds: 80);
@@ -631,7 +635,10 @@ class AppData extends ChangeNotifier {
     selectedLayer = -1;
     selectedZone = -1;
     selectedSprite = -1;
+    selectedAnimation = -1;
     selectedMedia = -1;
+    animationSelectionStartFrame = -1;
+    animationSelectionEndFrame = -1;
     selectedTileIndex = -1;
     selectedTilePattern = [];
     tilemapEraserEnabled = false;
@@ -692,7 +699,10 @@ class AppData extends ChangeNotifier {
     selectedLayer = -1;
     selectedZone = -1;
     selectedSprite = -1;
+    selectedAnimation = -1;
     selectedMedia = -1;
+    animationSelectionStartFrame = -1;
+    animationSelectionEndFrame = -1;
     selectedTileIndex = -1;
     selectedTilePattern = [];
     tilemapEraserEnabled = false;
@@ -746,6 +756,8 @@ class AppData extends ChangeNotifier {
         name: cleanName,
         levels: gameData.levels,
         mediaAssets: gameData.mediaAssets,
+        animations: gameData.animations,
+        zoneTypes: gameData.zoneTypes,
       );
     }
 
@@ -816,7 +828,10 @@ class AppData extends ChangeNotifier {
       selectedLayer = -1;
       selectedZone = -1;
       selectedSprite = -1;
+      selectedAnimation = -1;
       selectedMedia = -1;
+      animationSelectionStartFrame = -1;
+      animationSelectionEndFrame = -1;
       selectedTileIndex = -1;
       selectedTilePattern = [];
       tilemapEraserEnabled = false;
@@ -1082,6 +1097,35 @@ class AppData extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  GameAnimation? animationById(String animationId) {
+    for (final animation in gameData.animations) {
+      if (animation.id == animationId) {
+        return animation;
+      }
+    }
+    return null;
+  }
+
+  GameMediaAsset? mediaAssetByAnimationId(String animationId) {
+    final GameAnimation? animation = animationById(animationId);
+    if (animation == null) {
+      return null;
+    }
+    return mediaAssetByFileName(animation.mediaFile);
+  }
+
+  String animationDisplayNameById(String animationId) {
+    final GameAnimation? animation = animationById(animationId);
+    if (animation == null) {
+      return 'Unknown animation';
+    }
+    final String trimmed = animation.name.trim();
+    if (trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    return GameMediaAsset.inferNameFromFileName(animation.mediaFile);
   }
 
   String mediaDisplayNameByFileName(String fileName) {

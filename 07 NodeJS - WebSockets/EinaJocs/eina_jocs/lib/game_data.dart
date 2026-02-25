@@ -1,3 +1,4 @@
+import 'game_animation.dart';
 import 'game_level.dart';
 import 'game_media_asset.dart';
 import 'game_zone_type.dart';
@@ -6,14 +7,17 @@ class GameData {
   final String name;
   final List<GameLevel> levels;
   final List<GameMediaAsset> mediaAssets;
+  final List<GameAnimation> animations;
   final List<GameZoneType> zoneTypes;
 
   GameData({
     required this.name,
     required this.levels,
     List<GameMediaAsset>? mediaAssets,
+    List<GameAnimation>? animations,
     List<GameZoneType>? zoneTypes,
   })  : mediaAssets = mediaAssets ?? <GameMediaAsset>[],
+        animations = animations ?? <GameAnimation>[],
         zoneTypes = zoneTypes ?? <GameZoneType>[];
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
@@ -21,19 +25,156 @@ class GameData {
     final List<GameLevel> levels = (json['levels'] as List<dynamic>)
         .map((level) => GameLevel.fromJson(level))
         .toList();
+    final List<GameMediaAsset> mediaAssets =
+        ((json['mediaAssets'] as List<dynamic>?) ?? [])
+            .map((item) => GameMediaAsset.fromJson(item))
+            .toList();
+    final List<GameAnimation> animations =
+        ((json['animations'] as List<dynamic>?) ?? [])
+            .map((item) => GameAnimation.fromJson(item))
+            .toList();
     final List<GameZoneType> zoneTypes =
         ((json['zoneTypes'] as List<dynamic>?) ?? [])
             .map((item) => GameZoneType.fromJson(item))
             .toList();
+    _normalizeAnimationsAndSpriteBindings(
+      levels: levels,
+      mediaAssets: mediaAssets,
+      animations: animations,
+    );
     return GameData(
       name: json['name'] as String,
       levels: levels,
-      mediaAssets: ((json['mediaAssets'] as List<dynamic>?) ?? [])
-          .map((item) => GameMediaAsset.fromJson(item))
-          .toList(),
+      mediaAssets: mediaAssets,
+      animations: animations,
       zoneTypes:
           zoneTypes.isNotEmpty ? zoneTypes : _inferZoneTypesFromLevels(levels),
     );
+  }
+
+  static void _normalizeAnimationsAndSpriteBindings({
+    required List<GameLevel> levels,
+    required List<GameMediaAsset> mediaAssets,
+    required List<GameAnimation> animations,
+  }) {
+    int idCounter = 1;
+    final Set<String> usedIds = {};
+
+    String nextId() {
+      while (usedIds.contains('anim_$idCounter')) {
+        idCounter += 1;
+      }
+      final String id = 'anim_$idCounter';
+      usedIds.add(id);
+      idCounter += 1;
+      return id;
+    }
+
+    for (final animation in animations) {
+      String id = animation.id.trim();
+      if (id.isEmpty || usedIds.contains(id)) {
+        id = nextId();
+      } else {
+        usedIds.add(id);
+      }
+      animation.id = id;
+      if (animation.name.trim().isEmpty) {
+        animation.name =
+            GameMediaAsset.inferNameFromFileName(animation.mediaFile);
+      }
+      if (animation.startFrame < 0) {
+        animation.startFrame = 0;
+      }
+      if (animation.endFrame < animation.startFrame) {
+        animation.endFrame = animation.startFrame;
+      }
+      if (animation.fps <= 0) {
+        animation.fps = 12.0;
+      }
+    }
+
+    GameAnimation? animationByMediaFile(String fileName) {
+      for (final animation in animations) {
+        if (animation.mediaFile == fileName) {
+          return animation;
+        }
+      }
+      return null;
+    }
+
+    GameMediaAsset? mediaByFileName(String fileName) {
+      for (final asset in mediaAssets) {
+        if (asset.fileName == fileName) {
+          return asset;
+        }
+      }
+      return null;
+    }
+
+    bool hasAnySprite = false;
+    for (final level in levels) {
+      if (level.sprites.isNotEmpty) {
+        hasAnySprite = true;
+        break;
+      }
+    }
+
+    if (animations.isEmpty && hasAnySprite) {
+      final Set<String> knownMedia = {};
+      for (final level in levels) {
+        for (final sprite in level.sprites) {
+          final String file = sprite.imageFile.trim();
+          if (file.isEmpty || knownMedia.contains(file)) {
+            continue;
+          }
+          knownMedia.add(file);
+          animations.add(
+            GameAnimation(
+              id: nextId(),
+              name: GameMediaAsset.inferNameFromFileName(file),
+              mediaFile: file,
+              startFrame: 0,
+              endFrame: 0,
+              fps: 12.0,
+              loop: true,
+            ),
+          );
+        }
+      }
+    }
+
+    final Map<String, GameAnimation> byIdAfter = {
+      for (final animation in animations) animation.id: animation
+    };
+
+    for (final level in levels) {
+      for (final sprite in level.sprites) {
+        GameAnimation? animation = byIdAfter[sprite.animationId];
+        animation ??= animationByMediaFile(sprite.imageFile);
+        if (animation == null && sprite.imageFile.trim().isNotEmpty) {
+          animation = GameAnimation(
+            id: nextId(),
+            name: GameMediaAsset.inferNameFromFileName(sprite.imageFile),
+            mediaFile: sprite.imageFile,
+            startFrame: 0,
+            endFrame: 0,
+            fps: 12.0,
+            loop: true,
+          );
+          animations.add(animation);
+          byIdAfter[animation.id] = animation;
+        }
+        if (animation != null) {
+          sprite.animationId = animation.id;
+          sprite.imageFile = animation.mediaFile;
+          final GameMediaAsset? asset = mediaByFileName(animation.mediaFile);
+          if (asset != null && asset.tileWidth > 0 && asset.tileHeight > 0) {
+            sprite.spriteWidth = asset.tileWidth;
+            sprite.spriteHeight = asset.tileHeight;
+          }
+        }
+      }
+    }
   }
 
   static List<GameZoneType> _inferZoneTypesFromLevels(List<GameLevel> levels) {
@@ -63,12 +204,13 @@ class GameData {
       'name': name,
       'levels': levels.map((level) => level.toJson()).toList(),
       'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
+      'animations': animations.map((animation) => animation.toJson()).toList(),
       'zoneTypes': zoneTypes.map((type) => type.toJson()).toList(),
     };
   }
 
   @override
   String toString() {
-    return 'Game(name: $name, levels: $levels, mediaAssets: $mediaAssets, zoneTypes: $zoneTypes)';
+    return 'Game(name: $name, levels: $levels, mediaAssets: $mediaAssets, animations: $animations, zoneTypes: $zoneTypes)';
   }
 }

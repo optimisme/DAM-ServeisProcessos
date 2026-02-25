@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
+import 'game_animation.dart';
+import 'game_media_asset.dart';
 import 'game_sprite.dart';
 import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
@@ -34,6 +36,80 @@ class LayoutSpritesState extends State<LayoutSprites> {
     }
   }
 
+  List<GameAnimation> _animations(AppData appData) {
+    return appData.gameData.animations;
+  }
+
+  GameAnimation? _animationById(AppData appData, String animationId) {
+    return appData.animationById(animationId);
+  }
+
+  GameAnimation? _defaultAnimation(
+      AppData appData, List<GameAnimation> animations) {
+    if (animations.isEmpty) {
+      return null;
+    }
+    if (appData.selectedAnimation >= 0 &&
+        appData.selectedAnimation < animations.length) {
+      return animations[appData.selectedAnimation];
+    }
+    return animations.first;
+  }
+
+  _SpriteDialogData _dialogDataFromAnimation({
+    required String name,
+    required int x,
+    required int y,
+    required GameAnimation animation,
+    required AppData appData,
+  }) {
+    final GameMediaAsset? media =
+        appData.mediaAssetByFileName(animation.mediaFile);
+    return _SpriteDialogData(
+      name: name,
+      x: x,
+      y: y,
+      animationId: animation.id,
+      width: media?.tileWidth ?? 32,
+      height: media?.tileHeight ?? 32,
+      imageFile: animation.mediaFile,
+    );
+  }
+
+  _SpriteDialogData _dialogDataFromSprite({
+    required AppData appData,
+    required GameSprite sprite,
+    required List<GameAnimation> animations,
+  }) {
+    GameAnimation? animation = _animationById(appData, sprite.animationId);
+    animation ??= animations.isEmpty
+        ? null
+        : animations.firstWhere(
+            (candidate) => candidate.mediaFile == sprite.imageFile,
+            orElse: () => animations.first,
+          );
+
+    if (animation != null) {
+      return _dialogDataFromAnimation(
+        name: sprite.name,
+        x: sprite.x,
+        y: sprite.y,
+        animation: animation,
+        appData: appData,
+      );
+    }
+
+    return _SpriteDialogData(
+      name: sprite.name,
+      x: sprite.x,
+      y: sprite.y,
+      animationId: sprite.animationId,
+      width: sprite.spriteWidth,
+      height: sprite.spriteHeight,
+      imageFile: sprite.imageFile,
+    );
+  }
+
   void _addSprite({
     required AppData appData,
     required _SpriteDialogData data,
@@ -43,7 +119,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
     }
     appData.gameData.levels[appData.selectedLevel].sprites.add(
       GameSprite(
-        type: data.type,
+        name: data.name,
+        animationId: data.animationId,
         x: data.x,
         y: data.y,
         spriteWidth: data.width,
@@ -68,7 +145,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
       return;
     }
     sprites[index] = GameSprite(
-      type: data.type,
+      name: data.name,
+      animationId: data.animationId,
       x: data.x,
       y: data.y,
       spriteWidth: data.width,
@@ -82,6 +160,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required String title,
     required String confirmLabel,
     required _SpriteDialogData initialData,
+    required List<GameAnimation> animations,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -102,7 +181,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
       title: title,
       confirmLabel: confirmLabel,
       initialData: initialData,
-      onPickImage: appData.pickImageFile,
+      animations: animations,
+      resolveMediaByFileName: appData.mediaAssetByFileName,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
       onClose: () {
@@ -160,23 +240,30 @@ class LayoutSpritesState extends State<LayoutSprites> {
     return completer.future;
   }
 
-  Future<void> _promptAndAddSprite() async {
-    final data = await _promptSpriteData(
+  Future<void> _promptAndAddSprite(List<GameAnimation> animations) async {
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    final GameAnimation? defaultAnimation =
+        _defaultAnimation(appData, animations);
+    if (defaultAnimation == null) {
+      return;
+    }
+
+    final _SpriteDialogData? data = await _promptSpriteData(
       title: 'New sprite',
       confirmLabel: 'Add',
-      initialData: const _SpriteDialogData(
-        type: '',
+      initialData: _dialogDataFromAnimation(
+        name: '',
         x: 0,
         y: 0,
-        width: 32,
-        height: 32,
-        imageFile: '',
+        animation: defaultAnimation,
+        appData: appData,
       ),
+      animations: animations,
     );
     if (!mounted || data == null) {
       return;
     }
-    final appData = Provider.of<AppData>(context, listen: false);
+
     appData.pushUndo();
     _addSprite(appData: appData, data: data);
     await _autoSaveIfPossible(appData);
@@ -188,7 +275,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (appData.selectedLevel == -1) return;
     final sprites = appData.gameData.levels[appData.selectedLevel].sprites;
     if (index < 0 || index >= sprites.length) return;
-    final String spriteName = sprites[index].type;
+    final String spriteName = sprites[index].name;
 
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
@@ -208,7 +295,11 @@ class LayoutSpritesState extends State<LayoutSprites> {
     await _autoSaveIfPossible(appData);
   }
 
-  Future<void> _promptAndEditSprite(int index, GlobalKey anchorKey) async {
+  Future<void> _promptAndEditSprite(
+    int index,
+    GlobalKey anchorKey,
+    List<GameAnimation> animations,
+  ) async {
     final appData = Provider.of<AppData>(context, listen: false);
     if (appData.selectedLevel == -1) {
       return;
@@ -220,17 +311,16 @@ class LayoutSpritesState extends State<LayoutSprites> {
     final sprite = sprites[index];
     final String undoGroupKey =
         'sprite-live-$index-${DateTime.now().microsecondsSinceEpoch}';
+
     await _promptSpriteData(
       title: 'Edit sprite',
       confirmLabel: 'Save',
-      initialData: _SpriteDialogData(
-        type: sprite.type,
-        x: sprite.x,
-        y: sprite.y,
-        width: sprite.spriteWidth,
-        height: sprite.spriteHeight,
-        imageFile: sprite.imageFile,
+      initialData: _dialogDataFromSprite(
+        appData: appData,
+        sprite: sprite,
+        animations: animations,
       ),
+      animations: animations,
       anchorKey: anchorKey,
       useArrowedPopover: true,
       liveEdit: true,
@@ -305,6 +395,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
 
     final level = appData.gameData.levels[appData.selectedLevel];
     final sprites = level.sprites;
+    final List<GameAnimation> animations = _animations(appData);
+    final bool hasAnimations = animations.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,9 +412,11 @@ class LayoutSpritesState extends State<LayoutSprites> {
               const Spacer(),
               CDKButton(
                 style: CDKButtonStyle.action,
-                onPressed: () async {
-                  await _promptAndAddSprite();
-                },
+                onPressed: hasAnimations
+                    ? () async {
+                        await _promptAndAddSprite(animations);
+                      }
+                    : null,
                 child: const Text('+ Add Sprite'),
               ),
             ],
@@ -332,8 +426,10 @@ class LayoutSpritesState extends State<LayoutSprites> {
           child: sprites.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: const CDKText(
-                    '(No sprites defined)',
+                  child: CDKText(
+                    hasAnimations
+                        ? '(No sprites defined)'
+                        : 'Define at least one animation first.',
                     role: CDKTextRole.caption,
                     secondary: true,
                   ),
@@ -354,8 +450,20 @@ class LayoutSpritesState extends State<LayoutSprites> {
                       itemBuilder: (context, index) {
                         final isSelected = index == appData.selectedSprite;
                         final sprite = sprites[index];
-                        final subtitle =
-                            '${sprite.x}, ${sprite.y} - ${sprite.imageFile}';
+                        final String animationName = appData
+                            .animationDisplayNameById(sprite.animationId);
+                        final GameAnimation? animation =
+                            _animationById(appData, sprite.animationId);
+                        final String mediaName = animation == null
+                            ? appData
+                                .mediaDisplayNameByFileName(sprite.imageFile)
+                            : appData.mediaDisplayNameByFileName(
+                                animation.mediaFile,
+                              );
+                        final String subtitle =
+                            '${sprite.x}, ${sprite.y} - $animationName';
+                        final String details =
+                            '$mediaName | ${sprite.spriteWidth}x${sprite.spriteHeight} px';
                         return GestureDetector(
                           key: ValueKey(sprite),
                           onTap: () =>
@@ -377,7 +485,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       CDKText(
-                                        sprite.type,
+                                        sprite.name,
                                         role: isSelected
                                             ? CDKTextRole.bodyStrong
                                             : CDKTextRole.body,
@@ -389,10 +497,16 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                         role: CDKTextRole.body,
                                         color: cdkColors.colorText,
                                       ),
+                                      const SizedBox(height: 2),
+                                      CDKText(
+                                        details,
+                                        role: CDKTextRole.body,
+                                        color: cdkColors.colorText,
+                                      ),
                                     ],
                                   ),
                                 ),
-                                if (isSelected)
+                                if (isSelected && hasAnimations)
                                   MouseRegion(
                                     cursor: SystemMouseCursors.click,
                                     child: CupertinoButton(
@@ -405,6 +519,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                         await _promptAndEditSprite(
                                           index,
                                           _selectedEditAnchorKey,
+                                          animations,
                                         );
                                       },
                                       child: Icon(
@@ -443,17 +558,19 @@ class LayoutSpritesState extends State<LayoutSprites> {
 
 class _SpriteDialogData {
   const _SpriteDialogData({
-    required this.type,
+    required this.name,
     required this.x,
     required this.y,
+    required this.animationId,
     required this.width,
     required this.height,
     required this.imageFile,
   });
 
-  final String type;
+  final String name;
   final int x;
   final int y;
+  final String animationId;
   final int width;
   final int height;
   final String imageFile;
@@ -464,7 +581,8 @@ class _SpriteFormDialog extends StatefulWidget {
     required this.title,
     required this.confirmLabel,
     required this.initialData,
-    required this.onPickImage,
+    required this.animations,
+    required this.resolveMediaByFileName,
     this.liveEdit = false,
     this.onLiveChanged,
     this.onClose,
@@ -476,7 +594,8 @@ class _SpriteFormDialog extends StatefulWidget {
   final String title;
   final String confirmLabel;
   final _SpriteDialogData initialData;
-  final Future<String> Function() onPickImage;
+  final List<GameAnimation> animations;
+  final GameMediaAsset? Function(String fileName) resolveMediaByFileName;
   final bool liveEdit;
   final Future<void> Function(_SpriteDialogData value)? onLiveChanged;
   final VoidCallback? onClose;
@@ -489,8 +608,8 @@ class _SpriteFormDialog extends StatefulWidget {
 }
 
 class _SpriteFormDialogState extends State<_SpriteFormDialog> {
-  late final TextEditingController _typeController = TextEditingController(
-    text: widget.initialData.type,
+  late final TextEditingController _nameController = TextEditingController(
+    text: widget.initialData.name,
   );
   late final TextEditingController _xController = TextEditingController(
     text: widget.initialData.x.toString(),
@@ -498,32 +617,72 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
   late final TextEditingController _yController = TextEditingController(
     text: widget.initialData.y.toString(),
   );
-  late final TextEditingController _widthController = TextEditingController(
-    text: widget.initialData.width.toString(),
-  );
-  late final TextEditingController _heightController = TextEditingController(
-    text: widget.initialData.height.toString(),
-  );
-  late String _imageFile = widget.initialData.imageFile;
+  late int _selectedAnimationIndex = _resolveInitialAnimationIndex();
   EditSession<_SpriteDialogData>? _editSession;
 
-  bool get _isValid =>
-      _typeController.text.trim().isNotEmpty && _imageFile.trim().isNotEmpty;
+  int _resolveInitialAnimationIndex() {
+    final String currentAnimationId = widget.initialData.animationId;
+    if (currentAnimationId.isNotEmpty) {
+      final int found =
+          widget.animations.indexWhere((a) => a.id == currentAnimationId);
+      if (found != -1) {
+        return found;
+      }
+    }
+    final String currentImageFile = widget.initialData.imageFile;
+    if (currentImageFile.isNotEmpty) {
+      final int found =
+          widget.animations.indexWhere((a) => a.mediaFile == currentImageFile);
+      if (found != -1) {
+        return found;
+      }
+    }
+    return 0;
+  }
+
+  GameAnimation? get _selectedAnimation {
+    if (widget.animations.isEmpty) {
+      return null;
+    }
+    if (_selectedAnimationIndex < 0 ||
+        _selectedAnimationIndex >= widget.animations.length) {
+      _selectedAnimationIndex = 0;
+    }
+    return widget.animations[_selectedAnimationIndex];
+  }
+
+  GameMediaAsset? get _selectedMedia {
+    final GameAnimation? animation = _selectedAnimation;
+    if (animation == null) {
+      return null;
+    }
+    return widget.resolveMediaByFileName(animation.mediaFile);
+  }
+
+  bool get _isValid {
+    return _nameController.text.trim().isNotEmpty && _selectedAnimation != null;
+  }
 
   _SpriteDialogData _currentData() {
+    final GameAnimation? animation = _selectedAnimation;
+    final GameMediaAsset? media = _selectedMedia;
     return _SpriteDialogData(
-      type: _typeController.text.trim(),
+      name: _nameController.text.trim(),
       x: int.tryParse(_xController.text.trim()) ?? 0,
       y: int.tryParse(_yController.text.trim()) ?? 0,
-      width: int.tryParse(_widthController.text.trim()) ?? 32,
-      height: int.tryParse(_heightController.text.trim()) ?? 32,
-      imageFile: _imageFile,
+      animationId: animation?.id ?? widget.initialData.animationId,
+      width: media?.tileWidth ?? widget.initialData.width,
+      height: media?.tileHeight ?? widget.initialData.height,
+      imageFile: animation?.mediaFile ?? widget.initialData.imageFile,
     );
   }
 
   String? _validateData(_SpriteDialogData value) {
-    if (value.type.trim().isEmpty || value.imageFile.trim().isEmpty) {
-      return 'Type and image are required.';
+    if (value.name.trim().isEmpty) {
+      return 'Sprite name is required.';
+    }
+    if (_selectedAnimation == null) {
+      return 'Define at least one animation first.';
     }
     return null;
   }
@@ -534,31 +693,11 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final String picked = await widget.onPickImage();
-    if (!mounted || picked.isEmpty) {
-      return;
-    }
-    setState(() {
-      _imageFile = picked;
-    });
-    _onInputChanged();
-  }
-
   void _confirm() {
     if (!_isValid) {
       return;
     }
-    widget.onConfirm(
-      _SpriteDialogData(
-        type: _typeController.text.trim(),
-        x: int.tryParse(_xController.text.trim()) ?? 0,
-        y: int.tryParse(_yController.text.trim()) ?? 0,
-        width: int.tryParse(_widthController.text.trim()) ?? 32,
-        height: int.tryParse(_heightController.text.trim()) ?? 32,
-        imageFile: _imageFile,
-      ),
-    );
+    widget.onConfirm(_currentData());
   }
 
   @override
@@ -570,9 +709,10 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
         validate: _validateData,
         onPersist: widget.onLiveChanged!,
         areEqual: (a, b) =>
-            a.type == b.type &&
+            a.name == b.name &&
             a.x == b.x &&
             a.y == b.y &&
+            a.animationId == b.animationId &&
             a.width == b.width &&
             a.height == b.height &&
             a.imageFile == b.imageFile,
@@ -586,17 +726,21 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       unawaited(_editSession!.flush());
       _editSession!.dispose();
     }
-    _typeController.dispose();
+    _nameController.dispose();
     _xController.dispose();
     _yController.dispose();
-    _widthController.dispose();
-    _heightController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final GameAnimation? animation = _selectedAnimation;
+    final GameMediaAsset? media = _selectedMedia;
+    final List<String> animationOptions = widget.animations
+        .map((a) => a.name.trim().isNotEmpty ? a.name : a.id)
+        .toList(growable: false);
+
     return EditorFormDialogScaffold(
       title: widget.title,
       description: 'Configure sprite details.',
@@ -607,16 +751,16 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       liveEditMode: widget.liveEdit,
       onClose: widget.onClose,
       onDelete: widget.onDelete,
-      minWidth: 360,
-      maxWidth: 460,
+      minWidth: 380,
+      maxWidth: 500,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           EditorLabeledField(
-            label: 'Sprite Type',
+            label: 'Sprite Name',
             child: CDKFieldText(
-              placeholder: 'Sprite type',
-              controller: _typeController,
+              placeholder: 'Sprite name',
+              controller: _nameController,
               onChanged: (_) {
                 setState(() {});
                 _onInputChanged();
@@ -658,50 +802,43 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
               ),
             ],
           ),
-          SizedBox(height: spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'Sprite Width (px)',
-                  child: CDKFieldText(
-                    placeholder: 'Sprite Width (px)',
-                    controller: _widthController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => _onInputChanged(),
-                  ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'Sprite Height (px)',
-                  child: CDKFieldText(
-                    placeholder: 'Sprite Height (px)',
-                    controller: _heightController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => _onInputChanged(),
-                  ),
-                ),
-              ),
-            ],
-          ),
           SizedBox(height: spacing.md),
           EditorLabeledField(
-            label: 'Sprite Image',
-            child: Row(
+            label: 'Animation',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: CDKText(
-                    _imageFile.isEmpty ? 'No file selected' : _imageFile,
+                if (animationOptions.isNotEmpty)
+                  CDKButtonSelect(
+                    selectedIndex: _selectedAnimationIndex,
+                    options: animationOptions,
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedAnimationIndex = index;
+                      });
+                      _onInputChanged();
+                    },
+                  )
+                else
+                  const CDKText(
+                    'No animations available',
                     role: CDKTextRole.caption,
+                    secondary: true,
                   ),
-                ),
-                CDKButton(
-                  style: CDKButtonStyle.action,
-                  onPressed: _pickImage,
-                  child: const Text('Choose File'),
-                ),
+                if (animation != null) ...[
+                  const SizedBox(height: 4),
+                  CDKText(
+                    'Source: ${media?.name ?? animation.mediaFile}',
+                    role: CDKTextRole.caption,
+                    secondary: true,
+                  ),
+                  const SizedBox(height: 2),
+                  CDKText(
+                    'Frame size: ${(media?.tileWidth ?? widget.initialData.width)}×${(media?.tileHeight ?? widget.initialData.height)} px',
+                    role: CDKTextRole.caption,
+                    secondary: true,
+                  ),
+                ],
               ],
             ),
           ),

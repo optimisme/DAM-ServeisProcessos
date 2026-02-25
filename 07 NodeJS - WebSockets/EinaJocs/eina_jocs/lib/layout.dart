@@ -9,6 +9,7 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'canvas_painter.dart';
+import 'layout_animations.dart';
 import 'layout_sprites.dart';
 import 'layout_layers.dart';
 import 'layout_levels.dart';
@@ -41,9 +42,14 @@ class _LayoutState extends State<Layout> {
   bool _isDraggingLayer = false;
   bool _isDraggingZone = false;
   bool _isResizingZone = false;
+  bool _isDraggingSprite = false;
+  bool _isSelectingAnimationFrames = false;
   bool _isPaintingTilemap = false;
   bool _didModifyZoneDuringGesture = false;
+  bool _didModifySpriteDuringGesture = false;
+  bool _didModifyAnimationDuringGesture = false;
   bool _didModifyTilemapDuringGesture = false;
+  int? _animationDragStartFrame;
   bool _isPointerDown = false;
   bool _isHoveringSelectedTilemapLayer = false;
   bool _isDragGestureActive = false;
@@ -51,12 +57,13 @@ class _LayoutState extends State<Layout> {
   final FocusNode _focusNode = FocusNode();
   List<String> sections = [
     'projects',
+    'media',
     'levels',
     'layers',
     'tilemap',
     'zones',
-    'sprites',
-    'media'
+    'animations',
+    'sprites'
   ];
 
   @override
@@ -110,6 +117,19 @@ class _LayoutState extends State<Layout> {
       parts.add(MapEntry('Project', projectName));
     }
 
+    if (appData.selectedAnimation >= 0 &&
+        appData.selectedAnimation < appData.gameData.animations.length) {
+      final animation = appData.gameData.animations[appData.selectedAnimation];
+      parts.add(
+        MapEntry(
+          'Animation',
+          animation.name.trim().isEmpty
+              ? 'Animation ${appData.selectedAnimation + 1}'
+              : animation.name.trim(),
+        ),
+      );
+    }
+
     if (appData.selectedLevel >= 0 &&
         appData.selectedLevel < appData.gameData.levels.length) {
       final level = appData.gameData.levels[appData.selectedLevel];
@@ -154,9 +174,9 @@ class _LayoutState extends State<Layout> {
         parts.add(
           MapEntry(
             'Sprite',
-            sprite.type.trim().isEmpty
+            sprite.name.trim().isEmpty
                 ? 'Sprite ${appData.selectedSprite + 1}'
-                : sprite.type.trim(),
+                : sprite.name.trim(),
           ),
         );
       }
@@ -236,6 +256,8 @@ class _LayoutState extends State<Layout> {
         return const LayoutTilemaps();
       case 'zones':
         return LayoutZones(key: layoutZonesKey);
+      case 'animations':
+        return const LayoutAnimations();
       case 'sprites':
         return LayoutSprites(key: layoutSpritesKey);
       case 'media':
@@ -272,7 +294,11 @@ class _LayoutState extends State<Layout> {
         await LayoutUtils.preloadLayerImages(appData);
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'sprites':
-        image = await LayoutUtils.drawCanvasImageLayers(appData, true);
+        await LayoutUtils.preloadLayerImages(appData);
+        await LayoutUtils.preloadSpriteImages(appData);
+        image = await LayoutUtils.drawCanvasImageEmpty(appData);
+      case 'animations':
+        image = await LayoutUtils.drawCanvasImageAnimations(appData);
       case 'media':
         image = await LayoutUtils.drawCanvasImageMedia(appData);
       default:
@@ -308,7 +334,8 @@ class _LayoutState extends State<Layout> {
   void _queueInitialLayersViewportCenter(AppData appData, Size viewportSize) {
     if (appData.selectedSection != 'layers' &&
         appData.selectedSection != 'tilemap' &&
-        appData.selectedSection != 'zones') {
+        appData.selectedSection != 'zones' &&
+        appData.selectedSection != 'sprites') {
       return;
     }
     if (appData.layersViewScale != 1.0 ||
@@ -326,7 +353,8 @@ class _LayoutState extends State<Layout> {
       final latestAppData = Provider.of<AppData>(context, listen: false);
       if (latestAppData.selectedSection != 'layers' &&
           latestAppData.selectedSection != 'tilemap' &&
-          latestAppData.selectedSection != 'zones') {
+          latestAppData.selectedSection != 'zones' &&
+          latestAppData.selectedSection != 'sprites') {
         return;
       }
       if (latestAppData.layersViewScale != 1.0 ||
@@ -457,7 +485,8 @@ class _LayoutState extends State<Layout> {
                                     if (event is! PointerScrollEvent) return;
                                     if (appData.selectedSection != "layers" &&
                                         appData.selectedSection != "tilemap" &&
-                                        appData.selectedSection != "zones") {
+                                        appData.selectedSection != "zones" &&
+                                        appData.selectedSection != "sprites") {
                                       return;
                                     }
                                     _applyLayersZoom(
@@ -469,7 +498,8 @@ class _LayoutState extends State<Layout> {
                                   onPointerPanZoomUpdate: (event) {
                                     if (appData.selectedSection != "layers" &&
                                         appData.selectedSection != "tilemap" &&
-                                        appData.selectedSection != "zones") {
+                                        appData.selectedSection != "zones" &&
+                                        appData.selectedSection != "sprites") {
                                       return;
                                     }
                                     // pan delta from trackpad scroll
@@ -618,18 +648,50 @@ class _LayoutState extends State<Layout> {
                                           }
                                         } else if (appData.selectedSection ==
                                             "sprites") {
-                                          LayoutUtils.selectSpriteFromPosition(
-                                              appData,
-                                              details.localPosition,
-                                              layoutSpritesKey);
-                                          if (appData.selectedSprite != -1) {
-                                            LayoutUtils
-                                                .startDragSpriteFromPosition(
+                                          _didModifySpriteDuringGesture = false;
+                                          _isDraggingSprite = false;
+                                          final bool startsOnSelectedSprite =
+                                              appData.selectedSprite != -1 &&
+                                                  LayoutUtils
+                                                      .hitTestSelectedSprite(
                                                     appData,
                                                     details.localPosition,
-                                                    layoutSpritesKey);
+                                                  );
+                                          if (startsOnSelectedSprite) {
+                                            _isDraggingSprite = true;
+                                            LayoutUtils
+                                                .startDragSpriteFromPosition(
+                                              appData,
+                                              details.localPosition,
+                                            );
                                             layoutSpritesKey.currentState
                                                 ?.updateForm(appData);
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "animations") {
+                                          _isSelectingAnimationFrames = false;
+                                          _didModifyAnimationDuringGesture =
+                                              false;
+                                          _animationDragStartFrame = null;
+                                          final int frame = await LayoutUtils
+                                              .animationFrameIndexFromCanvas(
+                                            appData,
+                                            details.localPosition,
+                                          );
+                                          if (frame != -1) {
+                                            _isSelectingAnimationFrames = true;
+                                            _animationDragStartFrame = frame;
+                                            final bool changed = await LayoutUtils
+                                                .setAnimationSelectionFromEndpoints(
+                                              appData: appData,
+                                              startFrame: frame,
+                                              endFrame: frame,
+                                            );
+                                            if (changed) {
+                                              _didModifyAnimationDuringGesture =
+                                                  true;
+                                              appData.update();
+                                            }
                                           }
                                         }
                                       },
@@ -719,17 +781,56 @@ class _LayoutState extends State<Layout> {
                                             appData.update();
                                           }
                                         } else if (appData.selectedSection ==
-                                                "sprites" &&
-                                            appData.selectedSprite != -1) {
-                                          if (appData.selectedSprite != -1) {
+                                            "sprites") {
+                                          if (!_isPointerDown) {
+                                            // scroll-triggered pan — ignore
+                                          } else if (_isDraggingSprite &&
+                                              appData.selectedSprite != -1) {
                                             LayoutUtils.dragSpriteFromCanvas(
-                                                appData, details.localPosition);
+                                              appData,
+                                              details.localPosition,
+                                            );
+                                            _didModifySpriteDuringGesture =
+                                                true;
+                                            appData.update();
                                             layoutSpritesKey.currentState
                                                 ?.updateForm(appData);
+                                          } else {
+                                            appData.layersViewOffset +=
+                                                details.delta;
+                                            appData.update();
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "animations") {
+                                          if (!_isPointerDown) {
+                                            // scroll-triggered pan — ignore
+                                          } else if (_isSelectingAnimationFrames &&
+                                              _animationDragStartFrame !=
+                                                  null) {
+                                            final int frame = await LayoutUtils
+                                                .animationFrameIndexFromCanvas(
+                                              appData,
+                                              details.localPosition,
+                                            );
+                                            if (frame == -1) {
+                                              return;
+                                            }
+                                            final bool changed = await LayoutUtils
+                                                .setAnimationSelectionFromEndpoints(
+                                              appData: appData,
+                                              startFrame:
+                                                  _animationDragStartFrame!,
+                                              endFrame: frame,
+                                            );
+                                            if (changed) {
+                                              _didModifyAnimationDuringGesture =
+                                                  true;
+                                              appData.update();
+                                            }
                                           }
                                         }
                                       },
-                                      onPanEnd: (details) {
+                                      onPanEnd: (details) async {
                                         if (_isDragGestureActive) {
                                           setState(() {
                                             _isDragGestureActive = false;
@@ -765,7 +866,37 @@ class _LayoutState extends State<Layout> {
                                           }
                                         } else if (appData.selectedSection ==
                                             "sprites") {
-                                          appData.zoneDragOffset = Offset.zero;
+                                          appData.spriteDragOffset =
+                                              Offset.zero;
+                                          if (_isDraggingSprite) {
+                                            _isDraggingSprite = false;
+                                          }
+                                          if (_didModifySpriteDuringGesture) {
+                                            _didModifySpriteDuringGesture =
+                                                false;
+                                            unawaited(
+                                              _autoSaveIfPossible(appData),
+                                            );
+                                          }
+                                        } else if (appData.selectedSection ==
+                                            "animations") {
+                                          _isSelectingAnimationFrames = false;
+                                          _animationDragStartFrame = null;
+                                          if (_didModifyAnimationDuringGesture) {
+                                            final bool applied = await LayoutUtils
+                                                .applyAnimationFrameSelectionToCurrentAnimation(
+                                              appData,
+                                              pushUndo: true,
+                                            );
+                                            _didModifyAnimationDuringGesture =
+                                                false;
+                                            if (applied) {
+                                              appData.update();
+                                              unawaited(
+                                                _autoSaveIfPossible(appData),
+                                              );
+                                            }
+                                          }
                                         }
 
                                         appData.dragging = false;
@@ -809,6 +940,58 @@ class _LayoutState extends State<Layout> {
                                               appData,
                                               details.localPosition,
                                               layoutSpritesKey);
+                                        } else if (appData.selectedSection ==
+                                            "animations") {
+                                          unawaited(() async {
+                                            final int frame = await LayoutUtils
+                                                .animationFrameIndexFromCanvas(
+                                              appData,
+                                              details.localPosition,
+                                            );
+                                            if (frame == -1) {
+                                              if (LayoutUtils
+                                                  .hasAnimationFrameSelection(
+                                                      appData)) {
+                                                LayoutUtils
+                                                    .clearAnimationFrameSelection(
+                                                        appData);
+                                                appData.update();
+                                              }
+                                              return;
+                                            }
+                                            final bool
+                                                singleFrameAlreadySelected =
+                                                appData.animationSelectionStartFrame ==
+                                                        frame &&
+                                                    appData.animationSelectionEndFrame ==
+                                                        frame;
+                                            if (singleFrameAlreadySelected) {
+                                              LayoutUtils
+                                                  .clearAnimationFrameSelection(
+                                                      appData);
+                                              appData.update();
+                                              return;
+                                            }
+                                            final bool changed = await LayoutUtils
+                                                .setAnimationSelectionFromEndpoints(
+                                              appData: appData,
+                                              startFrame: frame,
+                                              endFrame: frame,
+                                            );
+                                            if (!changed) {
+                                              return;
+                                            }
+                                            final bool applied = await LayoutUtils
+                                                .applyAnimationFrameSelectionToCurrentAnimation(
+                                              appData,
+                                              pushUndo: true,
+                                            );
+                                            appData.update();
+                                            if (applied) {
+                                              await _autoSaveIfPossible(
+                                                  appData);
+                                            }
+                                          }());
                                         }
                                       },
                                       onTapUp: (TapUpDetails details) {

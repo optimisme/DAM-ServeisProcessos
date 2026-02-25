@@ -279,12 +279,22 @@ class CanvasPainter extends CustomPainter {
           final double spriteX = sprite.x.toDouble();
           final double spriteY = sprite.y.toDouble();
 
-          canvas.drawImageRect(
-            spriteImage,
-            Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight),
-            Rect.fromLTWH(spriteX, spriteY, spriteWidth, spriteHeight),
-            Paint(),
-          );
+          final Rect srcRect =
+              Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight);
+          final Rect dstRect =
+              Rect.fromLTWH(spriteX, spriteY, spriteWidth, spriteHeight);
+          if (sprite.flipX || sprite.flipY) {
+            final double centerX = dstRect.center.dx;
+            final double centerY = dstRect.center.dy;
+            canvas.save();
+            canvas.translate(centerX, centerY);
+            canvas.scale(sprite.flipX ? -1.0 : 1.0, sprite.flipY ? -1.0 : 1.0);
+            canvas.translate(-centerX, -centerY);
+            canvas.drawImageRect(spriteImage, srcRect, dstRect, Paint());
+            canvas.restore();
+          } else {
+            canvas.drawImageRect(spriteImage, srcRect, dstRect, Paint());
+          }
 
           if (i == appData.selectedSprite) {
             final Paint selectedPaint = Paint()

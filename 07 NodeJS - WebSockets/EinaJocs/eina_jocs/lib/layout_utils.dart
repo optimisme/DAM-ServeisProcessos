@@ -473,12 +473,25 @@ class LayoutUtils {
       );
       final double spriteFrameX = frameIndex * spriteWidth;
 
-      imgCanvas.drawImageRect(
-        spriteImage,
-        Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight),
-        Rect.fromLTWH(spriteX, spriteY, spriteWidth, spriteHeight),
-        Paint(),
-      );
+      final Rect srcRect =
+          Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight);
+      final Rect dstRect =
+          Rect.fromLTWH(spriteX, spriteY, spriteWidth, spriteHeight);
+      if (sprite.flipX || sprite.flipY) {
+        final double centerX = dstRect.center.dx;
+        final double centerY = dstRect.center.dy;
+        imgCanvas.save();
+        imgCanvas.translate(centerX, centerY);
+        imgCanvas.scale(
+          sprite.flipX ? -1.0 : 1.0,
+          sprite.flipY ? -1.0 : 1.0,
+        );
+        imgCanvas.translate(-centerX, -centerY);
+        imgCanvas.drawImageRect(spriteImage, srcRect, dstRect, Paint());
+        imgCanvas.restore();
+      } else {
+        imgCanvas.drawImageRect(spriteImage, srcRect, dstRect, Paint());
+      }
       if (appData.selectedSection == "sprites" &&
           cntSprite == appData.selectedSprite) {
         drawSelectedRect(

@@ -105,7 +105,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final bool hasAnimation = animation != null;
-    final bool isPlaying = hasAnimation && _previewPlaying;
+    const double previewCanvasHeight = 120;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
@@ -120,53 +120,16 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const CDKText(
-                'Preview',
-                role: CDKTextRole.bodyStrong,
-              ),
-              const Spacer(),
-              CDKButton(
-                style: CDKButtonStyle.normal,
-                onPressed: hasAnimation
-                    ? () {
-                        setState(() {
-                          _setPreviewPlaying(!_previewPlaying);
-                        });
-                      }
-                    : null,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isPlaying
-                          ? CupertinoIcons.pause_fill
-                          : CupertinoIcons.play_fill,
-                      size: 12,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(isPlaying ? 'Pause' : 'Play'),
-                  ],
-                ),
-              ),
-              SizedBox(width: spacing.xs),
-              CDKButton(
-                style: CDKButtonStyle.normal,
-                onPressed: hasAnimation ? _restartPreview : null,
-                child: const Icon(
-                  CupertinoIcons.gobackward,
-                  size: 12,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.sm),
           if (!hasAnimation)
-            const CDKText(
-              'Select an animation to preview.',
-              role: CDKTextRole.caption,
-              secondary: true,
+            const SizedBox(
+              height: previewCanvasHeight,
+              child: Center(
+                child: CDKText(
+                  'Select an animation to preview.',
+                  role: CDKTextRole.caption,
+                  secondary: true,
+                ),
+              ),
             )
           else
             FutureBuilder<ui.Image>(
@@ -175,7 +138,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     snapshot.data == null) {
                   return const SizedBox(
-                    height: 120,
+                    height: previewCanvasHeight,
                     child: Center(
                       child: CupertinoActivityIndicator(),
                     ),
@@ -189,7 +152,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                     media.tileWidth <= 0 ||
                     media.tileHeight <= 0) {
                   return const SizedBox(
-                    height: 120,
+                    height: previewCanvasHeight,
                     child: Center(
                       child: CDKText(
                         'Preview unavailable',
@@ -212,7 +175,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
-                      height: 120,
+                      height: previewCanvasHeight,
                       child: Center(
                         child: AspectRatio(
                           aspectRatio: media.tileWidth / media.tileHeight,
@@ -238,6 +201,14 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                 );
               },
             ),
+          if (!hasAnimation) ...[
+            SizedBox(height: spacing.xs),
+            const CDKText(
+              'Frame -',
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+          ],
         ],
       ),
     );
@@ -583,6 +554,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
   @override
   Widget build(BuildContext context) {
     final AppData appData = Provider.of<AppData>(context);
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
     final TextStyle listItemTitleStyle = typography.body.copyWith(
@@ -623,6 +595,8 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         ? animations[appData.selectedAnimation]
         : null;
     _syncPreviewSelection(selectedAnimation);
+    final bool hasSelectedAnimation = selectedAnimation != null;
+    final bool isPreviewPlaying = hasSelectedAnimation && _previewPlaying;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,6 +610,32 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                 role: CDKTextRole.title,
               ),
               const Spacer(),
+              CDKButton(
+                style: CDKButtonStyle.normal,
+                onPressed: hasSelectedAnimation
+                    ? () {
+                        setState(() {
+                          _setPreviewPlaying(!_previewPlaying);
+                        });
+                      }
+                    : null,
+                child: Icon(
+                  isPreviewPlaying
+                      ? CupertinoIcons.pause_fill
+                      : CupertinoIcons.play_fill,
+                  size: 12,
+                ),
+              ),
+              SizedBox(width: spacing.xs),
+              CDKButton(
+                style: CDKButtonStyle.normal,
+                onPressed: hasSelectedAnimation ? _restartPreview : null,
+                child: const Icon(
+                  CupertinoIcons.gobackward,
+                  size: 12,
+                ),
+              ),
+              SizedBox(width: spacing.sm),
               CDKButton(
                 style: CDKButtonStyle.action,
                 onPressed: hasSources

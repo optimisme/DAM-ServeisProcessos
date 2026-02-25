@@ -62,6 +62,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required int y,
     required GameAnimation animation,
     required AppData appData,
+    bool flipX = false,
+    bool flipY = false,
   }) {
     final GameMediaAsset? media =
         appData.mediaAssetByFileName(animation.mediaFile);
@@ -73,6 +75,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
       width: media?.tileWidth ?? 32,
       height: media?.tileHeight ?? 32,
       imageFile: animation.mediaFile,
+      flipX: flipX,
+      flipY: flipY,
     );
   }
 
@@ -96,6 +100,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
         y: sprite.y,
         animation: animation,
         appData: appData,
+        flipX: sprite.flipX,
+        flipY: sprite.flipY,
       );
     }
 
@@ -107,6 +113,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
       width: sprite.spriteWidth,
       height: sprite.spriteHeight,
       imageFile: sprite.imageFile,
+      flipX: sprite.flipX,
+      flipY: sprite.flipY,
     );
   }
 
@@ -126,6 +134,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
         spriteWidth: data.width,
         spriteHeight: data.height,
         imageFile: data.imageFile,
+        flipX: data.flipX,
+        flipY: data.flipY,
       ),
     );
     appData.selectedSprite = -1;
@@ -152,6 +162,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
       spriteWidth: data.width,
       spriteHeight: data.height,
       imageFile: data.imageFile,
+      flipX: data.flipX,
+      flipY: data.flipY,
     );
     appData.selectedSprite = index;
   }
@@ -463,7 +475,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                         final String subtitle =
                             '${sprite.x}, ${sprite.y} - $animationName';
                         final String details =
-                            '$mediaName | ${sprite.spriteWidth}x${sprite.spriteHeight} px';
+                            '$mediaName | ${sprite.spriteWidth}x${sprite.spriteHeight} px | FlipX ${sprite.flipX ? 'on' : 'off'} | FlipY ${sprite.flipY ? 'on' : 'off'}';
                         return GestureDetector(
                           key: ValueKey(sprite),
                           onTap: () =>
@@ -565,6 +577,8 @@ class _SpriteDialogData {
     required this.width,
     required this.height,
     required this.imageFile,
+    required this.flipX,
+    required this.flipY,
   });
 
   final String name;
@@ -574,6 +588,8 @@ class _SpriteDialogData {
   final int width;
   final int height;
   final String imageFile;
+  final bool flipX;
+  final bool flipY;
 }
 
 class _SpriteFormDialog extends StatefulWidget {
@@ -618,6 +634,8 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     text: widget.initialData.y.toString(),
   );
   late int _selectedAnimationIndex = _resolveInitialAnimationIndex();
+  late bool _flipX = widget.initialData.flipX;
+  late bool _flipY = widget.initialData.flipY;
   EditSession<_SpriteDialogData>? _editSession;
 
   int _resolveInitialAnimationIndex() {
@@ -674,6 +692,8 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       width: media?.tileWidth ?? widget.initialData.width,
       height: media?.tileHeight ?? widget.initialData.height,
       imageFile: animation?.mediaFile ?? widget.initialData.imageFile,
+      flipX: _flipX,
+      flipY: _flipY,
     );
   }
 
@@ -715,7 +735,9 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
             a.animationId == b.animationId &&
             a.width == b.width &&
             a.height == b.height &&
-            a.imageFile == b.imageFile,
+            a.imageFile == b.imageFile &&
+            a.flipX == b.flipX &&
+            a.flipY == b.flipY,
       );
     }
   }
@@ -735,6 +757,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final GameAnimation? animation = _selectedAnimation;
     final GameMediaAsset? media = _selectedMedia;
     final List<String> animationOptions = widget.animations
@@ -841,6 +864,66 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
                 ],
               ],
             ),
+          ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CDKText(
+                    'Flip X',
+                    role: CDKTextRole.caption,
+                    color: cdkColors.colorText,
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 39,
+                    height: 24,
+                    child: FittedBox(
+                      fit: BoxFit.fill,
+                      child: CupertinoSwitch(
+                        value: _flipX,
+                        onChanged: (bool value) {
+                          setState(() {
+                            _flipX = value;
+                          });
+                          _onInputChanged();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(width: spacing.md),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CDKText(
+                    'Flip Y',
+                    role: CDKTextRole.caption,
+                    color: cdkColors.colorText,
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 39,
+                    height: 24,
+                    child: FittedBox(
+                      fit: BoxFit.fill,
+                      child: CupertinoSwitch(
+                        value: _flipY,
+                        onChanged: (bool value) {
+                          setState(() {
+                            _flipY = value;
+                          });
+                          _onInputChanged();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),

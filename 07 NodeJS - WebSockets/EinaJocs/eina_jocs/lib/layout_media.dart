@@ -235,6 +235,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
     final assets = appData.gameData.mediaAssets;
     if (index < 0 || index >= assets.length) return;
     final GameMediaAsset asset = assets[index];
+    final String deletedFileName = asset.fileName;
     final String label =
         asset.name.trim().isNotEmpty ? asset.name : asset.fileName;
 
@@ -249,13 +250,17 @@ class _LayoutMediaState extends State<LayoutMedia> {
     );
 
     if (confirmed != true || !mounted) return;
-    await appData.runProjectMutation(
+    final bool updated = await appData.runProjectMutation(
       debugLabel: 'media-delete',
       mutate: () {
         assets.removeAt(index);
         appData.selectedMedia = -1;
       },
     );
+    if (!updated) {
+      return;
+    }
+    await appData.deleteProjectMediaFileIfUnreferenced(deletedFileName);
   }
 
   Future<void> _promptAndEditMedia(int index, GlobalKey anchorKey) async {

@@ -597,6 +597,120 @@ class AppData extends ChangeNotifier {
     return candidate;
   }
 
+  String _normalizeProjectRelativePath(String value) {
+    String normalized = value.trim().replaceAll('\\', '/');
+    while (normalized.startsWith('/')) {
+      normalized = normalized.substring(1);
+    }
+    if (normalized.isEmpty) {
+      return '';
+    }
+    final List<String> segments = normalized.split('/');
+    for (final segment in segments) {
+      if (segment.isEmpty || segment == '.' || segment == '..') {
+        return '';
+      }
+    }
+    return segments.join('/');
+  }
+
+  String _projectAbsolutePathForRelativePath(
+    String projectDirectoryPath,
+    String relativePath,
+  ) {
+    return '$projectDirectoryPath${Platform.pathSeparator}${relativePath.replaceAll('/', Platform.pathSeparator)}';
+  }
+
+  bool _hasSupportedImageExtension(String fileName) {
+    final String lower = fileName.toLowerCase();
+    return lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg');
+  }
+
+  Future<bool> _filesHaveSameContent(String pathA, String pathB) async {
+    final File fileA = File(pathA);
+    final File fileB = File(pathB);
+    if (!await fileA.exists() || !await fileB.exists()) {
+      return false;
+    }
+    final int lengthA = await fileA.length();
+    final int lengthB = await fileB.length();
+    if (lengthA != lengthB) {
+      return false;
+    }
+    final List<int> bytesA = await fileA.readAsBytes();
+    final List<int> bytesB = await fileB.readAsBytes();
+    if (bytesA.length != bytesB.length) {
+      return false;
+    }
+    for (int i = 0; i < bytesA.length; i++) {
+      if (bytesA[i] != bytesB[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Set<String> referencedMediaFileNames() {
+    final Set<String> references = <String>{};
+
+    void addReference(String value) {
+      final String normalized = _normalizeProjectRelativePath(value);
+      if (normalized.isNotEmpty) {
+        references.add(normalized);
+      }
+    }
+
+    for (final asset in gameData.mediaAssets) {
+      addReference(asset.fileName);
+    }
+    for (final animation in gameData.animations) {
+      addReference(animation.mediaFile);
+    }
+    for (final level in gameData.levels) {
+      for (final layer in level.layers) {
+        addReference(layer.tilesSheetFile);
+      }
+      for (final sprite in level.sprites) {
+        addReference(sprite.imageFile);
+      }
+    }
+
+    return references;
+  }
+
+  Future<void> deleteProjectMediaFileIfUnreferenced(String fileName) async {
+    if (selectedProject == null || filePath == "") {
+      return;
+    }
+
+    final String normalized = _normalizeProjectRelativePath(fileName);
+    if (normalized.isEmpty || !_hasSupportedImageExtension(normalized)) {
+      return;
+    }
+    if (referencedMediaFileNames().contains(normalized)) {
+      return;
+    }
+
+    final String absolutePath =
+        _projectAbsolutePathForRelativePath(filePath, normalized);
+    final File mediaFile = File(absolutePath);
+    if (!await mediaFile.exists()) {
+      return;
+    }
+
+    try {
+      await mediaFile.delete();
+      imagesCache.remove(fileName);
+      imagesCache.remove(normalized);
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error deleting orphan media file \"$normalized\": $e");
+      }
+    }
+  }
+
   String _normalizeArchivePath(String value) {
     return value.replaceAll('\\', '/');
   }
@@ -1008,15 +1122,36 @@ class AppData extends ChangeNotifier {
         "$projectsPath${Platform.pathSeparator}${project.folderName}",
       );
       final Archive archive = Archive();
-      await for (final entity
-          in sourceDirectory.list(recursive: true, followLinks: false)) {
-        if (entity is! File) {
+
+      final File gameDataFile = File(
+        "${sourceDirectory.path}${Platform.pathSeparator}$gameFileName",
+      );
+      if (!await gameDataFile.exists()) {
+        throw Exception("Cannot export: missing $gameFileName");
+      }
+      final List<int> gameDataBytes = await gameDataFile.readAsBytes();
+      archive.addFile(
+          ArchiveFile(gameFileName, gameDataBytes.length, gameDataBytes));
+
+      for (final String reference in referencedMediaFileNames()) {
+        if (!_hasSupportedImageExtension(reference)) {
           continue;
         }
-        final String relativePath = entity.path
-            .substring(sourceDirectory.path.length + 1)
-            .replaceAll(Platform.pathSeparator, '/');
-        final List<int> bytes = await entity.readAsBytes();
+        final String relativePath = _normalizeProjectRelativePath(reference);
+        if (relativePath.isEmpty || relativePath == gameFileName) {
+          continue;
+        }
+        final File mediaFile = File(
+          _projectAbsolutePathForRelativePath(
+              sourceDirectory.path, relativePath),
+        );
+        if (!await mediaFile.exists()) {
+          if (kDebugMode) {
+            print("Skipping missing referenced media file: $relativePath");
+          }
+          continue;
+        }
+        final List<int> bytes = await mediaFile.readAsBytes();
         archive.addFile(ArchiveFile(relativePath, bytes.length, bytes));
       }
 
@@ -1200,16 +1335,36 @@ class AppData extends ChangeNotifier {
     }
 
     String selectedPath = result.files.single.path!;
-    String selectedFileName = selectedPath.split(Platform.pathSeparator).last;
+    String selectedFileName = _lastPathSegment(selectedPath);
     if (filePath == "") {
       filePath =
           "$projectsPath${Platform.pathSeparator}${selectedProject!.folderName}";
       fileName = gameFileName;
     }
+
+    selectedFileName = _normalizeProjectRelativePath(selectedFileName);
+    if (selectedFileName.isEmpty ||
+        !_hasSupportedImageExtension(selectedFileName)) {
+      return "";
+    }
+
+    final String preferredDestinationPath =
+        _projectAbsolutePathForRelativePath(filePath, selectedFileName);
+    if (selectedPath != preferredDestinationPath &&
+        await File(preferredDestinationPath).exists()) {
+      final bool sameContent = await _filesHaveSameContent(
+        selectedPath,
+        preferredDestinationPath,
+      );
+      if (sameContent) {
+        return selectedFileName;
+      }
+    }
+
     selectedFileName =
         await _buildUniqueFileNameInDirectory(filePath, selectedFileName);
     String destinationPath =
-        "$filePath${Platform.pathSeparator}$selectedFileName";
+        _projectAbsolutePathForRelativePath(filePath, selectedFileName);
 
     if (selectedPath != destinationPath) {
       try {

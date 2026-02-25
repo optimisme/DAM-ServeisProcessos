@@ -11,19 +11,29 @@ import 'layout_utils.dart';
 
 const List<String> _zoneTypeColorPalette = [
   'blue',
+  'blueAccent',
   'lightBlue',
   'indigo',
+  'deepPurple',
+  'purpleAccent',
   'purple',
   'pink',
+  'pinkAccent',
   'red',
+  'redAccent',
   'deepOrange',
+  'orangeAccent',
   'orange',
   'amber',
+  'yellowAccent',
   'yellow',
   'lime',
+  'greenAccent',
   'lightGreen',
   'green',
+  'tealAccent',
   'teal',
+  'cyanAccent',
   'cyan',
   'blueGrey',
   'grey',
@@ -98,6 +108,19 @@ class LayoutZonesState extends State<LayoutZones> {
     return _normalizeZoneTypeColor(zone.color);
   }
 
+  Set<String> _usedZoneTypeNames(AppData appData) {
+    final Set<String> used = {};
+    for (final level in appData.gameData.levels) {
+      for (final zone in level.zones) {
+        final String typeName = zone.type.trim();
+        if (typeName.isNotEmpty) {
+          used.add(typeName);
+        }
+      }
+    }
+    return used;
+  }
+
   void _applyZoneTypeDrafts(AppData appData, List<_ZoneTypeDraft> drafts) {
     final List<_ZoneTypeDraft> cleaned = [];
     final Set<String> seenNames = {};
@@ -166,14 +189,19 @@ class LayoutZonesState extends State<LayoutZones> {
       ..addAll(nextTypes);
   }
 
+  Future<void> _persistZoneTypeDrafts(
+      AppData appData, List<_ZoneTypeDraft> drafts) async {
+    appData.pushUndo();
+    _applyZoneTypeDrafts(appData, drafts);
+    appData.update();
+    await _autoSaveIfPossible(appData);
+  }
+
   Future<void> _showZoneTypesPopover(AppData appData) async {
     if (Overlay.maybeOf(context) == null) {
       return;
     }
     final CDKDialogController controller = CDKDialogController();
-    final Completer<List<_ZoneTypeDraft>?> completer =
-        Completer<List<_ZoneTypeDraft>?>();
-    List<_ZoneTypeDraft>? result;
 
     final List<_ZoneTypeDraft> initialDrafts = _zoneTypes(appData)
         .map(
@@ -194,31 +222,15 @@ class LayoutZonesState extends State<LayoutZones> {
       dismissOnOutsideTap: true,
       showBackgroundShade: false,
       controller: controller,
-      onHide: () {
-        if (!completer.isCompleted) {
-          completer.complete(result);
-        }
-      },
       child: _ZoneTypesPopover(
         initialTypes: initialDrafts,
         colorPalette: _zoneTypeColorPalette,
-        onCancel: controller.close,
-        onApply: (nextDrafts) {
-          result = nextDrafts;
-          controller.close();
+        usedTypeKeys: _usedZoneTypeNames(appData),
+        onTypesChanged: (nextDrafts) {
+          unawaited(_persistZoneTypeDrafts(appData, nextDrafts));
         },
       ),
     );
-
-    final List<_ZoneTypeDraft>? nextDrafts = await completer.future;
-    if (!mounted || nextDrafts == null) {
-      return;
-    }
-
-    appData.pushUndo();
-    _applyZoneTypeDrafts(appData, nextDrafts);
-    appData.update();
-    await _autoSaveIfPossible(appData);
   }
 
   void _addZone({
@@ -689,6 +701,7 @@ class _ZoneFormDialog extends StatefulWidget {
 }
 
 class _ZoneFormDialogState extends State<_ZoneFormDialog> {
+  final GlobalKey _typePickerAnchorKey = GlobalKey();
   late final TextEditingController _xController = TextEditingController(
     text: widget.initialData.x.toString(),
   );
@@ -715,6 +728,42 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
 
   bool get _isValid =>
       _selectedType.trim().isNotEmpty && widget.zoneTypes.isNotEmpty;
+
+  GameZoneType? _selectedZoneType() {
+    for (final type in widget.zoneTypes) {
+      if (type.name == _selectedType) {
+        return type;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _showTypePickerPopover() async {
+    if (widget.zoneTypes.isEmpty || Overlay.maybeOf(context) == null) {
+      return;
+    }
+    final CDKDialogController controller = CDKDialogController();
+    CDKDialogsManager.showPopoverArrowed(
+      context: context,
+      anchorKey: _typePickerAnchorKey,
+      isAnimated: true,
+      animateContentResize: false,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
+      showBackgroundShade: false,
+      controller: controller,
+      child: _ZoneTypePickerPopover(
+        zoneTypes: widget.zoneTypes,
+        selectedType: _selectedType,
+        onSelected: (typeName) {
+          setState(() {
+            _selectedType = typeName;
+          });
+          controller.close();
+        },
+      ),
+    );
+  }
 
   void _confirm() {
     if (!_isValid) {
@@ -744,6 +793,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    final GameZoneType? selectedType = _selectedZoneType();
     Widget labeledField(String label, Widget field) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,37 +832,46 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
                 color: cdkColors.colorText,
               ),
               const SizedBox(height: 4),
-              Wrap(
-                spacing: spacing.xs,
-                runSpacing: spacing.xs,
-                children: widget.zoneTypes.map((type) {
-                  final bool isSelected = _selectedType == type.name;
-                  return CDKButton(
-                    style: isSelected
-                        ? CDKButtonStyle.action
-                        : CDKButtonStyle.normal,
-                    onPressed: () {
-                      setState(() {
-                        _selectedType = type.name;
-                      });
-                    },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+              SizedBox(
+                width: double.infinity,
+                child: CDKButton(
+                  key: _typePickerAnchorKey,
+                  style: CDKButtonStyle.normal,
+                  enabled: widget.zoneTypes.isNotEmpty,
+                  onPressed: _showTypePickerPopover,
+                  child: Row(
+                    children: [
+                      if (selectedType != null) ...[
                         Container(
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: LayoutUtils.getColorFromName(type.color),
+                            color: LayoutUtils.getColorFromName(
+                              selectedType.color,
+                            ),
                             shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Text(type.name),
+                        const SizedBox(width: 8),
                       ],
-                    ),
-                  );
-                }).toList(growable: false),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            selectedType?.name ?? 'Select a type',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        CupertinoIcons.chevron_down,
+                        size: 14,
+                        color: cdkColors.colorText,
+                      ),
+                    ],
+                  ),
+                ),
               ),
               SizedBox(height: spacing.sm),
               Row(
@@ -904,6 +963,75 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
   }
 }
 
+class _ZoneTypePickerPopover extends StatelessWidget {
+  const _ZoneTypePickerPopover({
+    required this.zoneTypes,
+    required this.selectedType,
+    required this.onSelected,
+  });
+
+  final List<GameZoneType> zoneTypes;
+  final String selectedType;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.sm),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 220),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: zoneTypes.length,
+            itemBuilder: (context, index) {
+              final type = zoneTypes[index];
+              final bool isSelected = type.name == selectedType;
+              return GestureDetector(
+                onTap: () => onSelected(type.name),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 8,
+                  ),
+                  color: isSelected
+                      ? CupertinoColors.systemBlue.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: LayoutUtils.getColorFromName(type.color),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: CDKText(
+                          type.name,
+                          role: isSelected
+                              ? CDKTextRole.bodyStrong
+                              : CDKTextRole.body,
+                          color: cdkColors.colorText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ZoneTypeDraft {
   const _ZoneTypeDraft({
     required this.key,
@@ -932,14 +1060,14 @@ class _ZoneTypesPopover extends StatefulWidget {
   const _ZoneTypesPopover({
     required this.initialTypes,
     required this.colorPalette,
-    required this.onApply,
-    required this.onCancel,
+    required this.usedTypeKeys,
+    required this.onTypesChanged,
   });
 
   final List<_ZoneTypeDraft> initialTypes;
   final List<String> colorPalette;
-  final ValueChanged<List<_ZoneTypeDraft>> onApply;
-  final VoidCallback onCancel;
+  final Set<String> usedTypeKeys;
+  final ValueChanged<List<_ZoneTypeDraft>> onTypesChanged;
 
   @override
   State<_ZoneTypesPopover> createState() => _ZoneTypesPopoverState();
@@ -954,33 +1082,28 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
   late String _selectedColor = widget.colorPalette.first;
   String? _nameError;
 
-  @override
-  void initState() {
-    super.initState();
-    if (_drafts.isNotEmpty) {
-      _selectIndex(0);
-    }
-  }
-
   void _selectIndex(int index) {
     if (index < 0 || index >= _drafts.length) {
       return;
     }
     setState(() {
-      _selectedIndex = index;
-      _nameController.text = _drafts[index].name;
-      _selectedColor = _drafts[index].color;
+      if (_selectedIndex == index) {
+        _selectedIndex = -1;
+        _nameController.clear();
+        _selectedColor = widget.colorPalette.first;
+      } else {
+        _selectedIndex = index;
+        _nameController.text = _drafts[index].name;
+        _selectedColor = _drafts[index].color;
+      }
       _nameError = null;
     });
   }
 
-  void _startNewType() {
-    setState(() {
-      _selectedIndex = -1;
-      _nameController.clear();
-      _selectedColor = widget.colorPalette.first;
-      _nameError = null;
-    });
+  void _emitChanged() {
+    widget.onTypesChanged(
+      _drafts.map((item) => item.copyWith()).toList(growable: false),
+    );
   }
 
   bool _isNameDuplicated(String name, {required int excludingIndex}) {
@@ -993,7 +1116,7 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     return false;
   }
 
-  void _saveDraft() {
+  void _upsertDraft() {
     final String nextName = _nameController.text.trim();
     if (nextName.isEmpty) {
       setState(() {
@@ -1022,10 +1145,13 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
             color: _selectedColor,
           ),
         );
-        _selectedIndex = _drafts.length - 1;
+        _selectedIndex = -1;
+        _nameController.clear();
+        _selectedColor = widget.colorPalette.first;
       }
       _nameError = null;
     });
+    _emitChanged();
   }
 
   void _deleteSelected() {
@@ -1034,18 +1160,12 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     }
     setState(() {
       _drafts.removeAt(_selectedIndex);
-      if (_drafts.isEmpty) {
-        _selectedIndex = -1;
-        _nameController.clear();
-        _selectedColor = widget.colorPalette.first;
-      } else {
-        final int nextIndex = _selectedIndex.clamp(0, _drafts.length - 1);
-        _selectedIndex = nextIndex;
-        _nameController.text = _drafts[nextIndex].name;
-        _selectedColor = _drafts[nextIndex].color;
-      }
+      _selectedIndex = -1;
+      _nameController.clear();
+      _selectedColor = widget.colorPalette.first;
       _nameError = null;
     });
+    _emitChanged();
   }
 
   @override
@@ -1058,8 +1178,12 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    final bool canDelete =
+    final bool hasSelection =
         _selectedIndex >= 0 && _selectedIndex < _drafts.length;
+    final bool selectedTypeIsUsed = hasSelection &&
+        widget.usedTypeKeys.contains(_drafts[_selectedIndex].key);
+    final bool canDelete = hasSelection && !selectedTypeIsUsed;
+    final bool isUpdateMode = hasSelection;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 420, maxWidth: 460),
@@ -1124,23 +1248,6 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
                   },
                 ),
               ),
-            SizedBox(height: spacing.sm),
-            Row(
-              children: [
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  onPressed: _startNewType,
-                  child: const Text('New type'),
-                ),
-                SizedBox(width: spacing.sm),
-                CDKButton(
-                  style: CDKButtonStyle.normal,
-                  enabled: canDelete,
-                  onPressed: _deleteSelected,
-                  child: const Text('Delete type'),
-                ),
-              ],
-            ),
             SizedBox(height: spacing.md),
             CDKText(
               'Name',
@@ -1158,7 +1265,7 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
                   });
                 }
               },
-              onSubmitted: (_) => _saveDraft(),
+              onSubmitted: (_) => _upsertDraft(),
             ),
             if (_nameError != null) ...[
               const SizedBox(height: 4),
@@ -1190,29 +1297,28 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
                 );
               }).toList(growable: false),
             ),
+            if (selectedTypeIsUsed) ...[
+              const SizedBox(height: 6),
+              const CDKText(
+                'This type is used by one or more zones and cannot be deleted.',
+                role: CDKTextRole.caption,
+                secondary: true,
+              ),
+            ],
             SizedBox(height: spacing.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 CDKButton(
                   style: CDKButtonStyle.normal,
-                  onPressed: _saveDraft,
-                  child: const Text('Save type'),
+                  enabled: canDelete,
+                  onPressed: _deleteSelected,
+                  child: const Text('Delete type'),
                 ),
-                Row(
-                  children: [
-                    CDKButton(
-                      style: CDKButtonStyle.normal,
-                      onPressed: widget.onCancel,
-                      child: const Text('Cancel'),
-                    ),
-                    SizedBox(width: spacing.sm),
-                    CDKButton(
-                      style: CDKButtonStyle.action,
-                      onPressed: () => widget.onApply(_drafts),
-                      child: const Text('Apply'),
-                    ),
-                  ],
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: _upsertDraft,
+                  child: Text(isUpdateMode ? 'Update' : 'Add type'),
                 ),
               ],
             ),

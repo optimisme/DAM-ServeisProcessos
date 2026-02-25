@@ -926,24 +926,44 @@ class LayoutUtils {
     switch (colorName) {
       case "blue":
         return Colors.blue;
+      case "blueAccent":
+        return Colors.blueAccent;
       case "green":
         return Colors.green;
+      case "greenAccent":
+        return Colors.greenAccent;
       case "yellow":
         return Colors.yellow;
+      case "yellowAccent":
+        return Colors.yellowAccent;
       case "orange":
         return Colors.orange;
+      case "orangeAccent":
+        return Colors.orangeAccent;
       case "red":
         return Colors.red;
+      case "redAccent":
+        return Colors.redAccent;
+      case "deepPurple":
+        return Colors.deepPurple;
+      case "purpleAccent":
+        return Colors.purpleAccent;
       case "purple":
         return Colors.purple;
       case "pink":
         return Colors.pink;
+      case "pinkAccent":
+        return Colors.pinkAccent;
       case "indigo":
         return Colors.indigo;
       case "teal":
         return Colors.teal;
+      case "tealAccent":
+        return Colors.tealAccent;
       case "cyan":
         return Colors.cyan;
+      case "cyanAccent":
+        return Colors.cyanAccent;
       case "lightBlue":
         return Colors.lightBlue;
       case "lightGreen":

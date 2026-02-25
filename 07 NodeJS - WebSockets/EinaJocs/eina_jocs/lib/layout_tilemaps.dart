@@ -277,12 +277,22 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
 
-    final bool hasLevel = appData.selectedLevel != -1;
-    final bool hasLayer = hasLevel && appData.selectedLayer != -1;
+    final bool hasLevel = appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    final bool hasLayer = hasLevel &&
+        appData.selectedLayer >= 0 &&
+        appData.selectedLayer <
+            appData.gameData.levels[appData.selectedLevel].layers.length;
     if (!hasLayer) {
-      final String message = hasLevel
-          ? 'Select a Layer to edit its tilemap.'
-          : 'Select a Level and then a Layer to edit the tilemap.';
+      final String message;
+      if (!hasLevel) {
+        message = 'Select a Level to edit the tilemap.';
+      } else if (appData
+          .gameData.levels[appData.selectedLevel].layers.isEmpty) {
+        message = 'This level has no layers yet. Add a Layer first.';
+      } else {
+        message = 'Select a Layer to edit its tilemap.';
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -1002,18 +1002,42 @@ class LayoutUtils {
 
   // ── Viewport drag ────────────────────────────────────────────────────────
 
+  /// Ensures the ephemeral preview viewport is synced to the selected level.
+  static void ensureViewportPreviewInitialized(
+    AppData appData, {
+    bool force = false,
+  }) {
+    if (appData.selectedLevel == -1 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      appData.viewportPreviewLevel = -1;
+      appData.viewportIsDragging = false;
+      appData.viewportDragOffset = Offset.zero;
+      return;
+    }
+    if (!force && appData.viewportPreviewLevel == appData.selectedLevel) {
+      return;
+    }
+    final level = appData.gameData.levels[appData.selectedLevel];
+    appData.viewportPreviewX = level.viewportX;
+    appData.viewportPreviewY = level.viewportY;
+    appData.viewportPreviewLevel = appData.selectedLevel;
+    appData.viewportIsDragging = false;
+    appData.viewportDragOffset = Offset.zero;
+  }
+
   /// Returns true if [localPosition] (screen space) is inside the viewport rect.
   static bool isPointInViewportRect(AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1 ||
         appData.selectedLevel >= appData.gameData.levels.length) {
       return false;
     }
+    ensureViewportPreviewInitialized(appData);
     final level = appData.gameData.levels[appData.selectedLevel];
-    final Offset world =
-        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
+    final Offset world = translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
     final Rect rect = Rect.fromLTWH(
-      level.viewportX.toDouble(),
-      level.viewportY.toDouble(),
+      appData.viewportPreviewX.toDouble(),
+      appData.viewportPreviewY.toDouble(),
       level.viewportWidth.toDouble(),
       level.viewportHeight.toDouble(),
     );
@@ -1025,39 +1049,31 @@ class LayoutUtils {
   static void startDragViewportFromPosition(
       AppData appData, Offset localPosition) {
     if (appData.selectedLevel == -1) return;
-    final level = appData.gameData.levels[appData.selectedLevel];
-    final Offset world =
-        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
-    appData.viewportDragOffset =
-        world - Offset(level.viewportX.toDouble(), level.viewportY.toDouble());
-    appData.viewportDragX = level.viewportX;
-    appData.viewportDragY = level.viewportY;
+    ensureViewportPreviewInitialized(appData);
+    final Offset world = translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    appData.viewportDragOffset = world -
+        Offset(
+          appData.viewportPreviewX.toDouble(),
+          appData.viewportPreviewY.toDouble(),
+        );
     appData.viewportIsDragging = true;
   }
 
   /// Updates the live drag position. Does NOT modify level.viewportX/Y.
   static void dragViewportFromCanvas(AppData appData, Offset localPosition) {
     if (!appData.viewportIsDragging) return;
-    final Offset world =
-        translateCoords(localPosition, appData.imageOffset, appData.scaleFactor);
-    appData.viewportDragX =
+    final Offset world = translateCoords(
+        localPosition, appData.imageOffset, appData.scaleFactor);
+    appData.viewportPreviewX =
         (world.dx - appData.viewportDragOffset.dx).round();
-    appData.viewportDragY =
+    appData.viewportPreviewY =
         (world.dy - appData.viewportDragOffset.dy).round();
   }
 
-  /// Commits the drag: writes the drag position into level.viewportX/Y and
-  /// clears all drag state.
-  static void commitViewportDrag(AppData appData) {
+  /// Clears drag-only state while keeping preview position.
+  static void endViewportDrag(AppData appData) {
     if (!appData.viewportIsDragging) return;
-    if (appData.selectedLevel == -1) {
-      appData.viewportIsDragging = false;
-      return;
-    }
-    appData.pushUndo();
-    final level = appData.gameData.levels[appData.selectedLevel];
-    level.viewportX = appData.viewportDragX;
-    level.viewportY = appData.viewportDragY;
     appData.viewportIsDragging = false;
     appData.viewportDragOffset = Offset.zero;
   }

@@ -405,14 +405,41 @@ class LayoutSpritesState extends State<LayoutSprites> {
       fontWeight: FontWeight.w700,
     );
 
-    if (appData.selectedLevel == -1) {
-      return const Center(
-        child: CDKText(
-          'Select a Level to edit its sprites.',
-          role: CDKTextRole.body,
-          secondary: true,
-          textAlign: TextAlign.center,
-        ),
+    final bool hasLevel = appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    if (!hasLevel) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+            child: Row(
+              children: [
+                CDKText(
+                  'Sprites',
+                  role: CDKTextRole.title,
+                  style: sectionTitleStyle,
+                ),
+                const SizedBox(width: 6),
+                const SectionHelpButton(
+                  message:
+                      'Sprites are game objects that combine animations and properties. They represent characters, items, or any animated entity placed in a level.',
+                ),
+              ],
+            ),
+          ),
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: CDKText(
+                'Select a Level to edit its sprites.',
+                role: CDKTextRole.caption,
+                secondary: true,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
       );
     }
 

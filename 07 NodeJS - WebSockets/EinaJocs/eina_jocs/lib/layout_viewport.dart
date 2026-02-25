@@ -1,8 +1,12 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_level.dart';
+import 'layout_utils.dart';
 import 'widgets/editor_labeled_field.dart';
 import 'widgets/section_help_button.dart';
 
@@ -45,13 +49,6 @@ class LayoutViewportState extends State<LayoutViewport> {
     _yController.text = level.viewportY.toString();
   }
 
-  /// Called from layout.dart during viewport drag to sync X/Y fields live.
-  void syncDragPosition(int x, int y) {
-    if (!mounted) return;
-    _xController.text = x.toString();
-    _yController.text = y.toString();
-  }
-
   int _parseInt(String text, int fallback) {
     return int.tryParse(text.trim()) ?? fallback;
   }
@@ -59,6 +56,8 @@ class LayoutViewportState extends State<LayoutViewport> {
   void _applyChanges(AppData appData) {
     if (appData.selectedLevel == -1) return;
     final level = appData.gameData.levels[appData.selectedLevel];
+    final int oldInitialX = level.viewportX;
+    final int oldInitialY = level.viewportY;
     final int w = _parseInt(_widthController.text, level.viewportWidth);
     final int h = _parseInt(_heightController.text, level.viewportHeight);
     final int x = _parseInt(_xController.text, level.viewportX);
@@ -74,6 +73,34 @@ class LayoutViewportState extends State<LayoutViewport> {
     level.viewportHeight = h.clamp(1, 99999);
     level.viewportX = x;
     level.viewportY = y;
+    // Keep preview synced while it still matches the previous initial position.
+    if (appData.viewportPreviewLevel != appData.selectedLevel ||
+        (appData.viewportPreviewX == oldInitialX &&
+            appData.viewportPreviewY == oldInitialY)) {
+      appData.viewportPreviewX = level.viewportX;
+      appData.viewportPreviewY = level.viewportY;
+      appData.viewportPreviewLevel = appData.selectedLevel;
+    }
+    appData.update();
+    appData.queueAutosave();
+  }
+
+  void _setPreviewAsInitial(AppData appData) {
+    if (appData.selectedLevel == -1 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return;
+    }
+    LayoutUtils.ensureViewportPreviewInitialized(appData);
+    final level = appData.gameData.levels[appData.selectedLevel];
+    if (level.viewportX == appData.viewportPreviewX &&
+        level.viewportY == appData.viewportPreviewY) {
+      return;
+    }
+    appData.pushUndo();
+    level.viewportX = appData.viewportPreviewX;
+    level.viewportY = appData.viewportPreviewY;
+    _xController.text = level.viewportX.toString();
+    _yController.text = level.viewportY.toString();
     appData.update();
     appData.queueAutosave();
   }
@@ -113,8 +140,8 @@ class LayoutViewportState extends State<LayoutViewport> {
     );
 
     final int selectedLevel = appData.selectedLevel;
-    final bool hasLevel = selectedLevel != -1 &&
-        selectedLevel < appData.gameData.levels.length;
+    final bool hasLevel =
+        selectedLevel != -1 && selectedLevel < appData.gameData.levels.length;
 
     // Keep text controllers in sync when the selected level changes.
     if (hasLevel && selectedLevel != _syncedLevel) {
@@ -122,11 +149,16 @@ class LayoutViewportState extends State<LayoutViewport> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _syncControllers(appData.gameData.levels[selectedLevel]);
+          LayoutUtils.ensureViewportPreviewInitialized(appData, force: true);
           setState(() {});
         }
       });
     } else if (!hasLevel && _syncedLevel != -1) {
       _syncedLevel = -1;
+    }
+
+    if (hasLevel) {
+      LayoutUtils.ensureViewportPreviewInitialized(appData);
     }
 
     final GameLevel? level =
@@ -136,6 +168,10 @@ class LayoutViewportState extends State<LayoutViewport> {
         : _adaptationValues.indexOf(level.viewportAdaptation).clamp(0, 2);
     final bool isPortrait =
         level != null && level.viewportHeight > level.viewportWidth;
+    final int previewX = hasLevel ? appData.viewportPreviewX : 0;
+    final int previewY = hasLevel ? appData.viewportPreviewY : 0;
+    final bool canSetPreviewAsInitial = level != null &&
+        (level.viewportX != previewX || level.viewportY != previewY);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,7 +192,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                     'The Viewport defines the area of the level that the game camera shows. '
                     'Set its size (in pixels), initial position, and how it adapts when the '
                     'screen is a different resolution or orientation than expected. '
-                    'Drag the blue rectangle on the canvas to reposition it.',
+                    'On the canvas: green is the initial position and blue is the draggable preview.',
               ),
             ],
           ),
@@ -201,13 +237,18 @@ class LayoutViewportState extends State<LayoutViewport> {
                       label: 'Screen preview',
                       child: SizedBox(
                         width: double.infinity,
-                        height: 110,
+                        height: 165,
                         child: CustomPaint(
                           painter: _ViewportPreviewPainter(
-                            viewportW: level!.viewportWidth,
+                            appData: appData,
+                            level: level!,
+                            viewportW: level.viewportWidth,
                             viewportH: level.viewportHeight,
                             adaptation: level.viewportAdaptation,
-                            isPortrait: isPortrait,
+                            previewX: previewX,
+                            previewY: previewY,
+                            frameTick: appData.frame,
+                            cacheSize: appData.imagesCache.length,
                             backgroundColor: cdkColors.background,
                           ),
                         ),
@@ -288,6 +329,27 @@ class LayoutViewportState extends State<LayoutViewport> {
                       ],
                     ),
 
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        CDKButton(
+                          onPressed: canSetPreviewAsInitial
+                              ? () => _setPreviewAsInitial(appData)
+                              : null,
+                          child: const Text('Set as initial position'),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CDKText(
+                            'Preview: X $previewX, Y $previewY',
+                            role: CDKTextRole.caption,
+                            secondary: true,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+
                     const SizedBox(height: 14),
 
                     // ── Screen adaptation mode ───────────────────────────────
@@ -313,8 +375,8 @@ class LayoutViewportState extends State<LayoutViewport> {
 
                     // ── Hint ─────────────────────────────────────────────────
                     CDKText(
-                      'Drag the blue rectangle on the canvas to reposition the viewport. '
-                      'Scroll to zoom the editor view.',
+                      'Green rectangle = initial position. Blue rectangle = preview position. '
+                      'Drag blue on the canvas, then use "Set as initial position".',
                       role: CDKTextRole.caption,
                       secondary: true,
                     ),
@@ -344,17 +406,27 @@ class LayoutViewportState extends State<LayoutViewport> {
 // ── Preview painter ─────────────────────────────────────────────────────────
 
 class _ViewportPreviewPainter extends CustomPainter {
+  final AppData appData;
+  final GameLevel level;
   final int viewportW;
   final int viewportH;
   final String adaptation;
-  final bool isPortrait;
+  final int previewX;
+  final int previewY;
+  final int frameTick;
+  final int cacheSize;
   final Color backgroundColor;
 
   const _ViewportPreviewPainter({
+    required this.appData,
+    required this.level,
     required this.viewportW,
     required this.viewportH,
     required this.adaptation,
-    required this.isPortrait,
+    required this.previewX,
+    required this.previewY,
+    required this.frameTick,
+    required this.cacheSize,
     required this.backgroundColor,
   });
 
@@ -362,6 +434,10 @@ class _ViewportPreviewPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final double safeViewportW = math.max(1, viewportW).toDouble();
+    final double safeViewportH = math.max(1, viewportH).toDouble();
+    final bool isPortrait = viewportH > viewportW;
+
     // Screen aspect ratio used in the preview
     final double screenAspect =
         isPortrait ? 1.0 / _referenceScreenAspect : _referenceScreenAspect;
@@ -383,161 +459,213 @@ class _ViewportPreviewPainter extends CustomPainter {
     final double screenL = (size.width - screenW) / 2;
     final double screenT = (size.height - screenH) / 2;
     final Rect screenRect = Rect.fromLTWH(screenL, screenT, screenW, screenH);
+    final RRect clippedScreen =
+        RRect.fromRectAndRadius(screenRect, const Radius.circular(4));
+    final _PreviewSceneMapping mapping = _buildSceneMapping(
+      screenRect: screenRect,
+      viewportW: safeViewportW,
+      viewportH: safeViewportH,
+      adaptation: adaptation,
+    );
 
     // Screen background
     canvas.drawRRect(
-      RRect.fromRectAndRadius(screenRect, const Radius.circular(4)),
+      clippedScreen,
       Paint()
-        ..color = _isDark
-            ? const Color(0xFF2A2A2A)
-            : const Color(0xFFE8E8E8)
+        ..color = _isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE8E8E8)
         ..style = PaintingStyle.fill,
     );
     canvas.drawRRect(
-      RRect.fromRectAndRadius(screenRect, const Radius.circular(4)),
+      clippedScreen,
       Paint()
-        ..color = _isDark
-            ? const Color(0xFF555555)
-            : const Color(0xFFBBBBBB)
+        ..color = _isDark ? const Color(0xFF555555) : const Color(0xFFBBBBBB)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke,
     );
 
-    // Viewport rect inside the screen — depends on adaptation mode
-    final double vpAspect = viewportW <= 0 || viewportH <= 0
-        ? 1.0
-        : viewportW / viewportH;
-
-    late Rect vpRect;
-    switch (adaptation) {
-      case 'letterbox':
-        // Fit entirely inside screen, maintain aspect — bars show as background
-        double w, h;
-        if (vpAspect >= screenAspect) {
-          w = screenW;
-          h = screenW / vpAspect;
-        } else {
-          h = screenH;
-          w = screenH * vpAspect;
-        }
-        vpRect = Rect.fromLTWH(
-          screenL + (screenW - w) / 2,
-          screenT + (screenH - h) / 2,
-          w,
-          h,
-        );
-      case 'expand':
-        // Fill screen, maintain aspect — may overflow (clipped to screen)
-        double w, h;
-        if (vpAspect <= screenAspect) {
-          w = screenW;
-          h = screenW / vpAspect;
-        } else {
-          h = screenH;
-          w = screenH * vpAspect;
-        }
-        vpRect = Rect.fromLTWH(
-          screenL + (screenW - w) / 2,
-          screenT + (screenH - h) / 2,
-          w,
-          h,
-        );
-      default: // 'stretch'
-        vpRect = screenRect;
-    }
-
-    // Clip to screen before drawing viewport fill (for 'expand' overflow)
     canvas.save();
-    canvas.clipRRect(
-        RRect.fromRectAndRadius(screenRect, const Radius.circular(4)));
-
+    canvas.clipRRect(clippedScreen);
     canvas.drawRect(
-      vpRect,
+      mapping.contentRect,
       Paint()
-        ..color = const Color(0x332196F3)
-        ..style = PaintingStyle.fill,
+        ..color = _isDark ? const Color(0xFF0B1320) : const Color(0xFFBFD2EA),
     );
+    canvas.save();
+    canvas.clipRect(mapping.contentRect);
+    _paintScene(canvas, mapping);
+    canvas.restore();
     canvas.drawRect(
-      vpRect,
+      mapping.contentRect,
       Paint()
         ..color = const Color(0xFF2196F3)
-        ..strokeWidth = 1.5
+        ..strokeWidth = 1.4
         ..style = PaintingStyle.stroke,
     );
-
-    // Dashed overflow indicator lines for 'expand'
-    if (adaptation == 'expand') {
-      final Paint dashPaint = Paint()
-        ..color = const Color(0x882196F3)
-        ..strokeWidth = 0.8
-        ..style = PaintingStyle.stroke;
-      // top/bottom overflow lines
-      if (vpRect.top < screenT) {
-        _drawDashedLine(
-            canvas, Offset(vpRect.left, screenT), Offset(vpRect.right, screenT),
-            dashPaint);
-      }
-      if (vpRect.bottom > screenRect.bottom) {
-        _drawDashedLine(canvas, Offset(vpRect.left, screenRect.bottom),
-            Offset(vpRect.right, screenRect.bottom), dashPaint);
-      }
-      // left/right overflow lines
-      if (vpRect.left < screenL) {
-        _drawDashedLine(
-            canvas, Offset(screenL, vpRect.top), Offset(screenL, vpRect.bottom),
-            dashPaint);
-      }
-      if (vpRect.right > screenRect.right) {
-        _drawDashedLine(canvas, Offset(screenRect.right, vpRect.top),
-            Offset(screenRect.right, vpRect.bottom), dashPaint);
-      }
-    }
-
     canvas.restore();
-
-    // Size label inside the viewport rect
-    final TextPainter tp = TextPainter(
-      text: TextSpan(
-        text: '$viewportW×$viewportH',
-        style: const TextStyle(
-          color: Color(0xFF2196F3),
-          fontSize: 8,
-          fontFamily: 'monospace',
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: vpRect.width - 4);
-    if (tp.width + 4 <= vpRect.width && tp.height + 4 <= vpRect.height) {
-      tp.paint(canvas,
-          Offset(vpRect.left + 3, vpRect.top + 3));
-    }
   }
 
-  void _drawDashedLine(
-      Canvas canvas, Offset p1, Offset p2, Paint paint) {
-    const double dashLen = 4.0;
-    const double gapLen = 3.0;
-    final double dx = p2.dx - p1.dx;
-    final double dy = p2.dy - p1.dy;
-    final double len = (Offset(dx, dy)).distance;
-    if (len == 0) return;
-    final double ux = dx / len;
-    final double uy = dy / len;
-    double dist = 0;
-    bool drawing = true;
-    while (dist < len) {
-      final double segLen =
-          drawing ? dashLen : gapLen;
-      final double end = (dist + segLen).clamp(0, len);
-      if (drawing) {
-        canvas.drawLine(
-          Offset(p1.dx + ux * dist, p1.dy + uy * dist),
-          Offset(p1.dx + ux * end, p1.dy + uy * end),
-          paint,
-        );
+  _PreviewSceneMapping _buildSceneMapping({
+    required Rect screenRect,
+    required double viewportW,
+    required double viewportH,
+    required String adaptation,
+  }) {
+    final double screenAspect = screenRect.width / screenRect.height;
+    final double viewportAspect = viewportW / viewportH;
+    Rect contentRect = screenRect;
+    double cameraWorldW = viewportW;
+    double cameraWorldH = viewportH;
+
+    switch (adaptation) {
+      case 'letterbox':
+        if (viewportAspect > screenAspect) {
+          final double h = screenRect.width / viewportAspect;
+          contentRect = Rect.fromLTWH(
+            screenRect.left,
+            screenRect.top + (screenRect.height - h) / 2,
+            screenRect.width,
+            h,
+          );
+        } else {
+          final double w = screenRect.height * viewportAspect;
+          contentRect = Rect.fromLTWH(
+            screenRect.left + (screenRect.width - w) / 2,
+            screenRect.top,
+            w,
+            screenRect.height,
+          );
+        }
+        break;
+      case 'expand':
+        if (screenAspect > viewportAspect) {
+          cameraWorldW = viewportH * screenAspect;
+          cameraWorldH = viewportH;
+        } else {
+          cameraWorldW = viewportW;
+          cameraWorldH = viewportW / screenAspect;
+        }
+        break;
+      case 'stretch':
+      default:
+        break;
+    }
+
+    return _PreviewSceneMapping(
+      contentRect: contentRect,
+      cameraWorldW: cameraWorldW,
+      cameraWorldH: cameraWorldH,
+    );
+  }
+
+  void _paintScene(Canvas canvas, _PreviewSceneMapping mapping) {
+    final double cameraX = previewX.toDouble();
+    final double cameraY = previewY.toDouble();
+    final double scaleX = mapping.contentRect.width / mapping.cameraWorldW;
+    final double scaleY = mapping.contentRect.height / mapping.cameraWorldH;
+    final Paint drawPaint = Paint()..filterQuality = FilterQuality.none;
+
+    for (int li = level.layers.length - 1; li >= 0; li--) {
+      final layer = level.layers[li];
+      if (!layer.visible) continue;
+      if (!appData.imagesCache.containsKey(layer.tilesSheetFile)) continue;
+      if (layer.tileMap.isEmpty || layer.tileMap.first.isEmpty) continue;
+
+      final ui.Image tilesetImg = appData.imagesCache[layer.tilesSheetFile]!;
+      final double tw = layer.tilesWidth.toDouble();
+      final double th = layer.tilesHeight.toDouble();
+      if (tw <= 0 || th <= 0) continue;
+      final int tsetCols = (tilesetImg.width / tw).floor();
+      if (tsetCols <= 0) continue;
+
+      final int rows = layer.tileMap.length;
+      final int cols = layer.tileMap.first.length;
+      final double layerX = layer.x.toDouble();
+      final double layerY = layer.y.toDouble();
+      final double parallax = LayoutUtils.parallaxFactorForDepth(layer.depth);
+      final double cameraPx = cameraX * parallax;
+      final double cameraPy = cameraY * parallax;
+      final double visibleLeft = cameraPx;
+      final double visibleTop = cameraPy;
+      final double visibleRight = cameraPx + mapping.cameraWorldW;
+      final double visibleBottom = cameraPy + mapping.cameraWorldH;
+
+      int startCol = ((visibleLeft - layerX) / tw).floor();
+      int endCol = ((visibleRight - layerX) / tw).ceil();
+      int startRow = ((visibleTop - layerY) / th).floor();
+      int endRow = ((visibleBottom - layerY) / th).ceil();
+      startCol = math.max(0, math.min(cols - 1, startCol));
+      endCol = math.max(0, math.min(cols - 1, endCol));
+      startRow = math.max(0, math.min(rows - 1, startRow));
+      endRow = math.max(0, math.min(rows - 1, endRow));
+      if (startCol > endCol || startRow > endRow) continue;
+
+      for (int row = startRow; row <= endRow; row++) {
+        for (int col = startCol; col <= endCol; col++) {
+          final int tileIndex = layer.tileMap[row][col];
+          if (tileIndex < 0) continue;
+          final int tileRow = (tileIndex / tsetCols).floor();
+          final int tileCol = tileIndex % tsetCols;
+          final double worldX = layerX + col * tw;
+          final double worldY = layerY + row * th;
+          final Rect dstRect = Rect.fromLTWH(
+            mapping.contentRect.left + (worldX - cameraPx) * scaleX,
+            mapping.contentRect.top + (worldY - cameraPy) * scaleY,
+            tw * scaleX,
+            th * scaleY,
+          );
+          canvas.drawImageRect(
+            tilesetImg,
+            Rect.fromLTWH(tileCol * tw, tileRow * th, tw, th),
+            dstRect,
+            drawPaint,
+          );
+        }
       }
-      dist += segLen;
-      drawing = !drawing;
+    }
+
+    for (int i = 0; i < level.sprites.length; i++) {
+      final sprite = level.sprites[i];
+      final String imageFile = LayoutUtils.spriteImageFile(appData, sprite);
+      if (imageFile.isEmpty || !appData.imagesCache.containsKey(imageFile)) {
+        continue;
+      }
+      final ui.Image spriteImage = appData.imagesCache[imageFile]!;
+      final Size frameSize = LayoutUtils.spriteFrameSize(appData, sprite);
+      final double spriteWidth = frameSize.width;
+      final double spriteHeight = frameSize.height;
+      if (spriteWidth <= 0 || spriteHeight <= 0) continue;
+
+      final int frames = math.max(1, (spriteImage.width / spriteWidth).floor());
+      final int frameIndex = LayoutUtils.spriteFrameIndex(
+        appData: appData,
+        sprite: sprite,
+        totalFrames: frames,
+      );
+      final Rect srcRect =
+          Rect.fromLTWH(frameIndex * spriteWidth, 0, spriteWidth, spriteHeight);
+
+      final double parallax = LayoutUtils.parallaxFactorForDepth(sprite.depth);
+      final double cameraPx = cameraX * parallax;
+      final double cameraPy = cameraY * parallax;
+      final Rect dstRect = Rect.fromLTWH(
+        mapping.contentRect.left + (sprite.x.toDouble() - cameraPx) * scaleX,
+        mapping.contentRect.top + (sprite.y.toDouble() - cameraPy) * scaleY,
+        spriteWidth * scaleX,
+        spriteHeight * scaleY,
+      );
+
+      if (sprite.flipX || sprite.flipY) {
+        final double centerX = dstRect.center.dx;
+        final double centerY = dstRect.center.dy;
+        canvas.save();
+        canvas.translate(centerX, centerY);
+        canvas.scale(sprite.flipX ? -1.0 : 1.0, sprite.flipY ? -1.0 : 1.0);
+        canvas.translate(-centerX, -centerY);
+        canvas.drawImageRect(spriteImage, srcRect, dstRect, drawPaint);
+        canvas.restore();
+      } else {
+        canvas.drawImageRect(spriteImage, srcRect, dstRect, drawPaint);
+      }
     }
   }
 
@@ -546,6 +674,21 @@ class _ViewportPreviewPainter extends CustomPainter {
       old.viewportW != viewportW ||
       old.viewportH != viewportH ||
       old.adaptation != adaptation ||
-      old.isPortrait != isPortrait ||
+      old.previewX != previewX ||
+      old.previewY != previewY ||
+      old.frameTick != frameTick ||
+      old.cacheSize != cacheSize ||
       old.backgroundColor != backgroundColor;
+}
+
+class _PreviewSceneMapping {
+  final Rect contentRect;
+  final double cameraWorldW;
+  final double cameraWorldH;
+
+  const _PreviewSceneMapping({
+    required this.contentRect,
+    required this.cameraWorldW,
+    required this.cameraWorldH,
+  });
 }

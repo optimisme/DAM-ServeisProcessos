@@ -382,13 +382,40 @@ class LayoutLayersState extends State<LayoutLayers> {
       fontWeight: FontWeight.w700,
     );
 
-    if (appData.selectedLevel == -1) {
-      return const Center(
-        child: CDKText(
-          'Select a Level to edit its layers.',
-          role: CDKTextRole.body,
-          secondary: true,
-        ),
+    final bool hasLevel = appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    if (!hasLevel) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+            child: Row(
+              children: [
+                CDKText(
+                  'Labels',
+                  role: CDKTextRole.title,
+                  style: sectionTitleStyle,
+                ),
+                const SizedBox(width: 6),
+                const SectionHelpButton(
+                  message:
+                      'Layers stack tilemap grids within a level. Each layer uses a tileset and can be positioned and ordered by depth.',
+                ),
+              ],
+            ),
+          ),
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: CDKText(
+                'Select a Level to edit its layers.',
+                role: CDKTextRole.caption,
+                secondary: true,
+              ),
+            ),
+          ),
+        ],
       );
     }
 

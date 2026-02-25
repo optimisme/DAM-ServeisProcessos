@@ -44,7 +44,6 @@ class _LayoutState extends State<Layout> {
   ui.Image? _layerImage;
   bool _isDraggingLayer = false;
   bool _isDraggingViewport = false;
-  bool _didModifyViewportDuringGesture = false;
   bool _isDraggingZone = false;
   bool _isResizingZone = false;
   bool _isDraggingSprite = false;
@@ -147,7 +146,6 @@ class _LayoutState extends State<Layout> {
           ),
         );
       }
-
     }
 
     if (parts.isEmpty) {
@@ -275,6 +273,7 @@ class _LayoutState extends State<Layout> {
         // Viewport section renders in world space via CanvasPainter.
         await LayoutUtils.preloadLayerImages(appData);
         await LayoutUtils.preloadSpriteImages(appData);
+        LayoutUtils.ensureViewportPreviewInitialized(appData);
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'animations':
         image = await LayoutUtils.drawCanvasImageAnimations(appData);
@@ -533,8 +532,10 @@ class _LayoutState extends State<Layout> {
                                         } else if (appData.selectedSection ==
                                             "viewport") {
                                           _isDraggingViewport = false;
-                                          _didModifyViewportDuringGesture =
-                                              false;
+                                          LayoutUtils
+                                              .ensureViewportPreviewInitialized(
+                                            appData,
+                                          );
                                           if (LayoutUtils.isPointInViewportRect(
                                               appData, details.localPosition)) {
                                             _isDraggingViewport = true;
@@ -699,13 +700,6 @@ class _LayoutState extends State<Layout> {
                                           } else if (_isDraggingViewport) {
                                             LayoutUtils.dragViewportFromCanvas(
                                                 appData, details.localPosition);
-                                            _didModifyViewportDuringGesture =
-                                                true;
-                                            layoutViewportKey.currentState
-                                                ?.syncDragPosition(
-                                              appData.viewportDragX,
-                                              appData.viewportDragY,
-                                            );
                                             appData.update();
                                           } else {
                                             appData.layersViewOffset +=
@@ -856,29 +850,9 @@ class _LayoutState extends State<Layout> {
                                             "viewport") {
                                           if (_isDraggingViewport) {
                                             _isDraggingViewport = false;
-                                            if (_didModifyViewportDuringGesture) {
-                                              _didModifyViewportDuringGesture =
-                                                  false;
-                                              LayoutUtils.commitViewportDrag(
-                                                  appData);
-                                              // Sync toolbar fields back to
-                                              // committed values.
-                                              layoutViewportKey.currentState
-                                                  ?.syncDragPosition(
-                                                appData.gameData
-                                                    .levels[appData.selectedLevel]
-                                                    .viewportX,
-                                                appData.gameData
-                                                    .levels[appData.selectedLevel]
-                                                    .viewportY,
-                                              );
-                                              appData.update();
-                                              unawaited(
-                                                  _autoSaveIfPossible(appData));
-                                            } else {
-                                              // No movement: just clear drag state
-                                              appData.viewportIsDragging = false;
-                                            }
+                                            LayoutUtils.endViewportDrag(
+                                                appData);
+                                            appData.update();
                                           }
                                         } else if (appData.selectedSection ==
                                             "layers") {

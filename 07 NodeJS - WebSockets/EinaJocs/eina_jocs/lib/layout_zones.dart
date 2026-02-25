@@ -480,13 +480,40 @@ class LayoutZonesState extends State<LayoutZones> {
       fontWeight: FontWeight.w700,
     );
 
-    if (appData.selectedLevel == -1) {
-      return const Center(
-        child: CDKText(
-          'Select a Level to edit its zones.',
-          role: CDKTextRole.body,
-          secondary: true,
-        ),
+    final bool hasLevel = appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    if (!hasLevel) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+            child: Row(
+              children: [
+                CDKText(
+                  'Zones',
+                  role: CDKTextRole.title,
+                  style: sectionTitleStyle,
+                ),
+                const SizedBox(width: 6),
+                const SectionHelpButton(
+                  message:
+                      'Zones are named rectangular areas within a level used to trigger events or define regions such as spawn points, triggers, or boundaries.',
+                ),
+              ],
+            ),
+          ),
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: CDKText(
+                'Select a Level to edit its zones.',
+                role: CDKTextRole.caption,
+                secondary: true,
+              ),
+            ),
+          ),
+        ],
       );
     }
 

@@ -125,9 +125,10 @@ class AppData extends ChangeNotifier {
 
   // Viewport drag state
   Offset viewportDragOffset = Offset.zero;
-  int viewportDragX = 0;
-  int viewportDragY = 0;
   bool viewportIsDragging = false;
+  int viewportPreviewX = 0;
+  int viewportPreviewY = 0;
+  int viewportPreviewLevel = -1;
 
   // Layers canvas viewport (zoom + pan)
   double layersViewScale = 1.0;

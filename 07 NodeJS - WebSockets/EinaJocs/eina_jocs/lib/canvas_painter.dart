@@ -345,45 +345,40 @@ class CanvasPainter extends CustomPainter {
     final double vw = level.viewportWidth.toDouble();
     final double vh = level.viewportHeight.toDouble();
 
-    if (appData.viewportIsDragging) {
-      // Committed position — blue, dimmed
-      _paintViewportRect(
-        canvas, vScale, vOffset,
-        wx: level.viewportX.toDouble(),
-        wy: level.viewportY.toDouble(),
-        ww: vw, wh: vh,
-        fillColor: const Color(0x0D2196F3),
-        borderColor: const Color(0x882196F3),
-        handleColor: const Color(0x882196F3),
-        label: '${level.viewportWidth}×${level.viewportHeight}',
-        labelColor: const Color(0x882196F3),
-      );
-      // Live drag position — green
-      _paintViewportRect(
-        canvas, vScale, vOffset,
-        wx: appData.viewportDragX.toDouble(),
-        wy: appData.viewportDragY.toDouble(),
-        ww: vw, wh: vh,
-        fillColor: const Color(0x1A4CAF50),
-        borderColor: const Color(0xFF4CAF50),
-        handleColor: const Color(0xFF4CAF50),
-        label: 'X: ${appData.viewportDragX}, Y: ${appData.viewportDragY}',
-        labelColor: const Color(0xFF4CAF50),
-      );
-    } else {
-      // Normal — blue
-      _paintViewportRect(
-        canvas, vScale, vOffset,
-        wx: level.viewportX.toDouble(),
-        wy: level.viewportY.toDouble(),
-        ww: vw, wh: vh,
-        fillColor: const Color(0x1A2196F3),
-        borderColor: const Color(0xFF2196F3),
-        handleColor: const Color(0xFF2196F3),
-        label: '${level.viewportWidth}×${level.viewportHeight}',
-        labelColor: const Color(0xFF2196F3),
-      );
-    }
+    // Initial position — green, not draggable.
+    _paintViewportRect(
+      canvas,
+      vScale,
+      vOffset,
+      wx: level.viewportX.toDouble(),
+      wy: level.viewportY.toDouble(),
+      ww: vw,
+      wh: vh,
+      fillColor: const Color(0x144CAF50),
+      borderColor: const Color(0xFF4CAF50),
+      handleColor: const Color(0xFF4CAF50),
+      label: 'Initial: ${level.viewportX}, ${level.viewportY}',
+      labelColor: const Color(0xFF4CAF50),
+      showHandles: false,
+    );
+
+    // Preview position — blue, draggable.
+    _paintViewportRect(
+      canvas,
+      vScale,
+      vOffset,
+      wx: appData.viewportPreviewX.toDouble(),
+      wy: appData.viewportPreviewY.toDouble(),
+      ww: vw,
+      wh: vh,
+      fillColor: const Color(0x1A2196F3),
+      borderColor: const Color(0xFF2196F3),
+      handleColor: const Color(0xFF2196F3),
+      label:
+          'Preview: ${appData.viewportPreviewX}, ${appData.viewportPreviewY}',
+      labelColor: const Color(0xFF2196F3),
+      showHandles: true,
+    );
   }
 
   void _paintViewportRect(
@@ -399,6 +394,7 @@ class CanvasPainter extends CustomPainter {
     required Color handleColor,
     required String label,
     required Color labelColor,
+    required bool showHandles,
   }) {
     final double sx = vOffset.dx + wx * vScale;
     final double sy = vOffset.dy + wy * vScale;
@@ -406,30 +402,38 @@ class CanvasPainter extends CustomPainter {
     final double sh = wh * vScale;
     final Rect screenRect = Rect.fromLTWH(sx, sy, sw, sh);
 
-    canvas.drawRect(screenRect,
+    canvas.drawRect(
+        screenRect,
         Paint()
           ..color = fillColor
           ..style = PaintingStyle.fill);
-    canvas.drawRect(screenRect,
+    canvas.drawRect(
+        screenRect,
         Paint()
           ..color = borderColor
           ..strokeWidth = 2.0
           ..style = PaintingStyle.stroke);
 
-    const double handleSize = 6.0;
-    final Paint handlePaint = Paint()
-      ..color = handleColor
-      ..style = PaintingStyle.fill;
-    for (final corner in [
-      Offset(sx, sy),
-      Offset(sx + sw, sy),
-      Offset(sx, sy + sh),
-      Offset(sx + sw, sy + sh),
-    ]) {
-      canvas.drawRect(
-        Rect.fromCenter(center: corner, width: handleSize, height: handleSize),
-        handlePaint,
-      );
+    if (showHandles) {
+      const double handleSize = 6.0;
+      final Paint handlePaint = Paint()
+        ..color = handleColor
+        ..style = PaintingStyle.fill;
+      for (final corner in [
+        Offset(sx, sy),
+        Offset(sx + sw, sy),
+        Offset(sx, sy + sh),
+        Offset(sx + sw, sy + sh),
+      ]) {
+        canvas.drawRect(
+          Rect.fromCenter(
+            center: corner,
+            width: handleSize,
+            height: handleSize,
+          ),
+          handlePaint,
+        );
+      }
     }
 
     _drawLabel(

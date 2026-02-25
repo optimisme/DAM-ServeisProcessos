@@ -405,14 +405,14 @@ class LayoutLayersState extends State<LayoutLayers> {
               ],
             ),
           ),
-          const Expanded(
+          Expanded(
             child: Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: CDKText(
                   'No level selected.\nSelect a Level to edit its layers.',
                   role: CDKTextRole.body,
-                  secondary: true,
+                  color: cdkColors.colorText.withValues(alpha: 0.62),
                   textAlign: TextAlign.center,
                 ),
               ),

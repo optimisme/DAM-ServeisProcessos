@@ -207,7 +207,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                 child: CDKText(
                   'No level selected.\nSelect a Level to configure its Viewport.',
                   role: CDKTextRole.body,
-                  secondary: true,
+                  color: cdkColors.colorText.withValues(alpha: 0.62),
                   textAlign: TextAlign.center,
                 ),
               ),

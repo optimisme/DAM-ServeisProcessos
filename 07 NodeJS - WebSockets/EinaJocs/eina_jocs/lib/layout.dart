@@ -122,9 +122,13 @@ class _LayoutState extends State<Layout> {
       parts.add(MapEntry('Project', projectName));
     }
 
-    if (appData.selectedLevel >= 0 &&
-        appData.selectedLevel < appData.gameData.levels.length) {
-      final level = appData.gameData.levels[appData.selectedLevel];
+    final bool hasLevel = appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    final level =
+        hasLevel ? appData.gameData.levels[appData.selectedLevel] : null;
+
+    void addLevel() {
+      if (level == null) return;
       parts.add(
         MapEntry(
           'Level',
@@ -133,19 +137,108 @@ class _LayoutState extends State<Layout> {
               : level.name.trim(),
         ),
       );
+    }
 
-      if (appData.selectedLayer >= 0 &&
-          appData.selectedLayer < level.layers.length) {
-        final layer = level.layers[appData.selectedLayer];
-        parts.add(
-          MapEntry(
-            'Layer',
-            layer.name.trim().isEmpty
-                ? 'Layer ${appData.selectedLayer + 1}'
-                : layer.name.trim(),
-          ),
-        );
+    void addLayer() {
+      if (level == null) return;
+      if (appData.selectedLayer < 0 ||
+          appData.selectedLayer >= level.layers.length) {
+        return;
       }
+      final layer = level.layers[appData.selectedLayer];
+      parts.add(
+        MapEntry(
+          'Layer',
+          layer.name.trim().isEmpty
+              ? 'Layer ${appData.selectedLayer + 1}'
+              : layer.name.trim(),
+        ),
+      );
+    }
+
+    void addZone() {
+      if (level == null) return;
+      if (appData.selectedZone < 0 ||
+          appData.selectedZone >= level.zones.length) {
+        return;
+      }
+      final zone = level.zones[appData.selectedZone];
+      final String zoneType = zone.type.trim();
+      parts.add(
+        MapEntry(
+          'Zone',
+          zoneType.isEmpty ? 'Zone ${appData.selectedZone + 1}' : zoneType,
+        ),
+      );
+    }
+
+    void addSprite() {
+      if (level == null) return;
+      if (appData.selectedSprite < 0 ||
+          appData.selectedSprite >= level.sprites.length) {
+        return;
+      }
+      final sprite = level.sprites[appData.selectedSprite];
+      final String spriteName = sprite.name.trim();
+      parts.add(
+        MapEntry(
+          'Sprite',
+          spriteName.isEmpty
+              ? 'Sprite ${appData.selectedSprite + 1}'
+              : spriteName,
+        ),
+      );
+    }
+
+    void addAnimation() {
+      if (appData.selectedAnimation < 0 ||
+          appData.selectedAnimation >= appData.gameData.animations.length) {
+        return;
+      }
+      final animation = appData.gameData.animations[appData.selectedAnimation];
+      final String name = animation.name.trim().isNotEmpty
+          ? animation.name.trim()
+          : appData.animationDisplayNameById(animation.id);
+      parts.add(MapEntry('Animation', name));
+    }
+
+    void addMedia() {
+      if (appData.selectedMedia < 0 ||
+          appData.selectedMedia >= appData.gameData.mediaAssets.length) {
+        return;
+      }
+      final media = appData.gameData.mediaAssets[appData.selectedMedia];
+      parts.add(MapEntry(
+          'Media', appData.mediaDisplayNameByFileName(media.fileName)));
+    }
+
+    switch (appData.selectedSection) {
+      case 'levels':
+      case 'viewport':
+        addLevel();
+        break;
+      case 'layers':
+      case 'tilemap':
+        addLevel();
+        addLayer();
+        break;
+      case 'zones':
+        addLevel();
+        addZone();
+        break;
+      case 'sprites':
+        addLevel();
+        addSprite();
+        break;
+      case 'animations':
+        addAnimation();
+        break;
+      case 'media':
+        addMedia();
+        break;
+      case 'projects':
+      default:
+        break;
     }
 
     if (parts.isEmpty) {
@@ -376,43 +469,31 @@ class _LayoutState extends State<Layout> {
 
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-        middle: Row(
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _buildBreadcrumb(appData, context),
-              ),
+        middle: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: CDKPickerButtonsSegmented(
+            selectedIndex: _selectedSectionIndex(appData.selectedSection),
+            options: _buildSegmentedOptions(context),
+            onSelected: (index) => unawaited(
+              _onTabSelected(appData, sections[index]),
             ),
-            const SizedBox(width: 8),
-            if (appData.autosaveInlineMessage.isNotEmpty) ...[
-              Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: CDKText(
-                    appData.autosaveInlineMessage,
-                    role: CDKTextRole.caption,
-                    color: appData.autosaveHasError
-                        ? CupertinoColors.systemRed
-                        : cdkColors.colorTextSecondary,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ],
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: CDKPickerButtonsSegmented(
-                selectedIndex: _selectedSectionIndex(appData.selectedSection),
-                options: _buildSegmentedOptions(context),
-                onSelected: (index) => unawaited(
-                  _onTabSelected(appData, sections[index]),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
+        trailing: appData.autosaveInlineMessage.isEmpty
+            ? null
+            : SizedBox(
+                width: 220,
+                child: CDKText(
+                  appData.autosaveInlineMessage,
+                  role: CDKTextRole.caption,
+                  color: appData.autosaveHasError
+                      ? CupertinoColors.systemRed
+                      : cdkColors.colorTextSecondary,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                ),
+              ),
       ),
       child: Focus(
         focusNode: _focusNode,
@@ -1043,8 +1124,12 @@ class _LayoutState extends State<Layout> {
                     child: Container(
                       color: cdkColors.background,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                            child: _buildBreadcrumb(appData, context),
+                          ),
                           Expanded(
                             child: _getSelectedLayout(appData),
                           ),

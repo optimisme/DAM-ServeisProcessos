@@ -1,6 +1,7 @@
 class GameMediaAsset {
   static const String defaultSelectionColorHex = '#FFCC00';
 
+  String name;
   String fileName;
   String mediaType;
   int tileWidth;
@@ -8,12 +9,14 @@ class GameMediaAsset {
   String selectionColorHex;
 
   GameMediaAsset({
+    required String? name,
     required this.fileName,
     required this.mediaType,
     required this.tileWidth,
     required this.tileHeight,
     String? selectionColorHex,
-  }) : selectionColorHex = _normalizeSelectionColorHex(selectionColorHex);
+  })  : name = _normalizeName(name, fileName),
+        selectionColorHex = _normalizeSelectionColorHex(selectionColorHex);
 
   static const List<String> validTypes = [
     'image',
@@ -32,6 +35,7 @@ class GameMediaAsset {
         validTypes.contains(parsedType) ? parsedType : 'image';
 
     return GameMediaAsset(
+      name: json['name'] as String?,
       fileName: json['fileName'] as String,
       mediaType: normalizedType,
       tileWidth: (json['tileWidth'] as num?)?.toInt() ?? 32,
@@ -42,6 +46,7 @@ class GameMediaAsset {
 
   Map<String, dynamic> toJson() {
     return {
+      'name': _normalizeName(name, fileName),
       'fileName': fileName,
       'mediaType': mediaType,
       'tileWidth': tileWidth,
@@ -60,5 +65,28 @@ class GameMediaAsset {
       return defaultSelectionColorHex;
     }
     return '#$cleaned';
+  }
+
+  static String inferNameFromFileName(String fileName) {
+    if (fileName.trim().isEmpty) {
+      return 'Media';
+    }
+    final String segment = fileName.split(RegExp(r'[\\/]')).last;
+    if (segment.trim().isEmpty) {
+      return 'Media';
+    }
+    final int dotIndex = segment.lastIndexOf('.');
+    final String noExtension =
+        dotIndex > 0 ? segment.substring(0, dotIndex) : segment;
+    final String trimmed = noExtension.trim();
+    return trimmed.isEmpty ? segment.trim() : trimmed;
+  }
+
+  static String _normalizeName(String? rawName, String fileName) {
+    final String trimmed = rawName?.trim() ?? '';
+    if (trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    return inferNameFromFileName(fileName);
   }
 }

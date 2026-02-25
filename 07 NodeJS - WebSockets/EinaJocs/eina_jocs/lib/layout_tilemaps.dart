@@ -323,6 +323,15 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: CDKText(
+            'Tileset: ${appData.mediaDisplayNameByFileName(layer.tilesSheetFile)}',
+            role: CDKTextRole.caption,
+            color: cdkColors.colorText,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: CDKText(
             selectionLabel,
             role: CDKTextRole.caption,
             color: cdkColors.colorText,

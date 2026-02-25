@@ -436,7 +436,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                         final String subtitle =
                             'Depth displacement ${_formatDepthDisplacement(layer.depth)} | ${mapWidth}x$mapHeight tiles';
                         final String details =
-                            '${layer.tilesWidth}x${layer.tilesHeight} px | ${layer.visible ? 'Visible' : 'Hidden'}';
+                            '${appData.mediaDisplayNameByFileName(layer.tilesSheetFile)} | ${layer.tilesWidth}x${layer.tilesHeight} px | ${layer.visible ? 'Visible' : 'Hidden'}';
 
                         return GestureDetector(
                           key: ValueKey(layer),
@@ -740,8 +740,9 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
 
     final GameMediaAsset asset = _selectedAsset;
-    final List<String> assetOptions =
-        widget.tilesetAssets.map((a) => a.fileName).toList(growable: false);
+    final List<String> assetOptions = widget.tilesetAssets
+        .map((a) => a.name.trim().isNotEmpty ? a.name : a.fileName)
+        .toList(growable: false);
 
     return EditorFormDialogScaffold(
       title: widget.title,

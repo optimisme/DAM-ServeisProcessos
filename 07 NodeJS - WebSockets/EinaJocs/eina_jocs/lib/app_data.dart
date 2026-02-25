@@ -1084,6 +1084,18 @@ class AppData extends ChangeNotifier {
     return null;
   }
 
+  String mediaDisplayNameByFileName(String fileName) {
+    final GameMediaAsset? asset = mediaAssetByFileName(fileName);
+    if (asset == null) {
+      return GameMediaAsset.inferNameFromFileName(fileName);
+    }
+    final String trimmed = asset.name.trim();
+    if (trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    return GameMediaAsset.inferNameFromFileName(asset.fileName);
+  }
+
   Color tilesetSelectionColorForFile(String fileName) {
     final asset = mediaAssetByFileName(fileName);
     if (asset == null) {

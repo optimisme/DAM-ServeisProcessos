@@ -71,6 +71,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
   }) {
     appData.gameData.mediaAssets.add(
       GameMediaAsset(
+        name: data.name,
         fileName: data.fileName,
         mediaType: data.mediaType,
         tileWidth: data.tileWidth,
@@ -91,6 +92,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
     }
 
     assets[index] = GameMediaAsset(
+      name: data.name,
       fileName: data.fileName,
       mediaType: data.mediaType,
       tileWidth: data.tileWidth,
@@ -206,6 +208,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
       title: 'New media',
       confirmLabel: 'Add',
       initialData: _MediaDialogData(
+        name: GameMediaAsset.inferNameFromFileName(fileName),
         fileName: fileName,
         mediaType: 'tileset',
         tileWidth: defaultWidth,
@@ -231,12 +234,14 @@ class _LayoutMediaState extends State<LayoutMedia> {
     final AppData appData = Provider.of<AppData>(context, listen: false);
     final assets = appData.gameData.mediaAssets;
     if (index < 0 || index >= assets.length) return;
-    final String fileName = assets[index].fileName;
+    final GameMediaAsset asset = assets[index];
+    final String label =
+        asset.name.trim().isNotEmpty ? asset.name : asset.fileName;
 
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete media',
-      message: 'Delete "$fileName"? This cannot be undone.',
+      message: 'Delete "$label"? This cannot be undone.',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -267,6 +272,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
       title: 'Edit media',
       confirmLabel: 'Save',
       initialData: _MediaDialogData(
+        name: asset.name,
         fileName: asset.fileName,
         mediaType: asset.mediaType,
         tileWidth: asset.tileWidth,
@@ -436,7 +442,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       CDKText(
-                                        asset.fileName,
+                                        asset.name,
                                         role: isSelected
                                             ? CDKTextRole.bodyStrong
                                             : CDKTextRole.body,
@@ -447,6 +453,13 @@ class _LayoutMediaState extends State<LayoutMedia> {
                                         subtitle,
                                         role: CDKTextRole.body,
                                         color: cdkColors.colorText,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      CDKText(
+                                        asset.fileName,
+                                        role: CDKTextRole.caption,
+                                        color: cdkColors.colorText,
+                                        secondary: true,
                                       ),
                                     ],
                                   ),
@@ -502,6 +515,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
 
 class _MediaDialogData {
   const _MediaDialogData({
+    required this.name,
     required this.fileName,
     required this.mediaType,
     required this.tileWidth,
@@ -509,6 +523,7 @@ class _MediaDialogData {
     required this.previewPath,
   });
 
+  final String name;
   final String fileName;
   final String mediaType;
   final int tileWidth;
@@ -550,6 +565,8 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
     'atlas',
   ];
 
+  late final TextEditingController _nameController =
+      TextEditingController(text: widget.initialData.name);
   late final TextEditingController _tileWidthController =
       TextEditingController(text: widget.initialData.tileWidth.toString());
   late final TextEditingController _tileHeightController =
@@ -574,6 +591,9 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
   }
 
   bool get _isValid {
+    if (_nameController.text.trim().isEmpty) {
+      return false;
+    }
     if (!_hasTileGrid) {
       return true;
     }
@@ -584,6 +604,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
 
   _MediaDialogData _currentData() {
     return _MediaDialogData(
+      name: _nameController.text.trim(),
       fileName: widget.initialData.fileName,
       mediaType: _mediaType,
       tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
@@ -593,6 +614,9 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
   }
 
   String? _validateData(_MediaDialogData value) {
+    if (_nameController.text.trim().isEmpty) {
+      return 'Name is required.';
+    }
     if (!_hasTileGrid) {
       return null;
     }
@@ -633,6 +657,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
 
     widget.onConfirm(
       _MediaDialogData(
+        name: _nameController.text.trim(),
         fileName: widget.initialData.fileName,
         mediaType: _mediaType,
         tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
@@ -651,6 +676,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
         validate: _validateData,
         onPersist: widget.onLiveChanged!,
         areEqual: (a, b) =>
+            a.name == b.name &&
             a.mediaType == b.mediaType &&
             a.tileWidth == b.tileWidth &&
             a.tileHeight == b.tileHeight,
@@ -664,6 +690,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       unawaited(_editSession!.flush());
       _editSession!.dispose();
     }
+    _nameController.dispose();
     _tileWidthController.dispose();
     _tileHeightController.dispose();
     super.dispose();
@@ -690,6 +717,25 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          EditorLabeledField(
+            label: 'Name',
+            child: CDKFieldText(
+              placeholder: 'Media name',
+              controller: _nameController,
+              onChanged: (_) {
+                setState(() {});
+                _onInputChanged();
+              },
+              onSubmitted: (_) {
+                if (widget.liveEdit) {
+                  _onInputChanged();
+                  return;
+                }
+                _confirm();
+              },
+            ),
+          ),
+          SizedBox(height: spacing.sm),
           EditorLabeledField(
             label: 'File',
             child: CDKText(

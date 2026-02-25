@@ -117,19 +117,6 @@ class _LayoutState extends State<Layout> {
       parts.add(MapEntry('Project', projectName));
     }
 
-    if (appData.selectedAnimation >= 0 &&
-        appData.selectedAnimation < appData.gameData.animations.length) {
-      final animation = appData.gameData.animations[appData.selectedAnimation];
-      parts.add(
-        MapEntry(
-          'Animation',
-          animation.name.trim().isEmpty
-              ? 'Animation ${appData.selectedAnimation + 1}'
-              : animation.name.trim(),
-        ),
-      );
-    }
-
     if (appData.selectedLevel >= 0 &&
         appData.selectedLevel < appData.gameData.levels.length) {
       final level = appData.gameData.levels[appData.selectedLevel];
@@ -155,31 +142,6 @@ class _LayoutState extends State<Layout> {
         );
       }
 
-      if (appData.selectedZone >= 0 &&
-          appData.selectedZone < level.zones.length) {
-        final zone = level.zones[appData.selectedZone];
-        parts.add(
-          MapEntry(
-            'Zone',
-            zone.type.trim().isEmpty
-                ? 'Zone ${appData.selectedZone + 1}'
-                : zone.type.trim(),
-          ),
-        );
-      }
-
-      if (appData.selectedSprite >= 0 &&
-          appData.selectedSprite < level.sprites.length) {
-        final sprite = level.sprites[appData.selectedSprite];
-        parts.add(
-          MapEntry(
-            'Sprite',
-            sprite.name.trim().isEmpty
-                ? 'Sprite ${appData.selectedSprite + 1}'
-                : sprite.name.trim(),
-          ),
-        );
-      }
     }
 
     if (parts.isEmpty) {

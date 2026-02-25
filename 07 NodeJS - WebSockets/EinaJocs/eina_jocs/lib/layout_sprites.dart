@@ -429,13 +429,15 @@ class LayoutSpritesState extends State<LayoutSprites> {
             ),
           ),
           const Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: CDKText(
-                'Select a Level to edit its sprites.',
-                role: CDKTextRole.caption,
-                secondary: true,
-                textAlign: TextAlign.center,
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: CDKText(
+                  'No level selected.\nSelect a Level to edit its sprites.',
+                  role: CDKTextRole.body,
+                  secondary: true,
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
           ),

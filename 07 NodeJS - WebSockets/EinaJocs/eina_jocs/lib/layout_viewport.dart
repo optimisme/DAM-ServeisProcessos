@@ -201,12 +201,15 @@ class LayoutViewportState extends State<LayoutViewport> {
         // ── Empty state ──────────────────────────────────────────────────────
         if (!hasLevel)
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: CDKText(
-                'Select a Level to configure its Viewport.',
-                role: CDKTextRole.caption,
-                secondary: true,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: CDKText(
+                  'No level selected.\nSelect a Level to configure its Viewport.',
+                  role: CDKTextRole.body,
+                  secondary: true,
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
           )

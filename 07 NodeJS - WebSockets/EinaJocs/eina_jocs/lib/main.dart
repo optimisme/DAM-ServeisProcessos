@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'app_data.dart';
@@ -9,16 +10,68 @@ const _windowTitle = 'Games Tool';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await _configureDesktopWindow();
-  final appData = AppData();
-  await appData.initializeStorage();
+  runApp(const _BootstrapApp());
+}
 
-  runApp(
-    ChangeNotifierProvider.value(
-      value: appData,
-      child: const App(),
-    ),
-  );
+class _BootstrapApp extends StatefulWidget {
+  const _BootstrapApp();
+
+  @override
+  State<_BootstrapApp> createState() => _BootstrapAppState();
+}
+
+class _BootstrapAppState extends State<_BootstrapApp> {
+  AppData? _appData;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      await _configureDesktopWindow();
+      final AppData appData = AppData();
+      await appData.initializeStorage();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _appData = appData;
+      });
+    } catch (error) {
+      debugPrint('Bootstrap failed: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppData? appData = _appData;
+    if (appData != null) {
+      return ChangeNotifierProvider.value(
+        value: appData,
+        child: const App(),
+      );
+    }
+
+    return CDKApp(
+      defaultAppearance: CDKThemeAppearance.system,
+      defaultColor: "systemBlue",
+      child: const _LoadingScreen(),
+    );
+  }
+}
+
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: CupertinoColors.white,
+    );
+  }
 }
 
 Future<void> _configureDesktopWindow() async {

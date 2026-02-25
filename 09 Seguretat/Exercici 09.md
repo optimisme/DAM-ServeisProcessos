@@ -45,6 +45,8 @@ Crea un paquet de distribució:
 - **Windows**: un .exe o .msi
 - **MacOS**: un .dmg o .pkg
 
-Afegeix una carpeta "dist" al teu repositori on guardis el paquet de i fes una "release" a GitHub amb aquest paquet.
+El paquet ha d'instal·lar l'aplicació de manera que aparegui al menú d'aplicacions del sistema operatiu amb un icona distintiu com qualsevol altra aplicació.
+
+Afegeix una carpeta "dist" al teu repositori on guardis el paquet de i fes una "release" a GitHub amb aquest paquet binari distribuible.
 
 Fes una pagina web a GitHub Pages on expliquis com utilitzar l'aplicació i on puguis descarregar el paquet binari *"release"* de l'aplicació.

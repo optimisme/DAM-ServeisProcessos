@@ -10,6 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'game_data.dart';
 import 'game_media_asset.dart';
 
+typedef ProjectMutation = void Function();
+typedef ProjectMutationValidator = String? Function();
+
 class StoredProject {
   final String id;
   final String folderName;
@@ -62,6 +65,8 @@ class AppData extends ChangeNotifier {
   String projectsPath = "";
   String selectedProjectId = "";
   String projectStatusMessage = "";
+  String autosaveInlineMessage = "";
+  bool autosaveHasError = false;
   List<StoredProject> projects = [];
 
   Map<String, ui.Image> imagesCache = {};
@@ -72,6 +77,17 @@ class AppData extends ChangeNotifier {
   int selectedZone = -1;
   int selectedSprite = -1;
   int selectedMedia = -1;
+
+  static const Duration _autosaveDebounceDelay = Duration(milliseconds: 320);
+  static const Duration _autosaveFollowupDelay = Duration(milliseconds: 80);
+  static const Duration _autosaveRetryMinDelay = Duration(seconds: 1);
+  static const Duration _autosaveRetryMaxDelay = Duration(seconds: 8);
+  Timer? _autosaveDebounceTimer;
+  Timer? _autosaveRetryTimer;
+  bool _autosaveQueued = false;
+  bool _autosaveRunning = false;
+  int _autosaveRetryAttempt = 0;
+  Completer<void>? _autosaveDrainCompleter;
 
   bool dragging = false;
   DragUpdateDetails? dragUpdateDetails;
@@ -112,6 +128,8 @@ class AppData extends ChangeNotifier {
   final List<Map<String, dynamic>> _undoStack = [];
   final List<Map<String, dynamic>> _redoStack = [];
   static const int _maxUndoSteps = 50;
+  static const Duration _defaultUndoGroupWindow = Duration(seconds: 2);
+  final Map<String, DateTime> _undoGroupCheckpointAt = {};
 
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
@@ -125,10 +143,37 @@ class AppData extends ChangeNotifier {
     _redoStack.clear();
   }
 
+  void _clearUndoGroupingState() {
+    _undoGroupCheckpointAt.clear();
+  }
+
+  bool _shouldPushUndoCheckpoint({
+    required String? undoGroupKey,
+    required Duration undoGroupWindow,
+  }) {
+    final String key = undoGroupKey?.trim() ?? '';
+    if (key.isEmpty) {
+      // Ungrouped mutations are "major" by default and must start a fresh
+      // checkpoint sequence.
+      _clearUndoGroupingState();
+      return true;
+    }
+
+    final DateTime now = DateTime.now();
+    final DateTime? lastCheckpointAt = _undoGroupCheckpointAt[key];
+    if (lastCheckpointAt == null ||
+        now.difference(lastCheckpointAt) > undoGroupWindow) {
+      _undoGroupCheckpointAt[key] = now;
+      return true;
+    }
+    return false;
+  }
+
   void undo() {
     if (_undoStack.isEmpty) return;
     _redoStack.add(gameData.toJson());
     gameData = GameData.fromJson(_undoStack.removeLast());
+    _clearUndoGroupingState();
     notifyListeners();
   }
 
@@ -136,11 +181,199 @@ class AppData extends ChangeNotifier {
     if (_redoStack.isEmpty) return;
     _undoStack.add(gameData.toJson());
     gameData = GameData.fromJson(_redoStack.removeLast());
+    _clearUndoGroupingState();
     notifyListeners();
   }
 
   void update() {
     notifyListeners();
+  }
+
+  Duration _autosaveRetryDelay(int attempt) {
+    final int cappedAttempt = attempt < 1 ? 1 : (attempt > 6 ? 6 : attempt);
+    final int factor = 1 << (cappedAttempt - 1);
+    final int nextMs = _autosaveRetryMinDelay.inMilliseconds * factor;
+    final int clampedMs = nextMs < _autosaveRetryMinDelay.inMilliseconds
+        ? _autosaveRetryMinDelay.inMilliseconds
+        : (nextMs > _autosaveRetryMaxDelay.inMilliseconds
+            ? _autosaveRetryMaxDelay.inMilliseconds
+            : nextMs);
+    return Duration(
+      milliseconds: clampedMs,
+    );
+  }
+
+  void queueAutosave({Duration debounce = _autosaveDebounceDelay}) {
+    if (selectedProject == null) {
+      return;
+    }
+    _autosaveQueued = true;
+    _autosaveDebounceTimer?.cancel();
+    _autosaveDebounceTimer = Timer(debounce, () {
+      unawaited(_drainAutosaveQueue());
+    });
+  }
+
+  Future<void> flushPendingAutosave() async {
+    _autosaveDebounceTimer?.cancel();
+    _autosaveDebounceTimer = null;
+    _autosaveRetryTimer?.cancel();
+    _autosaveRetryTimer = null;
+
+    if (!_autosaveQueued && !_autosaveRunning) {
+      return;
+    }
+
+    _autosaveQueued = true;
+    await _drainAutosaveQueue(force: true);
+  }
+
+  Future<void> _drainAutosaveQueue({bool force = false}) async {
+    if (selectedProject == null) {
+      _autosaveQueued = false;
+      return;
+    }
+
+    if (_autosaveRunning) {
+      if (force) {
+        await _autosaveDrainCompleter?.future;
+        if (_autosaveQueued) {
+          await _drainAutosaveQueue(force: true);
+        }
+      }
+      return;
+    }
+
+    if (!_autosaveQueued && !force) {
+      return;
+    }
+
+    _autosaveRunning = true;
+    final Completer<void> drainCompleter = Completer<void>();
+    _autosaveDrainCompleter = drainCompleter;
+    _autosaveQueued = false;
+
+    try {
+      await _saveGameInternal(
+        notifyOnSuccess: false,
+      );
+
+      if (autosaveInlineMessage.isNotEmpty || autosaveHasError) {
+        autosaveInlineMessage = '';
+        autosaveHasError = false;
+        notifyListeners();
+      }
+      _autosaveRetryAttempt = 0;
+    } catch (e) {
+      _autosaveQueued = true;
+      _autosaveRetryAttempt += 1;
+      final Duration delay = _autosaveRetryDelay(_autosaveRetryAttempt);
+      autosaveInlineMessage =
+          'Autosave failed. Retrying in ${delay.inSeconds}s.';
+      autosaveHasError = true;
+      notifyListeners();
+
+      _autosaveRetryTimer?.cancel();
+      _autosaveRetryTimer = Timer(delay, () {
+        _autosaveRetryTimer = null;
+        _autosaveDebounceTimer?.cancel();
+        _autosaveDebounceTimer = Timer(_autosaveFollowupDelay, () {
+          unawaited(_drainAutosaveQueue());
+        });
+      });
+    } finally {
+      _autosaveRunning = false;
+      if (!drainCompleter.isCompleted) {
+        drainCompleter.complete();
+      }
+    }
+
+    if (_autosaveQueued && _autosaveRetryTimer == null) {
+      _autosaveDebounceTimer?.cancel();
+      _autosaveDebounceTimer = Timer(_autosaveFollowupDelay, () {
+        unawaited(_drainAutosaveQueue());
+      });
+    }
+  }
+
+  void _clearAutosaveState() {
+    _autosaveDebounceTimer?.cancel();
+    _autosaveDebounceTimer = null;
+    _autosaveRetryTimer?.cancel();
+    _autosaveRetryTimer = null;
+    _autosaveQueued = false;
+    _autosaveRunning = false;
+    _autosaveRetryAttempt = 0;
+    _autosaveDrainCompleter = null;
+    autosaveInlineMessage = '';
+    autosaveHasError = false;
+  }
+
+  Future<void> setSelectedSection(String value) async {
+    if (selectedSection == value) {
+      return;
+    }
+    await flushPendingAutosave();
+    selectedSection = value;
+    notifyListeners();
+  }
+
+  /// Canonical pathway for persisted editor mutations.
+  ///
+  /// Contract:
+  /// - Optional validation gate before applying.
+  /// - Optional undo checkpoint before data mutation.
+  /// - UI refresh after mutation.
+  /// - Optional autosave of project data.
+  Future<bool> runProjectMutation({
+    required ProjectMutation mutate,
+    ProjectMutationValidator? validate,
+    bool requireSelectedProject = true,
+    bool pushUndoCheckpoint = true,
+    String? undoGroupKey,
+    Duration undoGroupWindow = _defaultUndoGroupWindow,
+    bool refreshUi = true,
+    bool autosave = true,
+    bool notifyOnValidationFailure = true,
+    String? debugLabel,
+  }) async {
+    if (requireSelectedProject && selectedProject == null) {
+      return false;
+    }
+
+    final String? validationError = validate?.call();
+    if (validationError != null) {
+      projectStatusMessage = validationError;
+      if (notifyOnValidationFailure) {
+        notifyListeners();
+      }
+      return false;
+    }
+
+    try {
+      if (pushUndoCheckpoint &&
+          _shouldPushUndoCheckpoint(
+            undoGroupKey: undoGroupKey,
+            undoGroupWindow: undoGroupWindow,
+          )) {
+        pushUndo();
+      }
+      mutate();
+      if (refreshUi) {
+        update();
+      }
+      if (autosave && selectedProject != null) {
+        queueAutosave();
+      }
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error in runProjectMutation(${debugLabel ?? 'unnamed'}): $e");
+      }
+      projectStatusMessage = "Update failed: $e";
+      notifyListeners();
+      return false;
+    }
   }
 
   StoredProject? _findProjectById(String projectId) {
@@ -389,6 +622,7 @@ class AppData extends ChangeNotifier {
   }
 
   void _resetWorkingProjectData() {
+    _clearAutosaveState();
     selectedProjectId = "";
     gameData = GameData(name: "", levels: []);
     filePath = "";
@@ -410,6 +644,7 @@ class AppData extends ChangeNotifier {
     layerDragOffset = Offset.zero;
     _undoStack.clear();
     _redoStack.clear();
+    _clearUndoGroupingState();
     imagesCache.clear();
   }
 
@@ -426,6 +661,7 @@ class AppData extends ChangeNotifier {
   }
 
   Future<String> createProject({String? projectName}) async {
+    await flushPendingAutosave();
     if (projectsPath == "") {
       await initializeStorage();
     }
@@ -466,6 +702,8 @@ class AppData extends ChangeNotifier {
     tilesetSelectionRowEnd = -1;
     _undoStack.clear();
     _redoStack.clear();
+    _clearUndoGroupingState();
+    _clearAutosaveState();
     imagesCache.clear();
 
     filePath = projectDirectory.path;
@@ -518,6 +756,7 @@ class AppData extends ChangeNotifier {
   }
 
   Future<bool> deleteProject(String projectId) async {
+    await flushPendingAutosave();
     final StoredProject? project = _findProjectById(projectId);
     if (project == null) {
       return false;
@@ -550,6 +789,7 @@ class AppData extends ChangeNotifier {
 
   Future<void> openProject(String projectId, {bool notify = true}) async {
     try {
+      await flushPendingAutosave();
       final StoredProject? project = _findProjectById(projectId);
       if (project == null) {
         return;
@@ -586,6 +826,8 @@ class AppData extends ChangeNotifier {
       tilesetSelectionRowEnd = -1;
       _undoStack.clear();
       _redoStack.clear();
+      _clearUndoGroupingState();
+      _clearAutosaveState();
       imagesCache.clear();
       if (gameData.name.trim().isNotEmpty) {
         project.name = gameData.name.trim();
@@ -611,11 +853,13 @@ class AppData extends ChangeNotifier {
     if (selectedProjectId == "") {
       return;
     }
+    await flushPendingAutosave();
     await openProject(selectedProjectId);
   }
 
   Future<String?> importProject() async {
     try {
+      await flushPendingAutosave();
       if (projectsPath == "") {
         await initializeStorage();
       }
@@ -725,6 +969,7 @@ class AppData extends ChangeNotifier {
 
   Future<bool> exportSelectedProject() async {
     try {
+      await flushPendingAutosave();
       final StoredProject? project = selectedProject;
       if (project == null) {
         return false;
@@ -775,44 +1020,58 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  Future<void> saveGame() async {
-    try {
-      final StoredProject? project = selectedProject;
-      if (project == null) {
-        throw Exception("No selected project");
-      }
+  Future<void> _saveGameInternal({
+    bool notifyOnSuccess = true,
+  }) async {
+    final StoredProject? project = selectedProject;
+    if (project == null) {
+      throw Exception("No selected project");
+    }
 
-      if (filePath == "") {
-        filePath =
-            "$projectsPath${Platform.pathSeparator}${project.folderName}";
-      }
-      fileName = gameFileName;
+    if (filePath == "") {
+      filePath = "$projectsPath${Platform.pathSeparator}${project.folderName}";
+    }
+    fileName = gameFileName;
 
-      final Directory projectDirectory = Directory(filePath);
-      if (!await projectDirectory.exists()) {
-        await projectDirectory.create(recursive: true);
-      }
+    final Directory projectDirectory = Directory(filePath);
+    if (!await projectDirectory.exists()) {
+      await projectDirectory.create(recursive: true);
+    }
 
-      final file = File("$filePath${Platform.pathSeparator}$fileName");
-      final output = await _formatMapAsGameJson(gameData.toJson());
-      await file.writeAsString(output);
+    final file = File("$filePath${Platform.pathSeparator}$fileName");
+    final output = await _formatMapAsGameJson(gameData.toJson());
+    await file.writeAsString(output);
 
-      if (gameData.name.trim().isNotEmpty) {
-        project.name = gameData.name.trim();
-      }
-      project.updatedAt = DateTime.now().toUtc().toIso8601String();
-      await _saveProjectsIndex();
+    if (gameData.name.trim().isNotEmpty) {
+      project.name = gameData.name.trim();
+    }
+    project.updatedAt = DateTime.now().toUtc().toIso8601String();
+    await _saveProjectsIndex();
 
-      if (kDebugMode) {
-        print("Game saved successfully to \"$filePath/$fileName\"");
-      }
+    if (kDebugMode) {
+      print("Game saved successfully to \"$filePath/$fileName\"");
+    }
 
+    if (notifyOnSuccess) {
       projectStatusMessage = "Saved project \"${project.name}\"";
       notifyListeners();
+    }
+  }
+
+  Future<void> saveGame() async {
+    try {
+      await flushPendingAutosave();
+      await _saveGameInternal();
     } catch (e) {
       if (kDebugMode) {
         print("Error saving game file: $e");
       }
+      projectStatusMessage = "Save failed: $e";
+      if (autosaveInlineMessage.isNotEmpty) {
+        autosaveInlineMessage = '';
+        autosaveHasError = false;
+      }
+      notifyListeners();
     }
   }
 

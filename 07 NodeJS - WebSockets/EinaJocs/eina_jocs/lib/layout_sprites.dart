@@ -6,6 +6,9 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_sprite.dart';
+import 'widgets/edit_session.dart';
+import 'widgets/editor_form_dialog_scaffold.dart';
+import 'widgets/editor_labeled_field.dart';
 
 class LayoutSprites extends StatefulWidget {
   const LayoutSprites({super.key});
@@ -22,7 +25,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (appData.selectedProject == null) {
       return;
     }
-    await appData.saveGame();
+    appData.queueAutosave();
   }
 
   void updateForm(AppData appData) {
@@ -73,7 +76,6 @@ class LayoutSpritesState extends State<LayoutSprites> {
       imageFile: data.imageFile,
     );
     appData.selectedSprite = index;
-    appData.update();
   }
 
   Future<_SpriteDialogData?> _promptSpriteData({
@@ -82,6 +84,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required _SpriteDialogData initialData,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    bool liveEdit = false,
+    Future<void> Function(_SpriteDialogData value)? onLiveChanged,
     VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
@@ -99,6 +103,14 @@ class LayoutSpritesState extends State<LayoutSprites> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       onPickImage: appData.pickImageFile,
+      liveEdit: liveEdit,
+      onLiveChanged: onLiveChanged,
+      onClose: () {
+        unawaited(() async {
+          await appData.flushPendingAutosave();
+          controller.close();
+        }());
+      },
       onConfirm: (value) {
         result = value;
         controller.close();
@@ -206,7 +218,9 @@ class LayoutSpritesState extends State<LayoutSprites> {
       return;
     }
     final sprite = sprites[index];
-    final data = await _promptSpriteData(
+    final String undoGroupKey =
+        'sprite-live-$index-${DateTime.now().microsecondsSinceEpoch}';
+    await _promptSpriteData(
       title: 'Edit sprite',
       confirmLabel: 'Save',
       initialData: _SpriteDialogData(
@@ -219,14 +233,18 @@ class LayoutSpritesState extends State<LayoutSprites> {
       ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      liveEdit: true,
+      onLiveChanged: (value) async {
+        await appData.runProjectMutation(
+          debugLabel: 'sprite-live-edit',
+          undoGroupKey: undoGroupKey,
+          mutate: () {
+            _updateSprite(appData: appData, index: index, data: value);
+          },
+        );
+      },
       onDelete: () => _confirmAndDeleteSprite(index),
     );
-    if (!mounted || data == null) {
-      return;
-    }
-    appData.pushUndo();
-    _updateSprite(appData: appData, index: index, data: data);
-    await _autoSaveIfPossible(appData);
   }
 
   void _selectSprite(AppData appData, int index, bool isSelected) {
@@ -447,6 +465,9 @@ class _SpriteFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.onPickImage,
+    this.liveEdit = false,
+    this.onLiveChanged,
+    this.onClose,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
@@ -456,6 +477,9 @@ class _SpriteFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _SpriteDialogData initialData;
   final Future<String> Function() onPickImage;
+  final bool liveEdit;
+  final Future<void> Function(_SpriteDialogData value)? onLiveChanged;
+  final VoidCallback? onClose;
   final ValueChanged<_SpriteDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
@@ -481,9 +505,34 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     text: widget.initialData.height.toString(),
   );
   late String _imageFile = widget.initialData.imageFile;
+  EditSession<_SpriteDialogData>? _editSession;
 
   bool get _isValid =>
       _typeController.text.trim().isNotEmpty && _imageFile.trim().isNotEmpty;
+
+  _SpriteDialogData _currentData() {
+    return _SpriteDialogData(
+      type: _typeController.text.trim(),
+      x: int.tryParse(_xController.text.trim()) ?? 0,
+      y: int.tryParse(_yController.text.trim()) ?? 0,
+      width: int.tryParse(_widthController.text.trim()) ?? 32,
+      height: int.tryParse(_heightController.text.trim()) ?? 32,
+      imageFile: _imageFile,
+    );
+  }
+
+  String? _validateData(_SpriteDialogData value) {
+    if (value.type.trim().isEmpty || value.imageFile.trim().isEmpty) {
+      return 'Type and image are required.';
+    }
+    return null;
+  }
+
+  void _onInputChanged() {
+    if (widget.liveEdit) {
+      _editSession?.update(_currentData());
+    }
+  }
 
   Future<void> _pickImage() async {
     final String picked = await widget.onPickImage();
@@ -493,6 +542,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     setState(() {
       _imageFile = picked;
     });
+    _onInputChanged();
   }
 
   void _confirm() {
@@ -512,7 +562,30 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.liveEdit && widget.onLiveChanged != null) {
+      _editSession = EditSession<_SpriteDialogData>(
+        initialValue: _currentData(),
+        validate: _validateData,
+        onPersist: widget.onLiveChanged!,
+        areEqual: (a, b) =>
+            a.type == b.type &&
+            a.x == b.x &&
+            a.y == b.y &&
+            a.width == b.width &&
+            a.height == b.height &&
+            a.imageFile == b.imageFile,
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    if (_editSession != null) {
+      unawaited(_editSession!.flush());
+      _editSession!.dispose();
+    }
     _typeController.dispose();
     _xController.dispose();
     _yController.dispose();
@@ -524,159 +597,115 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
-    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    Widget labeledField(String label, Widget field) {
-      return Column(
+    return EditorFormDialogScaffold(
+      title: widget.title,
+      description: 'Configure sprite details.',
+      confirmLabel: widget.confirmLabel,
+      confirmEnabled: _isValid,
+      onConfirm: _confirm,
+      onCancel: widget.onCancel,
+      liveEditMode: widget.liveEdit,
+      onClose: widget.onClose,
+      onDelete: widget.onDelete,
+      minWidth: 360,
+      maxWidth: 460,
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CDKText(
-            label,
-            role: CDKTextRole.caption,
-            color: cdkColors.colorText,
+          EditorLabeledField(
+            label: 'Sprite Type',
+            child: CDKFieldText(
+              placeholder: 'Sprite type',
+              controller: _typeController,
+              onChanged: (_) {
+                setState(() {});
+                _onInputChanged();
+              },
+              onSubmitted: (_) {
+                if (widget.liveEdit) {
+                  _onInputChanged();
+                  return;
+                }
+                _confirm();
+              },
+            ),
           ),
-          const SizedBox(height: 4),
-          field,
-        ],
-      );
-    }
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 360, maxWidth: 460),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          SizedBox(height: spacing.sm),
+          Row(
             children: [
-              CDKText(widget.title, role: CDKTextRole.title),
-              SizedBox(height: spacing.md),
-              const CDKText(
-                'Configure sprite details.',
-                role: CDKTextRole.body,
-              ),
-              SizedBox(height: spacing.md),
-              labeledField(
-                'Sprite Type',
-                CDKFieldText(
-                  placeholder: 'Sprite type',
-                  controller: _typeController,
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => _confirm(),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Start X (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Start X (px)',
+                    controller: _xController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
                 ),
               ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
-                      'Start X (px)',
-                      CDKFieldText(
-                        placeholder: 'Start X (px)',
-                        controller: _xController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Start Y (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Start Y (px)',
+                    controller: _yController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
                   ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Start Y (px)',
-                      CDKFieldText(
-                        placeholder: 'Start Y (px)',
-                        controller: _yController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
-                      'Sprite Width (px)',
-                      CDKFieldText(
-                        placeholder: 'Sprite Width (px)',
-                        controller: _widthController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Sprite Height (px)',
-                      CDKFieldText(
-                        placeholder: 'Sprite Height (px)',
-                        controller: _heightController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.md),
-              CDKText(
-                'Sprite Image',
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: CDKText(
-                      _imageFile.isEmpty ? 'No file selected' : _imageFile,
-                      role: CDKTextRole.caption,
-                      color: cdkColors.colorText,
-                    ),
-                  ),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    onPressed: _pickImage,
-                    child: const Text('Choose File'),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.lg + spacing.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (widget.onDelete != null)
-                    CDKButton(
-                      style: CDKButtonStyle.destructive,
-                      onPressed: widget.onDelete,
-                      child: const Text('Delete'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  Row(
-                    children: [
-                      CDKButton(
-                        style: CDKButtonStyle.normal,
-                        onPressed: widget.onCancel,
-                        child: const Text('Cancel'),
-                      ),
-                      SizedBox(width: spacing.md),
-                      CDKButton(
-                        style: CDKButtonStyle.action,
-                        enabled: _isValid,
-                        onPressed: _confirm,
-                        child: Text(widget.confirmLabel),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Sprite Width (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Sprite Width (px)',
+                    controller: _widthController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Sprite Height (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Sprite Height (px)',
+                    controller: _heightController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.md),
+          EditorLabeledField(
+            label: 'Sprite Image',
+            child: Row(
+              children: [
+                Expanded(
+                  child: CDKText(
+                    _imageFile.isEmpty ? 'No file selected' : _imageFile,
+                    role: CDKTextRole.caption,
+                  ),
+                ),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: _pickImage,
+                  child: const Text('Choose File'),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

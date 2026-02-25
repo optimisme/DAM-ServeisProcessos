@@ -7,6 +7,9 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_level.dart';
+import 'widgets/edit_session.dart';
+import 'widgets/editor_form_dialog_scaffold.dart';
+import 'widgets/editor_labeled_field.dart';
 
 class LayoutLevels extends StatefulWidget {
   const LayoutLevels({super.key});
@@ -33,7 +36,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     if (appData.selectedProject == null) {
       return;
     }
-    await appData.saveGame();
+    appData.queueAutosave();
   }
 
   void _addLevel({
@@ -62,6 +65,8 @@ class LayoutLevelsState extends State<LayoutLevels> {
     int? editingIndex,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    bool liveEdit = false,
+    Future<void> Function(_LevelDialogData value)? onLiveChanged,
     VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
@@ -87,6 +92,14 @@ class LayoutLevelsState extends State<LayoutLevels> {
       initialName: initialName,
       initialDescription: initialDescription,
       existingNames: existingNames,
+      liveEdit: liveEdit,
+      onLiveChanged: onLiveChanged,
+      onClose: () {
+        unawaited(() async {
+          await appData.flushPendingAutosave();
+          controller.close();
+        }());
+      },
       onConfirm: (value) {
         result = value;
         controller.close();
@@ -187,7 +200,9 @@ class LayoutLevelsState extends State<LayoutLevels> {
       return;
     }
     final GameLevel selected = appData.gameData.levels[index];
-    final _LevelDialogData? updated = await _promptLevelData(
+    final String undoGroupKey =
+        'level-live-$index-${DateTime.now().microsecondsSinceEpoch}';
+    await _promptLevelData(
       title: "Edit level",
       confirmLabel: "Save",
       initialName: selected.name,
@@ -195,19 +210,23 @@ class LayoutLevelsState extends State<LayoutLevels> {
       editingIndex: index,
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      liveEdit: true,
+      onLiveChanged: (value) async {
+        await appData.runProjectMutation(
+          debugLabel: 'level-live-edit',
+          undoGroupKey: undoGroupKey,
+          mutate: () {
+            _updateLevel(
+              appData: appData,
+              index: index,
+              name: value.name,
+              description: value.description,
+            );
+          },
+        );
+      },
       onDelete: () => _confirmAndDeleteLevel(index),
     );
-    if (updated == null || !mounted) {
-      return;
-    }
-    appData.pushUndo();
-    _updateLevel(
-      appData: appData,
-      index: index,
-      name: updated.name,
-      description: updated.description,
-    );
-    await _autoSaveIfPossible(appData);
   }
 
   void _updateLevel({
@@ -226,7 +245,6 @@ class LayoutLevelsState extends State<LayoutLevels> {
         sprites: previous.sprites,
       );
       appData.selectedLevel = index;
-      appData.update();
     }
   }
 
@@ -436,6 +454,9 @@ class _LevelFormDialog extends StatefulWidget {
     required this.initialName,
     required this.initialDescription,
     required this.existingNames,
+    this.liveEdit = false,
+    this.onLiveChanged,
+    this.onClose,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
@@ -446,6 +467,9 @@ class _LevelFormDialog extends StatefulWidget {
   final String initialName;
   final String initialDescription;
   final Set<String> existingNames;
+  final bool liveEdit;
+  final Future<void> Function(_LevelDialogData value)? onLiveChanged;
+  final VoidCallback? onClose;
   final ValueChanged<_LevelDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
@@ -462,11 +486,28 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
       TextEditingController(text: widget.initialDescription);
   final FocusNode _nameFocusNode = FocusNode();
   String? _errorText;
+  EditSession<_LevelDialogData>? _editSession;
+
+  _LevelDialogData _currentData() {
+    return _LevelDialogData(
+      name: _nameController.text.trim(),
+      description: _descriptionController.text.trim(),
+    );
+  }
+
+  String? _validateData(_LevelDialogData data) {
+    final String cleaned = data.name.trim();
+    if (cleaned.isEmpty) {
+      return 'Name is required.';
+    }
+    if (widget.existingNames.contains(cleaned.toLowerCase())) {
+      return 'Another level is named like that.';
+    }
+    return null;
+  }
 
   bool get _isValid {
-    final String cleaned = _nameController.text.trim();
-    return cleaned.isNotEmpty &&
-        !widget.existingNames.contains(cleaned.toLowerCase());
+    return _validateData(_currentData()) == null;
   }
 
   void _validate(String value) {
@@ -481,6 +522,12 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
     setState(() {
       _errorText = error;
     });
+  }
+
+  void _onInputChanged() {
+    if (widget.liveEdit) {
+      _editSession?.update(_currentData());
+    }
   }
 
   void _confirm() {
@@ -501,6 +548,14 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.liveEdit && widget.onLiveChanged != null) {
+      _editSession = EditSession<_LevelDialogData>(
+        initialValue: _currentData(),
+        validate: _validateData,
+        onPersist: widget.onLiveChanged!,
+        areEqual: (a, b) => a.name == b.name && a.description == b.description,
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _nameFocusNode.requestFocus();
@@ -510,6 +565,10 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
 
   @override
   void dispose() {
+    if (_editSession != null) {
+      unawaited(_editSession!.flush());
+      _editSession!.dispose();
+    }
     _nameController.dispose();
     _descriptionController.dispose();
     _nameFocusNode.dispose();
@@ -520,90 +579,64 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
-    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 320, maxWidth: 420),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CDKText(widget.title, role: CDKTextRole.title),
-              SizedBox(height: spacing.md),
-              const CDKText("Enter level details.", role: CDKTextRole.body),
-              SizedBox(height: spacing.md),
-              CDKText(
-                "Name",
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              CDKFieldText(
-                placeholder: "Level name",
-                controller: _nameController,
-                focusNode: _nameFocusNode,
-                onChanged: _validate,
-                onSubmitted: (_) => _confirm(),
-              ),
-              SizedBox(height: spacing.sm),
-              CDKText(
-                "Description",
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              CDKFieldText(
-                placeholder: "Level description (optional)",
-                controller: _descriptionController,
-                onSubmitted: (_) => _confirm(),
-              ),
-              if (_errorText != null) ...[
-                SizedBox(height: spacing.sm),
-                Text(
-                  _errorText!,
-                  style: typography.caption.copyWith(color: CDKTheme.red),
-                ),
-              ],
-              SizedBox(height: spacing.lg + spacing.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (widget.onDelete != null)
-                    CDKButton(
-                      style: CDKButtonStyle.destructive,
-                      onPressed: widget.onDelete,
-                      child: const Text('Delete'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  Row(
-                    children: [
-                      CDKButton(
-                        style: CDKButtonStyle.normal,
-                        onPressed: widget.onCancel,
-                        child: const Text("Cancel"),
-                      ),
-                      SizedBox(width: spacing.md),
-                      CDKButton(
-                        style: CDKButtonStyle.action,
-                        enabled: _isValid,
-                        onPressed: _confirm,
-                        child: Text(widget.confirmLabel),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
+    return EditorFormDialogScaffold(
+      title: widget.title,
+      description: 'Enter level details.',
+      confirmLabel: widget.confirmLabel,
+      confirmEnabled: _isValid,
+      onConfirm: _confirm,
+      onCancel: widget.onCancel,
+      liveEditMode: widget.liveEdit,
+      onClose: widget.onClose,
+      onDelete: widget.onDelete,
+      minWidth: 320,
+      maxWidth: 420,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EditorLabeledField(
+            label: 'Name',
+            child: CDKFieldText(
+              placeholder: 'Level name',
+              controller: _nameController,
+              focusNode: _nameFocusNode,
+              onChanged: (value) {
+                _validate(value);
+                _onInputChanged();
+              },
+              onSubmitted: (_) {
+                if (widget.liveEdit) {
+                  _onInputChanged();
+                  return;
+                }
+                _confirm();
+              },
+            ),
           ),
-        ),
+          SizedBox(height: spacing.sm),
+          EditorLabeledField(
+            label: 'Description',
+            child: CDKFieldText(
+              placeholder: 'Level description (optional)',
+              controller: _descriptionController,
+              onChanged: (_) => _onInputChanged(),
+              onSubmitted: (_) {
+                if (widget.liveEdit) {
+                  _onInputChanged();
+                  return;
+                }
+                _confirm();
+              },
+            ),
+          ),
+          if (_errorText != null) ...[
+            SizedBox(height: spacing.sm),
+            Text(
+              _errorText!,
+              style: typography.caption.copyWith(color: CDKTheme.red),
+            ),
+          ],
+        ],
       ),
     );
   }

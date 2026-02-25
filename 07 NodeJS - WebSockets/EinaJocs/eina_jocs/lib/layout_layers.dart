@@ -7,6 +7,9 @@ import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_layer.dart';
 import 'game_media_asset.dart';
+import 'widgets/edit_session.dart';
+import 'widgets/editor_form_dialog_scaffold.dart';
+import 'widgets/editor_labeled_field.dart';
 
 class LayoutLayers extends StatefulWidget {
   const LayoutLayers({super.key});
@@ -33,7 +36,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     if (appData.selectedProject == null) {
       return;
     }
-    await appData.saveGame();
+    appData.queueAutosave();
   }
 
   void _addLayer({
@@ -112,7 +115,6 @@ class LayoutLayersState extends State<LayoutLayers> {
     );
 
     appData.selectedLayer = index;
-    appData.update();
   }
 
   Future<_LayerDialogData?> _promptLayerData({
@@ -122,12 +124,15 @@ class LayoutLayersState extends State<LayoutLayers> {
     required List<GameMediaAsset> tilesetAssets,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    bool liveEdit = false,
+    Future<void> Function(_LayerDialogData value)? onLiveChanged,
     VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
     }
 
+    final AppData appData = Provider.of<AppData>(context, listen: false);
     final CDKDialogController controller = CDKDialogController();
     final Completer<_LayerDialogData?> completer =
         Completer<_LayerDialogData?>();
@@ -138,6 +143,14 @@ class LayoutLayersState extends State<LayoutLayers> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       tilesetAssets: tilesetAssets,
+      liveEdit: liveEdit,
+      onLiveChanged: onLiveChanged,
+      onClose: () {
+        unawaited(() async {
+          await appData.flushPendingAutosave();
+          controller.close();
+        }());
+      },
       onConfirm: (value) {
         result = value;
         controller.close();
@@ -234,8 +247,10 @@ class LayoutLayersState extends State<LayoutLayers> {
     final GameLayer layer = layers[index];
     final int mapWidth = layer.tileMap.isEmpty ? 0 : layer.tileMap.first.length;
     final int mapHeight = layer.tileMap.length;
+    final String undoGroupKey =
+        'layer-live-$index-${DateTime.now().microsecondsSinceEpoch}';
 
-    final _LayerDialogData? data = await _promptLayerData(
+    await _promptLayerData(
       title: 'Edit layer',
       confirmLabel: 'Save',
       initialData: _LayerDialogData(
@@ -253,16 +268,18 @@ class LayoutLayersState extends State<LayoutLayers> {
       tilesetAssets: tilesetAssets,
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      liveEdit: true,
+      onLiveChanged: (value) async {
+        await appData.runProjectMutation(
+          debugLabel: 'layer-live-edit',
+          undoGroupKey: undoGroupKey,
+          mutate: () {
+            _updateLayer(appData: appData, index: index, data: value);
+          },
+        );
+      },
       onDelete: () => _confirmAndDeleteLayer(index),
     );
-
-    if (!mounted || data == null) {
-      return;
-    }
-
-    appData.pushUndo();
-    _updateLayer(appData: appData, index: index, data: data);
-    await _autoSaveIfPossible(appData);
   }
 
   Future<void> _confirmAndDeleteLayer(int index) async {
@@ -544,6 +561,9 @@ class _LayerFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.tilesetAssets,
+    this.liveEdit = false,
+    this.onLiveChanged,
+    this.onClose,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
@@ -553,6 +573,9 @@ class _LayerFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _LayerDialogData initialData;
   final List<GameMediaAsset> tilesetAssets;
+  final bool liveEdit;
+  final Future<void> Function(_LayerDialogData value)? onLiveChanged;
+  final VoidCallback? onClose;
   final ValueChanged<_LayerDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
@@ -585,6 +608,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
 
   late bool _visible = widget.initialData.visible;
   late int _selectedAssetIndex = _resolveInitialAssetIndex();
+  EditSession<_LayerDialogData>? _editSession;
 
   int _resolveInitialAssetIndex() {
     final String current = widget.initialData.tilesSheetFile;
@@ -618,6 +642,39 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
   bool get _isValid =>
       _nameController.text.trim().isNotEmpty && _depthErrorText == null;
 
+  _LayerDialogData _currentData() {
+    final GameMediaAsset asset = _selectedAsset;
+    final double parsedDepth = _parseDepthValue(_depthController.text) ?? 0.0;
+    return _LayerDialogData(
+      name: _nameController.text.trim(),
+      x: int.tryParse(_xController.text.trim()) ?? 0,
+      y: int.tryParse(_yController.text.trim()) ?? 0,
+      depth: parsedDepth,
+      tilesSheetFile: asset.fileName,
+      tileWidth: asset.tileWidth,
+      tileHeight: asset.tileHeight,
+      tilemapWidth: int.tryParse(_tilemapWidthController.text.trim()) ?? 32,
+      tilemapHeight: int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
+      visible: _visible,
+    );
+  }
+
+  String? _validateData(_LayerDialogData data) {
+    if (data.name.trim().isEmpty) {
+      return 'Name is required.';
+    }
+    if (_parseDepthValue(_depthController.text) == null) {
+      return 'Enter a valid decimal number.';
+    }
+    return null;
+  }
+
+  void _onInputChanged() {
+    if (widget.liveEdit) {
+      _editSession?.update(_currentData());
+    }
+  }
+
   void _confirm() {
     final double? parsedDepth = _parseDepthValue(_depthController.text);
     if (!_isValid || parsedDepth == null) {
@@ -642,7 +699,32 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.liveEdit && widget.onLiveChanged != null) {
+      _editSession = EditSession<_LayerDialogData>(
+        initialValue: _currentData(),
+        validate: _validateData,
+        onPersist: widget.onLiveChanged!,
+        areEqual: (a, b) =>
+            a.name == b.name &&
+            a.x == b.x &&
+            a.y == b.y &&
+            a.depth == b.depth &&
+            a.tilesSheetFile == b.tilesSheetFile &&
+            a.tilemapWidth == b.tilemapWidth &&
+            a.tilemapHeight == b.tilemapHeight &&
+            a.visible == b.visible,
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    if (_editSession != null) {
+      unawaited(_editSession!.flush());
+      _editSession!.dispose();
+    }
     _nameController.dispose();
     _xController.dispose();
     _yController.dispose();
@@ -657,226 +739,185 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
 
-    Widget labeledField(String label, Widget field) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CDKText(
-            label,
-            role: CDKTextRole.caption,
-            color: cdkColors.colorText,
-          ),
-          const SizedBox(height: 4),
-          field,
-        ],
-      );
-    }
-
     final GameMediaAsset asset = _selectedAsset;
     final List<String> assetOptions =
         widget.tilesetAssets.map((a) => a.fileName).toList(growable: false);
 
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 380, maxWidth: 520),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return EditorFormDialogScaffold(
+      title: widget.title,
+      description: 'Configure layer details.',
+      confirmLabel: widget.confirmLabel,
+      confirmEnabled: _isValid,
+      onConfirm: _confirm,
+      onCancel: widget.onCancel,
+      liveEditMode: widget.liveEdit,
+      onClose: widget.onClose,
+      onDelete: widget.onDelete,
+      minWidth: 380,
+      maxWidth: 520,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EditorLabeledField(
+            label: 'Layer Name',
+            child: CDKFieldText(
+              placeholder: 'Layer name',
+              controller: _nameController,
+              onChanged: (_) {
+                setState(() {});
+                _onInputChanged();
+              },
+              onSubmitted: (_) {
+                if (widget.liveEdit) {
+                  _onInputChanged();
+                  return;
+                }
+                _confirm();
+              },
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          Row(
             children: [
-              CDKText(widget.title, role: CDKTextRole.title),
-              SizedBox(height: spacing.md),
-              const CDKText('Configure layer details.', role: CDKTextRole.body),
-              SizedBox(height: spacing.md),
-              labeledField(
-                'Layer Name',
-                CDKFieldText(
-                  placeholder: 'Layer name',
-                  controller: _nameController,
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => _confirm(),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'X (px)',
+                  child: CDKFieldText(
+                    placeholder: 'X (px)',
+                    controller: _xController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
                 ),
               ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
-                      'X (px)',
-                      CDKFieldText(
-                        placeholder: 'X (px)',
-                        controller: _xController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Y (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Y (px)',
+                    controller: _yController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
                   ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Y (px)',
-                      CDKFieldText(
-                        placeholder: 'Y (px)',
-                        controller: _yController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Depth displacement',
-                      CDKFieldText(
-                        placeholder: 'Depth displacement',
-                        controller: _depthController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (_depthErrorText != null) ...[
-                const SizedBox(height: 4),
-                CDKText(
-                  _depthErrorText!,
-                  role: CDKTextRole.caption,
-                  color: CupertinoColors.systemRed.resolveFrom(context),
                 ),
-              ],
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
-                      'Tilemap Width (tiles)',
-                      CDKFieldText(
-                        placeholder: 'Tilemap width (tiles)',
-                        controller: _tilemapWidthController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Tilemap Height (tiles)',
-                      CDKFieldText(
-                        placeholder: 'Tilemap height (tiles)',
-                        controller: _tilemapHeightController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                ],
               ),
-              SizedBox(height: spacing.md),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CDKText(
-                          'Tilesheet',
-                          role: CDKTextRole.caption,
-                          color: cdkColors.colorText,
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            CDKButtonSelect(
-                              selectedIndex: _selectedAssetIndex,
-                              options: assetOptions,
-                              onSelected: (int index) {
-                                setState(() {
-                                  _selectedAssetIndex = index;
-                                });
-                              },
-                            ),
-                            SizedBox(width: spacing.md),
-                            const Spacer(),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CDKText(
-                                  'Visible',
-                                  role: CDKTextRole.caption,
-                                  color: cdkColors.colorText,
-                                ),
-                                const SizedBox(width: 6),
-                                SizedBox(
-                                  width: 39,
-                                  height: 24,
-                                  child: FittedBox(
-                                    fit: BoxFit.fill,
-                                    child: CupertinoSwitch(
-                                      value: _visible,
-                                      onChanged: (bool value) {
-                                        setState(() {
-                                          _visible = value;
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        CDKText(
-                          'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
-                          role: CDKTextRole.caption,
-                          secondary: true,
-                        ),
-                      ],
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Depth displacement',
+                  child: CDKFieldText(
+                    placeholder: 'Depth displacement',
+                    controller: _depthController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
                     ),
+                    onChanged: (_) {
+                      setState(() {});
+                      _onInputChanged();
+                    },
                   ),
-                ],
-              ),
-              SizedBox(height: spacing.lg + spacing.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (widget.onDelete != null)
-                    CDKButton(
-                      style: CDKButtonStyle.destructive,
-                      onPressed: widget.onDelete,
-                      child: const Text('Delete'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  Row(
-                    children: [
-                      CDKButton(
-                        style: CDKButtonStyle.normal,
-                        onPressed: widget.onCancel,
-                        child: const Text('Cancel'),
-                      ),
-                      SizedBox(width: spacing.md),
-                      CDKButton(
-                        style: CDKButtonStyle.action,
-                        enabled: _isValid,
-                        onPressed: _confirm,
-                        child: Text(widget.confirmLabel),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
+          if (_depthErrorText != null) ...[
+            const SizedBox(height: 4),
+            CDKText(
+              _depthErrorText!,
+              role: CDKTextRole.caption,
+              color: CupertinoColors.systemRed.resolveFrom(context),
+            ),
+          ],
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Tilemap Width (tiles)',
+                  child: CDKFieldText(
+                    placeholder: 'Tilemap width (tiles)',
+                    controller: _tilemapWidthController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Tilemap Height (tiles)',
+                  child: CDKFieldText(
+                    placeholder: 'Tilemap height (tiles)',
+                    controller: _tilemapHeightController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.md),
+          EditorLabeledField(
+            label: 'Tilesheet',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CDKButtonSelect(
+                      selectedIndex: _selectedAssetIndex,
+                      options: assetOptions,
+                      onSelected: (int index) {
+                        setState(() {
+                          _selectedAssetIndex = index;
+                        });
+                        _onInputChanged();
+                      },
+                    ),
+                    SizedBox(width: spacing.md),
+                    const Spacer(),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CDKText(
+                          'Visible',
+                          role: CDKTextRole.caption,
+                          color: cdkColors.colorText,
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 39,
+                          height: 24,
+                          child: FittedBox(
+                            fit: BoxFit.fill,
+                            child: CupertinoSwitch(
+                              value: _visible,
+                              onChanged: (bool value) {
+                                setState(() {
+                                  _visible = value;
+                                });
+                                _onInputChanged();
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                CDKText(
+                  'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
+                  role: CDKTextRole.caption,
+                  secondary: true,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

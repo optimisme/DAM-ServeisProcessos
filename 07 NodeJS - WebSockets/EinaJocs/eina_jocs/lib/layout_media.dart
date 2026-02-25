@@ -9,6 +9,9 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_media_asset.dart';
+import 'widgets/edit_session.dart';
+import 'widgets/editor_form_dialog_scaffold.dart';
+import 'widgets/editor_labeled_field.dart';
 
 class LayoutMedia extends StatefulWidget {
   const LayoutMedia({super.key});
@@ -20,13 +23,6 @@ class LayoutMedia extends StatefulWidget {
 class _LayoutMediaState extends State<LayoutMedia> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
-
-  Future<void> _autoSaveIfPossible(AppData appData) async {
-    if (appData.selectedProject == null) {
-      return;
-    }
-    await appData.saveGame();
-  }
 
   String _resolveMediaPreviewPath(AppData appData, String fileName) {
     if (fileName.isEmpty) {
@@ -82,7 +78,6 @@ class _LayoutMediaState extends State<LayoutMedia> {
       ),
     );
     appData.selectedMedia = appData.gameData.mediaAssets.length - 1;
-    appData.update();
   }
 
   void _updateMedia({
@@ -103,7 +98,6 @@ class _LayoutMediaState extends State<LayoutMedia> {
       selectionColorHex: assets[index].selectionColorHex,
     );
     appData.selectedMedia = index;
-    appData.update();
   }
 
   Future<_MediaDialogData?> _promptMediaData({
@@ -112,12 +106,15 @@ class _LayoutMediaState extends State<LayoutMedia> {
     required _MediaDialogData initialData,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    bool liveEdit = false,
+    Future<void> Function(_MediaDialogData value)? onLiveChanged,
     VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
     }
 
+    final AppData appData = Provider.of<AppData>(context, listen: false);
     final CDKDialogController controller = CDKDialogController();
     final Completer<_MediaDialogData?> completer =
         Completer<_MediaDialogData?>();
@@ -127,6 +124,14 @@ class _LayoutMediaState extends State<LayoutMedia> {
       title: title,
       confirmLabel: confirmLabel,
       initialData: initialData,
+      liveEdit: liveEdit,
+      onLiveChanged: onLiveChanged,
+      onClose: () {
+        unawaited(() async {
+          await appData.flushPendingAutosave();
+          controller.close();
+        }());
+      },
       onConfirm: (value) {
         result = value;
         controller.close();
@@ -213,9 +218,12 @@ class _LayoutMediaState extends State<LayoutMedia> {
       return;
     }
 
-    appData.pushUndo();
-    _addMedia(appData: appData, data: data);
-    await _autoSaveIfPossible(appData);
+    await appData.runProjectMutation(
+      debugLabel: 'media-add',
+      mutate: () {
+        _addMedia(appData: appData, data: data);
+      },
+    );
   }
 
   Future<void> _confirmAndDeleteMedia(int index) async {
@@ -236,11 +244,13 @@ class _LayoutMediaState extends State<LayoutMedia> {
     );
 
     if (confirmed != true || !mounted) return;
-    appData.pushUndo();
-    assets.removeAt(index);
-    appData.selectedMedia = -1;
-    appData.update();
-    await _autoSaveIfPossible(appData);
+    await appData.runProjectMutation(
+      debugLabel: 'media-delete',
+      mutate: () {
+        assets.removeAt(index);
+        appData.selectedMedia = -1;
+      },
+    );
   }
 
   Future<void> _promptAndEditMedia(int index, GlobalKey anchorKey) async {
@@ -251,7 +261,9 @@ class _LayoutMediaState extends State<LayoutMedia> {
     }
 
     final asset = assets[index];
-    final _MediaDialogData? updated = await _promptMediaData(
+    final String undoGroupKey =
+        'media-live-$index-${DateTime.now().microsecondsSinceEpoch}';
+    await _promptMediaData(
       title: 'Edit media',
       confirmLabel: 'Save',
       initialData: _MediaDialogData(
@@ -263,16 +275,18 @@ class _LayoutMediaState extends State<LayoutMedia> {
       ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      liveEdit: true,
+      onLiveChanged: (value) async {
+        await appData.runProjectMutation(
+          debugLabel: 'media-live-edit',
+          undoGroupKey: undoGroupKey,
+          mutate: () {
+            _updateMedia(appData: appData, index: index, data: value);
+          },
+        );
+      },
       onDelete: () => _confirmAndDeleteMedia(index),
     );
-
-    if (!mounted || updated == null) {
-      return;
-    }
-
-    appData.pushUndo();
-    _updateMedia(appData: appData, index: index, data: updated);
-    await _autoSaveIfPossible(appData);
   }
 
   void _selectMedia(AppData appData, int index, bool isSelected) {
@@ -285,22 +299,25 @@ class _LayoutMediaState extends State<LayoutMedia> {
       newIndex -= 1;
     }
 
-    final assets = appData.gameData.mediaAssets;
-    final int selectedIndex = appData.selectedMedia;
-    appData.pushUndo();
-    final item = assets.removeAt(oldIndex);
-    assets.insert(newIndex, item);
+    unawaited(
+      appData.runProjectMutation(
+        debugLabel: 'media-reorder',
+        mutate: () {
+          final assets = appData.gameData.mediaAssets;
+          final int selectedIndex = appData.selectedMedia;
+          final item = assets.removeAt(oldIndex);
+          assets.insert(newIndex, item);
 
-    if (selectedIndex == oldIndex) {
-      appData.selectedMedia = newIndex;
-    } else if (selectedIndex > oldIndex && selectedIndex <= newIndex) {
-      appData.selectedMedia -= 1;
-    } else if (selectedIndex < oldIndex && selectedIndex >= newIndex) {
-      appData.selectedMedia += 1;
-    }
-
-    appData.update();
-    unawaited(_autoSaveIfPossible(appData));
+          if (selectedIndex == oldIndex) {
+            appData.selectedMedia = newIndex;
+          } else if (selectedIndex > oldIndex && selectedIndex <= newIndex) {
+            appData.selectedMedia -= 1;
+          } else if (selectedIndex < oldIndex && selectedIndex >= newIndex) {
+            appData.selectedMedia += 1;
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -504,6 +521,9 @@ class _MediaFormDialog extends StatefulWidget {
     required this.title,
     required this.confirmLabel,
     required this.initialData,
+    this.liveEdit = false,
+    this.onLiveChanged,
+    this.onClose,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
@@ -512,6 +532,9 @@ class _MediaFormDialog extends StatefulWidget {
   final String title;
   final String confirmLabel;
   final _MediaDialogData initialData;
+  final bool liveEdit;
+  final Future<void> Function(_MediaDialogData value)? onLiveChanged;
+  final VoidCallback? onClose;
   final ValueChanged<_MediaDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
@@ -535,6 +558,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       ? widget.initialData.mediaType
       : 'tileset';
   String? _sizeError;
+  EditSession<_MediaDialogData>? _editSession;
 
   bool get _hasTileGrid => _typeValues.contains(_mediaType);
 
@@ -558,17 +582,47 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
     return width != null && height != null && width > 0 && height > 0;
   }
 
+  _MediaDialogData _currentData() {
+    return _MediaDialogData(
+      fileName: widget.initialData.fileName,
+      mediaType: _mediaType,
+      tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
+      tileHeight: int.tryParse(_tileHeightController.text.trim()) ?? 32,
+      previewPath: widget.initialData.previewPath,
+    );
+  }
+
+  String? _validateData(_MediaDialogData value) {
+    if (!_hasTileGrid) {
+      return null;
+    }
+    final int? width = int.tryParse(_tileWidthController.text.trim());
+    final int? height = int.tryParse(_tileHeightController.text.trim());
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return '$_sizeLabelPrefix width and height must be positive integers.';
+    }
+    return null;
+  }
+
+  void _onInputChanged() {
+    if (widget.liveEdit) {
+      _editSession?.update(_currentData());
+    }
+  }
+
   void _validateTileFields() {
     if (!_hasTileGrid || _isValid) {
       setState(() {
         _sizeError = null;
       });
+      _onInputChanged();
       return;
     }
     setState(() {
       _sizeError =
           '$_sizeLabelPrefix width and height must be positive integers.';
     });
+    _onInputChanged();
   }
 
   void _confirm() {
@@ -589,7 +643,27 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.liveEdit && widget.onLiveChanged != null) {
+      _editSession = EditSession<_MediaDialogData>(
+        initialValue: _currentData(),
+        validate: _validateData,
+        onPersist: widget.onLiveChanged!,
+        areEqual: (a, b) =>
+            a.mediaType == b.mediaType &&
+            a.tileWidth == b.tileWidth &&
+            a.tileHeight == b.tileHeight,
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    if (_editSession != null) {
+      unawaited(_editSession!.flush());
+      _editSession!.dispose();
+    }
     _tileWidthController.dispose();
     _tileHeightController.dispose();
     super.dispose();
@@ -598,160 +672,122 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
-    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
     final String sizeLabelPrefix = _sizeLabelPrefix;
 
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 420, maxWidth: 540),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CDKText(widget.title, role: CDKTextRole.title),
-              SizedBox(height: spacing.sm),
-              const CDKText(
-                'Configure media metadata.',
-                role: CDKTextRole.body,
-              ),
-              SizedBox(height: spacing.sm),
-              CDKText(
-                'File',
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              CDKText(
-                widget.initialData.fileName,
-                role: CDKTextRole.body,
-                color: cdkColors.colorText,
-              ),
-              SizedBox(height: spacing.md),
-              CDKText(
-                'Kind',
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              CDKPickerButtonsSegmented(
-                selectedIndex: _typeValues
-                    .indexOf(_mediaType)
-                    .clamp(0, _typeValues.length - 1),
-                options: const [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: CDKText('Tileset', role: CDKTextRole.caption),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: CDKText('Spritesheet', role: CDKTextRole.caption),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: CDKText('Atlas', role: CDKTextRole.caption),
-                  ),
-                ],
-                onSelected: (selectedIndex) {
-                  setState(() {
-                    _mediaType = _typeValues[selectedIndex];
-                    if (!_hasTileGrid) {
-                      _sizeError = null;
-                    }
-                  });
-                },
-              ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                clipBehavior: Clip.none,
-                child: _hasTileGrid
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(height: spacing.sm),
-                          CDKText(
-                            '$sizeLabelPrefix Width (px)',
-                            role: CDKTextRole.caption,
-                            color: cdkColors.colorText,
-                          ),
-                          const SizedBox(height: 4),
-                          CDKFieldText(
-                            placeholder:
-                                '${sizeLabelPrefix.toLowerCase()} width (px)',
-                            controller: _tileWidthController,
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _validateTileFields(),
-                            onSubmitted: (_) => _confirm(),
-                          ),
-                          SizedBox(height: spacing.sm),
-                          CDKText(
-                            '$sizeLabelPrefix Height (px)',
-                            role: CDKTextRole.caption,
-                            color: cdkColors.colorText,
-                          ),
-                          const SizedBox(height: 4),
-                          CDKFieldText(
-                            placeholder:
-                                '${sizeLabelPrefix.toLowerCase()} height (px)',
-                            controller: _tileHeightController,
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _validateTileFields(),
-                            onSubmitted: (_) => _confirm(),
-                          ),
-                          if (_sizeError != null) ...[
-                            SizedBox(height: spacing.sm),
-                            Text(
-                              _sizeError!,
-                              style: typography.caption.copyWith(
-                                color: CDKTheme.red,
-                              ),
-                            ),
-                          ],
-                        ],
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              SizedBox(height: spacing.lg + spacing.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (widget.onDelete != null)
-                    CDKButton(
-                      style: CDKButtonStyle.destructive,
-                      onPressed: widget.onDelete,
-                      child: const Text('Delete'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  Row(
-                    children: [
-                      CDKButton(
-                        style: CDKButtonStyle.normal,
-                        onPressed: widget.onCancel,
-                        child: const Text('Cancel'),
-                      ),
-                      SizedBox(width: spacing.md),
-                      CDKButton(
-                        style: CDKButtonStyle.action,
-                        enabled: _isValid,
-                        onPressed: _confirm,
-                        child: Text(widget.confirmLabel),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
+    return EditorFormDialogScaffold(
+      title: widget.title,
+      description: 'Configure media metadata.',
+      confirmLabel: widget.confirmLabel,
+      confirmEnabled: _isValid,
+      onConfirm: _confirm,
+      onCancel: widget.onCancel,
+      liveEditMode: widget.liveEdit,
+      onClose: widget.onClose,
+      onDelete: widget.onDelete,
+      minWidth: 420,
+      maxWidth: 540,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EditorLabeledField(
+            label: 'File',
+            child: CDKText(
+              widget.initialData.fileName,
+              role: CDKTextRole.body,
+            ),
           ),
-        ),
+          SizedBox(height: spacing.md),
+          EditorLabeledField(
+            label: 'Kind',
+            child: CDKPickerButtonsSegmented(
+              selectedIndex: _typeValues
+                  .indexOf(_mediaType)
+                  .clamp(0, _typeValues.length - 1),
+              options: const [
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: CDKText('Tileset', role: CDKTextRole.caption),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: CDKText('Spritesheet', role: CDKTextRole.caption),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: CDKText('Atlas', role: CDKTextRole.caption),
+                ),
+              ],
+              onSelected: (selectedIndex) {
+                setState(() {
+                  _mediaType = _typeValues[selectedIndex];
+                  if (!_hasTileGrid) {
+                    _sizeError = null;
+                  }
+                });
+                _onInputChanged();
+              },
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            clipBehavior: Clip.none,
+            child: _hasTileGrid
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: spacing.sm),
+                      EditorLabeledField(
+                        label: '$sizeLabelPrefix Width (px)',
+                        child: CDKFieldText(
+                          placeholder:
+                              '${sizeLabelPrefix.toLowerCase()} width (px)',
+                          controller: _tileWidthController,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => _validateTileFields(),
+                          onSubmitted: (_) {
+                            if (widget.liveEdit) {
+                              _onInputChanged();
+                              return;
+                            }
+                            _confirm();
+                          },
+                        ),
+                      ),
+                      SizedBox(height: spacing.sm),
+                      EditorLabeledField(
+                        label: '$sizeLabelPrefix Height (px)',
+                        child: CDKFieldText(
+                          placeholder:
+                              '${sizeLabelPrefix.toLowerCase()} height (px)',
+                          controller: _tileHeightController,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => _validateTileFields(),
+                          onSubmitted: (_) {
+                            if (widget.liveEdit) {
+                              _onInputChanged();
+                              return;
+                            }
+                            _confirm();
+                          },
+                        ),
+                      ),
+                      if (_sizeError != null) ...[
+                        SizedBox(height: spacing.sm),
+                        Text(
+                          _sizeError!,
+                          style: typography.caption.copyWith(
+                            color: CDKTheme.red,
+                          ),
+                        ),
+                      ],
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }

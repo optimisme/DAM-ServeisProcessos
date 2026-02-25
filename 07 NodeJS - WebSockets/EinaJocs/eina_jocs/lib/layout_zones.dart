@@ -8,6 +8,10 @@ import 'app_data.dart';
 import 'game_zone.dart';
 import 'game_zone_type.dart';
 import 'layout_utils.dart';
+import 'widgets/edit_session.dart';
+import 'widgets/editor_form_dialog_scaffold.dart';
+import 'widgets/editor_labeled_field.dart';
+import 'widgets/selectable_color_swatch.dart';
 
 const List<String> _zoneTypeColorPalette = [
   'red',
@@ -43,13 +47,6 @@ class LayoutZonesState extends State<LayoutZones> {
   final ScrollController scrollController = ScrollController();
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
   final GlobalKey _zoneTypesAnchorKey = GlobalKey();
-
-  Future<void> _autoSaveIfPossible(AppData appData) async {
-    if (appData.selectedProject == null) {
-      return;
-    }
-    await appData.saveGame();
-  }
 
   void updateForm(AppData appData) {
     if (mounted) {
@@ -160,10 +157,12 @@ class LayoutZonesState extends State<LayoutZones> {
 
   Future<void> _persistZoneTypeDrafts(
       AppData appData, List<_ZoneTypeDraft> drafts) async {
-    appData.pushUndo();
-    _applyZoneTypeDrafts(appData, drafts);
-    appData.update();
-    await _autoSaveIfPossible(appData);
+    await appData.runProjectMutation(
+      debugLabel: 'zone-types-persist',
+      mutate: () {
+        _applyZoneTypeDrafts(appData, drafts);
+      },
+    );
   }
 
   Future<void> _showZoneTypesPopover(AppData appData) async {
@@ -220,7 +219,6 @@ class LayoutZonesState extends State<LayoutZones> {
       ),
     );
     appData.selectedZone = -1;
-    appData.update();
   }
 
   void _updateZone({
@@ -244,7 +242,6 @@ class LayoutZonesState extends State<LayoutZones> {
       color: _zoneColorForTypeName(appData, data.type),
     );
     appData.selectedZone = index;
-    appData.update();
   }
 
   Future<_ZoneDialogData?> _promptZoneData({
@@ -254,12 +251,15 @@ class LayoutZonesState extends State<LayoutZones> {
     required List<GameZoneType> zoneTypes,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    bool liveEdit = false,
+    Future<void> Function(_ZoneDialogData value)? onLiveChanged,
     VoidCallback? onDelete,
   }) async {
     if (Overlay.maybeOf(context) == null) {
       return null;
     }
 
+    final AppData appData = Provider.of<AppData>(context, listen: false);
     final CDKDialogController controller = CDKDialogController();
     final Completer<_ZoneDialogData?> completer = Completer<_ZoneDialogData?>();
     _ZoneDialogData? result;
@@ -269,6 +269,14 @@ class LayoutZonesState extends State<LayoutZones> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       zoneTypes: zoneTypes,
+      liveEdit: liveEdit,
+      onLiveChanged: onLiveChanged,
+      onClose: () {
+        unawaited(() async {
+          await appData.flushPendingAutosave();
+          controller.close();
+        }());
+      },
       onConfirm: (value) {
         result = value;
         controller.close();
@@ -339,9 +347,12 @@ class LayoutZonesState extends State<LayoutZones> {
     if (!mounted || data == null) {
       return;
     }
-    appData.pushUndo();
-    _addZone(appData: appData, data: data);
-    await _autoSaveIfPossible(appData);
+    await appData.runProjectMutation(
+      debugLabel: 'zone-add',
+      mutate: () {
+        _addZone(appData: appData, data: data);
+      },
+    );
   }
 
   Future<void> _confirmAndDeleteZone(int index) async {
@@ -363,11 +374,13 @@ class LayoutZonesState extends State<LayoutZones> {
     );
 
     if (confirmed != true || !mounted) return;
-    appData.pushUndo();
-    zones.removeAt(index);
-    appData.selectedZone = -1;
-    appData.update();
-    await _autoSaveIfPossible(appData);
+    await appData.runProjectMutation(
+      debugLabel: 'zone-delete',
+      mutate: () {
+        zones.removeAt(index);
+        appData.selectedZone = -1;
+      },
+    );
   }
 
   Future<void> _promptAndEditZone(int index, GlobalKey anchorKey) async {
@@ -382,7 +395,9 @@ class LayoutZonesState extends State<LayoutZones> {
     }
     final zone = zones[index];
     final bool typeExists = zoneTypes.any((type) => type.name == zone.type);
-    final data = await _promptZoneData(
+    final String undoGroupKey =
+        'zone-live-$index-${DateTime.now().microsecondsSinceEpoch}';
+    await _promptZoneData(
       title: "Edit zone",
       confirmLabel: "Save",
       initialData: _ZoneDialogData(
@@ -395,14 +410,18 @@ class LayoutZonesState extends State<LayoutZones> {
       zoneTypes: zoneTypes,
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      liveEdit: true,
+      onLiveChanged: (value) async {
+        await appData.runProjectMutation(
+          debugLabel: 'zone-live-edit',
+          undoGroupKey: undoGroupKey,
+          mutate: () {
+            _updateZone(appData: appData, index: index, data: value);
+          },
+        );
+      },
       onDelete: () => _confirmAndDeleteZone(index),
     );
-    if (!mounted || data == null) {
-      return;
-    }
-    appData.pushUndo();
-    _updateZone(appData: appData, index: index, data: data);
-    await _autoSaveIfPossible(appData);
   }
 
   void _selectZone(AppData appData, int index, bool isSelected) {
@@ -426,22 +445,25 @@ class LayoutZonesState extends State<LayoutZones> {
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
-    final zones = appData.gameData.levels[appData.selectedLevel].zones;
-    final selectedIndex = appData.selectedZone;
-    appData.pushUndo();
-    final item = zones.removeAt(oldIndex);
-    zones.insert(newIndex, item);
+    unawaited(
+      appData.runProjectMutation(
+        debugLabel: 'zone-reorder',
+        mutate: () {
+          final zones = appData.gameData.levels[appData.selectedLevel].zones;
+          final selectedIndex = appData.selectedZone;
+          final item = zones.removeAt(oldIndex);
+          zones.insert(newIndex, item);
 
-    if (selectedIndex == oldIndex) {
-      appData.selectedZone = newIndex;
-    } else if (selectedIndex > oldIndex && selectedIndex <= newIndex) {
-      appData.selectedZone -= 1;
-    } else if (selectedIndex < oldIndex && selectedIndex >= newIndex) {
-      appData.selectedZone += 1;
-    }
-
-    appData.update();
-    unawaited(_autoSaveIfPossible(appData));
+          if (selectedIndex == oldIndex) {
+            appData.selectedZone = newIndex;
+          } else if (selectedIndex > oldIndex && selectedIndex <= newIndex) {
+            appData.selectedZone -= 1;
+          } else if (selectedIndex < oldIndex && selectedIndex >= newIndex) {
+            appData.selectedZone += 1;
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -652,6 +674,9 @@ class _ZoneFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.zoneTypes,
+    this.liveEdit = false,
+    this.onLiveChanged,
+    this.onClose,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
@@ -661,6 +686,9 @@ class _ZoneFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _ZoneDialogData initialData;
   final List<GameZoneType> zoneTypes;
+  final bool liveEdit;
+  final Future<void> Function(_ZoneDialogData value)? onLiveChanged;
+  final VoidCallback? onClose;
   final ValueChanged<_ZoneDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
@@ -684,6 +712,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
     text: widget.initialData.height.toString(),
   );
   late String _selectedType = _resolveInitialType();
+  EditSession<_ZoneDialogData>? _editSession;
 
   String _resolveInitialType() {
     if (widget.zoneTypes.any((type) => type.name == widget.initialData.type)) {
@@ -697,6 +726,29 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
 
   bool get _isValid =>
       _selectedType.trim().isNotEmpty && widget.zoneTypes.isNotEmpty;
+
+  _ZoneDialogData _currentData() {
+    return _ZoneDialogData(
+      type: _selectedType,
+      x: int.tryParse(_xController.text.trim()) ?? 0,
+      y: int.tryParse(_yController.text.trim()) ?? 0,
+      width: int.tryParse(_widthController.text.trim()) ?? 50,
+      height: int.tryParse(_heightController.text.trim()) ?? 50,
+    );
+  }
+
+  String? _validateData(_ZoneDialogData data) {
+    if (data.type.trim().isEmpty || widget.zoneTypes.isEmpty) {
+      return 'Type is required.';
+    }
+    return null;
+  }
+
+  void _onInputChanged() {
+    if (widget.liveEdit) {
+      _editSession?.update(_currentData());
+    }
+  }
 
   GameZoneType? _selectedZoneType() {
     for (final type in widget.zoneTypes) {
@@ -728,6 +780,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
           setState(() {
             _selectedType = typeName;
           });
+          _onInputChanged();
           controller.close();
         },
       ),
@@ -750,7 +803,29 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.liveEdit && widget.onLiveChanged != null) {
+      _editSession = EditSession<_ZoneDialogData>(
+        initialValue: _currentData(),
+        validate: _validateData,
+        onPersist: widget.onLiveChanged!,
+        areEqual: (a, b) =>
+            a.type == b.type &&
+            a.x == b.x &&
+            a.y == b.y &&
+            a.width == b.width &&
+            a.height == b.height,
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    if (_editSession != null) {
+      unawaited(_editSession!.flush());
+      _editSession!.dispose();
+    }
     _xController.dispose();
     _yController.dispose();
     _widthController.dispose();
@@ -763,170 +838,150 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final GameZoneType? selectedType = _selectedZoneType();
-    Widget labeledField(String label, Widget field) {
-      return Column(
+    return EditorFormDialogScaffold(
+      title: widget.title,
+      description: 'Configure zone details.',
+      confirmLabel: widget.confirmLabel,
+      confirmEnabled: _isValid,
+      onConfirm: _confirm,
+      onCancel: widget.onCancel,
+      liveEditMode: widget.liveEdit,
+      onClose: widget.onClose,
+      onDelete: widget.onDelete,
+      minWidth: 360,
+      maxWidth: 500,
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CDKText(
-            label,
-            role: CDKTextRole.caption,
-            color: cdkColors.colorText,
-          ),
-          const SizedBox(height: 4),
-          field,
-        ],
-      );
-    }
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 360, maxWidth: 500),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CDKText(widget.title, role: CDKTextRole.title),
-              SizedBox(height: spacing.md),
-              const CDKText('Configure zone details.', role: CDKTextRole.body),
-              SizedBox(height: spacing.md),
-              CDKText(
-                'Zone Type',
-                role: CDKTextRole.caption,
-                color: cdkColors.colorText,
-              ),
-              const SizedBox(height: 4),
-              SizedBox(
-                width: double.infinity,
-                child: CDKButton(
-                  key: _typePickerAnchorKey,
-                  style: CDKButtonStyle.normal,
-                  enabled: widget.zoneTypes.isNotEmpty,
-                  onPressed: _showTypePickerPopover,
-                  child: Row(
-                    children: [
-                      if (selectedType != null) ...[
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: LayoutUtils.getColorFromName(
-                              selectedType.color,
-                            ),
-                            shape: BoxShape.circle,
+          EditorLabeledField(
+            label: 'Zone Type',
+            child: SizedBox(
+              width: double.infinity,
+              child: CDKButton(
+                key: _typePickerAnchorKey,
+                style: CDKButtonStyle.normal,
+                enabled: widget.zoneTypes.isNotEmpty,
+                onPressed: _showTypePickerPopover,
+                child: Row(
+                  children: [
+                    if (selectedType != null) ...[
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: LayoutUtils.getColorFromName(
+                            selectedType.color,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            selectedType?.name ?? 'Select a type',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Icon(
-                        CupertinoIcons.chevron_down,
-                        size: 14,
-                        color: cdkColors.colorText,
-                      ),
                     ],
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          selectedType?.name ?? 'Select a type',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      CupertinoIcons.chevron_down,
+                      size: 14,
+                      color: cdkColors.colorText,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'X (px)',
+                  child: CDKFieldText(
+                    placeholder: 'X (px)',
+                    controller: _xController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                    onSubmitted: (_) {
+                      if (widget.liveEdit) {
+                        _onInputChanged();
+                        return;
+                      }
+                      _confirm();
+                    },
                   ),
                 ),
               ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
-                      'X (px)',
-                      CDKFieldText(
-                        placeholder: 'X (px)',
-                        controller: _xController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Y (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Y (px)',
+                    controller: _yController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                    onSubmitted: (_) {
+                      if (widget.liveEdit) {
+                        _onInputChanged();
+                        return;
+                      }
+                      _confirm();
+                    },
                   ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Y (px)',
-                      CDKFieldText(
-                        placeholder: 'Y (px)',
-                        controller: _yController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: labeledField(
-                      'Width (px)',
-                      CDKFieldText(
-                        placeholder: 'Width (px)',
-                        controller: _widthController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: labeledField(
-                      'Height (px)',
-                      CDKFieldText(
-                        placeholder: 'Height (px)',
-                        controller: _heightController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.lg + spacing.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (widget.onDelete != null)
-                    CDKButton(
-                      style: CDKButtonStyle.destructive,
-                      onPressed: widget.onDelete,
-                      child: const Text('Delete'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  Row(
-                    children: [
-                      CDKButton(
-                        style: CDKButtonStyle.normal,
-                        onPressed: widget.onCancel,
-                        child: const Text('Cancel'),
-                      ),
-                      SizedBox(width: spacing.md),
-                      CDKButton(
-                        style: CDKButtonStyle.action,
-                        enabled: _isValid,
-                        onPressed: _confirm,
-                        child: Text(widget.confirmLabel),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Width (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Width (px)',
+                    controller: _widthController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                    onSubmitted: (_) {
+                      if (widget.liveEdit) {
+                        _onInputChanged();
+                        return;
+                      }
+                      _confirm();
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Height (px)',
+                  child: CDKFieldText(
+                    placeholder: 'Height (px)',
+                    controller: _heightController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                    onSubmitted: (_) {
+                      if (widget.liveEdit) {
+                        _onInputChanged();
+                        return;
+                      }
+                      _confirm();
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1313,7 +1368,7 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
                 spacing: spacing.xs,
                 runSpacing: spacing.xs,
                 children: widget.colorPalette.map((colorName) {
-                  return _ZoneTypeColorSwatch(
+                  return SelectableColorSwatch(
                     color: LayoutUtils.getColorFromName(colorName),
                     selected: _selectedColor == colorName,
                     onTap: () {
@@ -1354,64 +1409,6 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ZoneTypeColorSwatch extends StatelessWidget {
-  const _ZoneTypeColorSwatch({
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    const double swatchSize = 20;
-    const double selectionGap = 1.5;
-    const double selectionStroke = 2;
-    const double slotSize = swatchSize + (selectionGap + selectionStroke) * 2;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: slotSize,
-        height: slotSize,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (selected)
-              Container(
-                width: slotSize,
-                height: slotSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: cdkColors.accent,
-                    width: selectionStroke,
-                  ),
-                ),
-              ),
-            Container(
-              width: swatchSize,
-              height: swatchSize,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: CupertinoColors.systemGrey.withValues(alpha: 0.45),
-                  width: 1,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

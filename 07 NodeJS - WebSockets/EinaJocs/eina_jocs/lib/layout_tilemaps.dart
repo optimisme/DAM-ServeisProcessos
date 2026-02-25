@@ -7,6 +7,7 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'game_layer.dart';
+import 'widgets/selectable_color_swatch.dart';
 
 class _AccentColorOption {
   const _AccentColorOption({
@@ -79,7 +80,7 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
     }
     appData.update();
     if (appData.selectedProject != null) {
-      await appData.saveGame();
+      appData.queueAutosave();
     }
   }
 
@@ -598,11 +599,6 @@ class _TilesetSelectionColorPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
-    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    const double swatchSize = 20;
-    const double selectionGap = 1.5;
-    const double selectionStroke = 2;
-    const double slotSize = swatchSize + (selectionGap + selectionStroke) * 2;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -616,42 +612,10 @@ class _TilesetSelectionColorPicker extends StatelessWidget {
           runSpacing: spacing.xs,
           children: _tilesetAccentOptions.map((option) {
             final bool isSelected = option.color == selectedColor;
-            return GestureDetector(
+            return SelectableColorSwatch(
+              color: option.color,
+              selected: isSelected,
               onTap: () => onSelect(option.color),
-              child: SizedBox(
-                width: slotSize,
-                height: slotSize,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (isSelected)
-                      Container(
-                        width: slotSize,
-                        height: slotSize,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: cdkColors.accent,
-                            width: selectionStroke,
-                          ),
-                        ),
-                      ),
-                    Container(
-                      width: swatchSize,
-                      height: swatchSize,
-                      decoration: BoxDecoration(
-                        color: option.color,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: CupertinoColors.systemGrey
-                              .withValues(alpha: 0.45),
-                          width: 1,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             );
           }).toList(growable: false),
         ),

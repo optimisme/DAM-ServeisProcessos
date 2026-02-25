@@ -85,15 +85,17 @@ class _LayoutState extends State<Layout> {
 
   @override
   void dispose() {
+    try {
+      final appData = Provider.of<AppData>(context, listen: false);
+      unawaited(appData.flushPendingAutosave());
+    } catch (_) {}
     _timer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _onTabSelected(AppData appData, String value) {
-    setState(() {
-      appData.selectedSection = value;
-    });
+  Future<void> _onTabSelected(AppData appData, String value) async {
+    await appData.setSelectedSection(value);
   }
 
   int _selectedSectionIndex(String selectedSection) {
@@ -158,12 +160,6 @@ class _LayoutState extends State<Layout> {
           ),
         );
       }
-    }
-
-    if (appData.selectedMedia >= 0 &&
-        appData.selectedMedia < appData.gameData.mediaAssets.length) {
-      final mediaAsset = appData.gameData.mediaAssets[appData.selectedMedia];
-      parts.add(MapEntry('Media', mediaAsset.fileName));
     }
 
     if (parts.isEmpty) {
@@ -306,7 +302,7 @@ class _LayoutState extends State<Layout> {
     if (appData.selectedProject == null) {
       return;
     }
-    await appData.saveGame();
+    appData.queueAutosave();
   }
 
   void _queueInitialLayersViewportCenter(AppData appData, Size viewportSize) {
@@ -383,13 +379,30 @@ class _LayoutState extends State<Layout> {
               ),
             ),
             const SizedBox(width: 8),
+            if (appData.autosaveInlineMessage.isNotEmpty) ...[
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: CDKText(
+                    appData.autosaveInlineMessage,
+                    role: CDKTextRole.caption,
+                    color: appData.autosaveHasError
+                        ? CupertinoColors.systemRed
+                        : cdkColors.colorTextSecondary,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerRight,
               child: CDKPickerButtonsSegmented(
                 selectedIndex: _selectedSectionIndex(appData.selectedSection),
                 options: _buildSegmentedOptions(context),
-                onSelected: (index) => _onTabSelected(appData, sections[index]),
+                onSelected: (index) => unawaited(
+                  _onTabSelected(appData, sections[index]),
+                ),
               ),
             ),
           ],

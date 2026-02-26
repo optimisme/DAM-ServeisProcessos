@@ -14,6 +14,8 @@ class GameLevel {
   int viewportY;
   // 'letterbox', 'expand', 'stretch'
   String viewportAdaptation;
+  // Hex color for preview/runtime background (for example "#BFD2EA").
+  String backgroundColorHex;
 
   GameLevel({
     required this.name,
@@ -26,6 +28,7 @@ class GameLevel {
     this.viewportX = 0,
     this.viewportY = 0,
     this.viewportAdaptation = 'letterbox',
+    this.backgroundColorHex = '#BFD2EA',
   });
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
@@ -48,6 +51,7 @@ class GameLevel {
       viewportY: (json['viewportY'] as int?) ?? 0,
       viewportAdaptation:
           (json['viewportAdaptation'] as String?) ?? 'letterbox',
+      backgroundColorHex: (json['backgroundColorHex'] as String?) ?? '#BFD2EA',
     );
   }
 
@@ -64,11 +68,12 @@ class GameLevel {
       'viewportX': viewportX,
       'viewportY': viewportY,
       'viewportAdaptation': viewportAdaptation,
+      'backgroundColorHex': backgroundColorHex,
     };
   }
 
   @override
   String toString() {
-    return 'GameLevel(name: $name, description: $description, layers: $layers, zones: $zones, sprites: $sprites, viewport: ${viewportWidth}x$viewportHeight at ($viewportX,$viewportY) [$viewportAdaptation])';
+    return 'GameLevel(name: $name, description: $description, layers: $layers, zones: $zones, sprites: $sprites, viewport: ${viewportWidth}x$viewportHeight at ($viewportX,$viewportY) [$viewportAdaptation], background: $backgroundColorHex)';
   }
 }

@@ -16,6 +16,7 @@ const List<String> _adaptationValues = ['letterbox', 'expand', 'stretch'];
 
 // Reference screen aspect ratio used for the preview (16:9).
 const double _referenceScreenAspect = 16.0 / 9.0;
+const Color _defaultLevelBackgroundColor = Color(0xFFBFD2EA);
 
 class LayoutViewport extends StatefulWidget {
   const LayoutViewport({super.key});
@@ -29,6 +30,7 @@ class LayoutViewportState extends State<LayoutViewport> {
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _xController = TextEditingController();
   final TextEditingController _yController = TextEditingController();
+  final GlobalKey _backgroundColorAnchorKey = GlobalKey();
 
   // Tracks which level the controllers are currently reflecting.
   int _syncedLevel = -2;
@@ -51,6 +53,75 @@ class LayoutViewportState extends State<LayoutViewport> {
 
   int _parseInt(String text, int fallback) {
     return int.tryParse(text.trim()) ?? fallback;
+  }
+
+  Color _parseHexColor(String hex, Color fallback) {
+    final String cleaned = hex.trim().replaceFirst('#', '').toUpperCase();
+    final RegExp sixHex = RegExp(r'^[0-9A-F]{6}$');
+    if (!sixHex.hasMatch(cleaned)) {
+      return fallback;
+    }
+    final int? rgb = int.tryParse(cleaned, radix: 16);
+    if (rgb == null) {
+      return fallback;
+    }
+    return Color(0xFF000000 | rgb);
+  }
+
+  String _toHexColor(Color color) {
+    final int rgb = color.toARGB32() & 0x00FFFFFF;
+    return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  }
+
+  Color _levelBackgroundColor(GameLevel level) {
+    return _parseHexColor(
+        level.backgroundColorHex, _defaultLevelBackgroundColor);
+  }
+
+  void _showBackgroundColorPicker(AppData appData, GameLevel level) {
+    if (_backgroundColorAnchorKey.currentContext == null) {
+      return;
+    }
+
+    final ValueNotifier<Color> colorNotifier =
+        ValueNotifier(_levelBackgroundColor(level));
+    bool pushedUndo = false;
+
+    CDKDialogsManager.showPopoverArrowed(
+      context: context,
+      anchorKey: _backgroundColorAnchorKey,
+      isAnimated: true,
+      isTranslucent: false,
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: ValueListenableBuilder<Color>(
+          valueListenable: colorNotifier,
+          builder: (context, value, child) {
+            return CDKPickerColor(
+              color: value,
+              onChanged: (Color color) {
+                // Persist as opaque RGB to keep JSON compact and deterministic.
+                final Color opaqueColor = Color(color.toARGB32() | 0xFF000000);
+                if (opaqueColor.toARGB32() != colorNotifier.value.toARGB32()) {
+                  colorNotifier.value = opaqueColor;
+                }
+                final String nextHex = _toHexColor(opaqueColor);
+                if (nextHex == level.backgroundColorHex) {
+                  return;
+                }
+                if (!pushedUndo) {
+                  appData.pushUndo();
+                  pushedUndo = true;
+                }
+                level.backgroundColorHex = nextHex;
+                appData.update();
+                appData.queueAutosave();
+              },
+            );
+          },
+        ),
+      ),
+    );
   }
 
   void _applyChanges(AppData appData) {
@@ -170,6 +241,9 @@ class LayoutViewportState extends State<LayoutViewport> {
         level != null && level.viewportHeight > level.viewportWidth;
     final int previewX = hasLevel ? appData.viewportPreviewX : 0;
     final int previewY = hasLevel ? appData.viewportPreviewY : 0;
+    final Color levelBackgroundColor = level == null
+        ? _defaultLevelBackgroundColor
+        : _levelBackgroundColor(level);
     final bool canSetPreviewAsInitial = level != null &&
         (level.viewportX != previewX || level.viewportY != previewY);
 
@@ -252,9 +326,34 @@ class LayoutViewportState extends State<LayoutViewport> {
                             previewY: previewY,
                             frameTick: appData.frame,
                             cacheSize: appData.imagesCache.length,
+                            sceneBackgroundColor: levelBackgroundColor,
                             backgroundColor: cdkColors.background,
                           ),
                         ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+                    EditorLabeledField(
+                      label: 'Background color',
+                      child: Row(
+                        children: [
+                          CDKButtonColor(
+                            key: _backgroundColorAnchorKey,
+                            color: levelBackgroundColor,
+                            onPressed: () {
+                              _showBackgroundColorPicker(appData, level);
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: CDKText(
+                              level.backgroundColorHex,
+                              role: CDKTextRole.caption,
+                              secondary: true,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 
@@ -418,6 +517,7 @@ class _ViewportPreviewPainter extends CustomPainter {
   final int previewY;
   final int frameTick;
   final int cacheSize;
+  final Color sceneBackgroundColor;
   final Color backgroundColor;
 
   const _ViewportPreviewPainter({
@@ -430,6 +530,7 @@ class _ViewportPreviewPainter extends CustomPainter {
     required this.previewY,
     required this.frameTick,
     required this.cacheSize,
+    required this.sceneBackgroundColor,
     required this.backgroundColor,
   });
 
@@ -490,8 +591,7 @@ class _ViewportPreviewPainter extends CustomPainter {
     canvas.clipRRect(clippedScreen);
     canvas.drawRect(
       mapping.contentRect,
-      Paint()
-        ..color = _isDark ? const Color(0xFF0B1320) : const Color(0xFFBFD2EA),
+      Paint()..color = sceneBackgroundColor,
     );
     canvas.save();
     canvas.clipRect(mapping.contentRect);
@@ -681,6 +781,7 @@ class _ViewportPreviewPainter extends CustomPainter {
       old.previewY != previewY ||
       old.frameTick != frameTick ||
       old.cacheSize != cacheSize ||
+      old.sceneBackgroundColor != sceneBackgroundColor ||
       old.backgroundColor != backgroundColor;
 }
 

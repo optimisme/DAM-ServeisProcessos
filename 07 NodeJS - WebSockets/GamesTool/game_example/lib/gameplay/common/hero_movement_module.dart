@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flame/components.dart';
-import 'package:flame/effects.dart';
-import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
 import 'package:game_example/utils_flame/utils_flame.dart';
@@ -36,37 +34,12 @@ class HeroMovementModule extends GameplayModule {
         loadedProject: context.mountResult.loadedProject,
         game: context.game,
         speed: speed,
+        enableCameraFollow: enableCameraFollow,
+        cameraFollowMaxSpeed: cameraFollowMaxSpeed,
+        worldBounds: context.mountResult.worldBounds,
       ),
     );
-
-    if (!enableCameraFollow) return;
-
-    context.game.camera.setBounds(
-      Rectangle.fromRect(context.mountResult.worldBounds),
-      considerViewport: true,
-    );
-    context.game.camera.follow(
-      _HeroCenterTarget(hero),
-      maxSpeed: cameraFollowMaxSpeed <= 0
-          ? double.infinity
-          : cameraFollowMaxSpeed,
-      snap: true,
-    );
   }
-}
-
-class _HeroCenterTarget implements ReadOnlyPositionProvider {
-  _HeroCenterTarget(this.hero);
-
-  final GamesToolSpriteHandle hero;
-  final Vector2 _center = Vector2.zero();
-
-  @override
-  Vector2 get position => _center
-    ..setValues(
-      hero.position.x + hero.size.x * 0.5,
-      hero.position.y + hero.size.y * 0.5,
-    );
 }
 
 class _HeroMovementController extends Component {
@@ -75,14 +48,21 @@ class _HeroMovementController extends Component {
     required GamesToolLoadedProject loadedProject,
     required FlameGame game,
     required this.speed,
+    required this.enableCameraFollow,
+    required this.cameraFollowMaxSpeed,
+    required Rect worldBounds,
   }) : _hero = hero,
        _loadedProject = loadedProject,
-       _game = game;
+       _game = game,
+       _worldBounds = worldBounds;
 
   final GamesToolSpriteHandle _hero;
   final GamesToolLoadedProject _loadedProject;
   final FlameGame _game;
   final double speed;
+  final bool enableCameraFollow;
+  final double cameraFollowMaxSpeed;
+  final Rect _worldBounds;
 
   _HeroDirection _facing = _HeroDirection.down;
   bool _isWalking = false;
@@ -90,10 +70,16 @@ class _HeroMovementController extends Component {
   bool _currentFlipX = false;
   bool _isApplyingVisuals = false;
   bool _visualsDirty = false;
+  final Vector2 _cameraTarget = Vector2.zero();
+  final Vector2 _cameraDelta = Vector2.zero();
+  final Vector2 _heroCenter = Vector2.zero();
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+    if (enableCameraFollow) {
+      _snapCameraToHero();
+    }
     await _applyVisuals(force: true);
   }
 
@@ -116,6 +102,68 @@ class _HeroMovementController extends Component {
       _isWalking = hasMovement;
       _markVisualsDirty();
     }
+
+    if (enableCameraFollow) {
+      _updateCamera(dt);
+    }
+  }
+
+  void _snapCameraToHero() {
+    _cameraTarget.setFrom(_heroCenterPoint());
+    _clampTargetToWorldBounds(_cameraTarget);
+    _game.camera.viewfinder.position = _cameraTarget;
+  }
+
+  void _updateCamera(double dt) {
+    _cameraTarget.setFrom(_heroCenterPoint());
+    _clampTargetToWorldBounds(_cameraTarget);
+
+    final Vector2 current = _game.camera.viewfinder.position;
+    _cameraDelta
+      ..setFrom(_cameraTarget)
+      ..sub(current);
+
+    final double distance = _cameraDelta.length;
+    if (distance <= 0.0001) {
+      current.setFrom(_cameraTarget);
+      return;
+    }
+
+    if (cameraFollowMaxSpeed <= 0) {
+      current.setFrom(_cameraTarget);
+      return;
+    }
+
+    final double maxStep = cameraFollowMaxSpeed * dt;
+    if (distance <= maxStep) {
+      current.setFrom(_cameraTarget);
+      return;
+    }
+
+    _cameraDelta.scale(maxStep / distance);
+    current.add(_cameraDelta);
+  }
+
+  Vector2 _heroCenterPoint() => _heroCenter
+    ..setValues(
+      _hero.position.x + _hero.size.x * 0.5,
+      _hero.position.y + _hero.size.y * 0.5,
+    );
+
+  void _clampTargetToWorldBounds(Vector2 target) {
+    final Rect visibleRect = _game.camera.visibleWorldRect;
+    final double halfW = visibleRect.width * 0.5;
+    final double halfH = visibleRect.height * 0.5;
+    final double worldCenterX = (_worldBounds.left + _worldBounds.right) * 0.5;
+    final double worldCenterY = (_worldBounds.top + _worldBounds.bottom) * 0.5;
+
+    final double minX = _worldBounds.left + halfW;
+    final double maxX = _worldBounds.right - halfW;
+    final double minY = _worldBounds.top + halfH;
+    final double maxY = _worldBounds.bottom - halfH;
+
+    target.x = minX <= maxX ? target.x.clamp(minX, maxX) : worldCenterX;
+    target.y = minY <= maxY ? target.y.clamp(minY, maxY) : worldCenterY;
   }
 
   Vector2 _readMovementVector() {

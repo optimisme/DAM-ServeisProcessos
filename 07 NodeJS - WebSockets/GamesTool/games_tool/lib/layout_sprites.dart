@@ -172,16 +172,16 @@ class LayoutSpritesState extends State<LayoutSprites> {
       return false;
     }
 
-    final int spritesToDelete = level.sprites
+    final int spritesInGroup = level.sprites
         .where((sprite) => _effectiveSpriteGroupId(level, sprite) == groupId)
         .length;
 
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete group',
-      message: spritesToDelete > 0
-          ? 'Delete "${group.name}" and its $spritesToDelete sprite(s)? This cannot be undone.'
-          : 'Delete "${group.name}"? This cannot be undone.',
+      message: spritesInGroup > 0
+          ? 'Delete "${group.name}"? $spritesInGroup sprite(s) will be moved to "Main".'
+          : 'Delete "${group.name}"?',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -203,19 +203,16 @@ class LayoutSpritesState extends State<LayoutSprites> {
         if (groupIndex == -1) {
           return;
         }
-
-        final GameSprite? selectedSprite = appData.selectedSprite >= 0 &&
-                appData.selectedSprite < sprites.length
-            ? sprites[appData.selectedSprite]
-            : null;
+        GroupedListAlgorithms.reassignItemsToGroup<GameSprite>(
+          items: sprites,
+          fromGroupId: groupId,
+          toGroupId: GameListGroup.mainId,
+          itemGroupIdOf: (sprite) => sprite.groupId,
+          setItemGroupId: (sprite, nextGroupId) {
+            sprite.groupId = nextGroupId;
+          },
+        );
         groups.removeAt(groupIndex);
-        sprites.removeWhere((sprite) => sprite.groupId == groupId);
-
-        if (selectedSprite == null) {
-          appData.selectedSprite = -1;
-          return;
-        }
-        appData.selectedSprite = sprites.indexOf(selectedSprite);
       },
     );
 

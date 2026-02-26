@@ -59,6 +59,8 @@ class _LayoutState extends State<Layout> {
   bool _isHoveringSelectedTilemapLayer = false;
   bool _isDragGestureActive = false;
   bool _pendingLayersViewportCenter = false;
+  int? _pendingLevelsViewportFitLevelIndex;
+  int? _lastAutoFramedLevelIndex;
   final FocusNode _focusNode = FocusNode();
   List<String> sections = [
     'projects',
@@ -442,6 +444,112 @@ class _LayoutState extends State<Layout> {
     });
   }
 
+  void _fitLevelLayersToViewport(
+    AppData appData,
+    int levelIndex,
+    Size viewportSize,
+  ) {
+    if (levelIndex < 0 || levelIndex >= appData.gameData.levels.length) {
+      return;
+    }
+    final level = appData.gameData.levels[levelIndex];
+
+    Rect? worldBounds;
+    for (final layer in level.layers) {
+      final int rows = layer.tileMap.length;
+      final int cols = rows == 0 ? 0 : layer.tileMap.first.length;
+      if (rows <= 0 ||
+          cols <= 0 ||
+          layer.tilesWidth <= 0 ||
+          layer.tilesHeight <= 0) {
+        continue;
+      }
+      final Rect layerRect = Rect.fromLTWH(
+        layer.x.toDouble(),
+        layer.y.toDouble(),
+        cols * layer.tilesWidth.toDouble(),
+        rows * layer.tilesHeight.toDouble(),
+      );
+      worldBounds = worldBounds == null
+          ? layerRect
+          : worldBounds.expandToInclude(layerRect);
+    }
+
+    if (worldBounds == null ||
+        worldBounds.width <= 0 ||
+        worldBounds.height <= 0 ||
+        viewportSize.width <= 0 ||
+        viewportSize.height <= 0) {
+      appData.layersViewScale = 1.0;
+      appData.layersViewOffset = Offset(
+        viewportSize.width / 2,
+        viewportSize.height / 2,
+      );
+      appData.update();
+      return;
+    }
+
+    const double minScale = 0.05;
+    const double maxScale = 20.0;
+    const double framePaddingFactor = 0.9;
+    final double scaleX =
+        (viewportSize.width * framePaddingFactor) / worldBounds.width;
+    final double scaleY =
+        (viewportSize.height * framePaddingFactor) / worldBounds.height;
+    final double fittedScale =
+        (scaleX < scaleY ? scaleX : scaleY).clamp(minScale, maxScale);
+    final Offset viewportCenter =
+        Offset(viewportSize.width / 2, viewportSize.height / 2);
+    final Offset targetOffset =
+        viewportCenter - worldBounds.center * fittedScale;
+
+    appData.layersViewScale = fittedScale;
+    appData.layersViewOffset = targetOffset;
+    appData.update();
+  }
+
+  void _queueSelectedLevelViewportFit(AppData appData, Size viewportSize) {
+    if (appData.selectedSection != 'levels') {
+      return;
+    }
+    final int levelIndex = appData.selectedLevel;
+    if (levelIndex < 0 || levelIndex >= appData.gameData.levels.length) {
+      _lastAutoFramedLevelIndex = null;
+      return;
+    }
+    if (_lastAutoFramedLevelIndex == levelIndex) {
+      return;
+    }
+    if (_pendingLevelsViewportFitLevelIndex == levelIndex) {
+      return;
+    }
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) {
+      return;
+    }
+
+    _pendingLevelsViewportFitLevelIndex = levelIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pendingLevelsViewportFitLevelIndex == levelIndex) {
+        _pendingLevelsViewportFitLevelIndex = null;
+      }
+      if (!mounted) {
+        return;
+      }
+      final AppData latestAppData =
+          Provider.of<AppData>(context, listen: false);
+      if (latestAppData.selectedSection != 'levels') {
+        return;
+      }
+      if (latestAppData.selectedLevel != levelIndex) {
+        _queueSelectedLevelViewportFit(latestAppData, viewportSize);
+        return;
+      }
+
+      _fitLevelLayersToViewport(latestAppData, levelIndex, viewportSize);
+      _lastAutoFramedLevelIndex = levelIndex;
+    });
+  }
+
   MouseCursor _tilemapCursor(AppData appData) {
     if (appData.selectedSection != 'tilemap') {
       return SystemMouseCursors.basic;
@@ -528,6 +636,11 @@ class _LayoutState extends State<Layout> {
                           )
                         : LayoutBuilder(
                             builder: (context, constraints) {
+                              _queueSelectedLevelViewportFit(
+                                appData,
+                                Size(constraints.maxWidth,
+                                    constraints.maxHeight),
+                              );
                               _queueInitialLayersViewportCenter(
                                 appData,
                                 Size(constraints.maxWidth,

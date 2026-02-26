@@ -166,15 +166,15 @@ class LayoutLevelsState extends State<LayoutLevels> {
     if (group == null) {
       return false;
     }
-    final int levelsToDelete = appData.gameData.levels
+    final int levelsInGroup = appData.gameData.levels
         .where((level) => _effectiveLevelGroupId(appData, level) == groupId)
         .length;
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete group',
-      message: levelsToDelete > 0
-          ? 'Delete "${group.name}" and its $levelsToDelete level(s)? This cannot be undone.'
-          : 'Delete "${group.name}"? This cannot be undone.',
+      message: levelsInGroup > 0
+          ? 'Delete "${group.name}"? $levelsInGroup level(s) will be moved to "Main".'
+          : 'Delete "${group.name}"?',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -192,22 +192,16 @@ class LayoutLevelsState extends State<LayoutLevels> {
     if (groupIndex == -1) {
       return false;
     }
-
-    final GameLevel? selectedLevel =
-        appData.selectedLevel >= 0 && appData.selectedLevel < levels.length
-            ? levels[appData.selectedLevel]
-            : null;
+    GroupedListAlgorithms.reassignItemsToGroup<GameLevel>(
+      items: levels,
+      fromGroupId: groupId,
+      toGroupId: GameListGroup.mainId,
+      itemGroupIdOf: (level) => level.groupId,
+      setItemGroupId: (level, nextGroupId) {
+        level.groupId = nextGroupId;
+      },
+    );
     groups.removeAt(groupIndex);
-    levels.removeWhere((level) => level.groupId == groupId);
-
-    final int nextSelectedLevel =
-        selectedLevel == null ? -1 : levels.indexOf(selectedLevel);
-    appData.selectedLevel = nextSelectedLevel;
-    if (nextSelectedLevel == -1) {
-      appData.selectedLayer = -1;
-      appData.selectedZone = -1;
-      appData.selectedSprite = -1;
-    }
 
     appData.update();
     await _autoSaveIfPossible(appData);

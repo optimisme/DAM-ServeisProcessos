@@ -397,6 +397,24 @@ class GroupedListAlgorithms {
     }
     return items.indexOf(selectedItem);
   }
+
+  static int reassignItemsToGroup<I>({
+    required List<I> items,
+    required String fromGroupId,
+    required String toGroupId,
+    required String Function(I item) itemGroupIdOf,
+    required void Function(I item, String groupId) setItemGroupId,
+  }) {
+    int reassignedCount = 0;
+    for (final I item in items) {
+      if (itemGroupIdOf(item).trim() != fromGroupId) {
+        continue;
+      }
+      setItemGroupId(item, toGroupId);
+      reassignedCount += 1;
+    }
+    return reassignedCount;
+  }
 }
 
 class GroupedListGroupDraft {

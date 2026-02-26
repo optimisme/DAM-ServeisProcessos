@@ -267,6 +267,9 @@ class _LayoutMediaState extends State<LayoutMedia> {
   }
 
   Future<bool> _deleteMediaGroup(AppData appData, String groupId) async {
+    if (!mounted) {
+      return false;
+    }
     if (groupId == GameMediaGroup.mainId) {
       return false;
     }
@@ -279,14 +282,13 @@ class _LayoutMediaState extends State<LayoutMedia> {
     final int mediaCount = appData.gameData.mediaAssets
         .where((asset) => _effectiveMediaGroupId(appData, asset) == groupId)
         .length;
-    if (mediaCount > 0) {
-      return false;
-    }
 
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete group',
-      message: 'Delete "${group.name}"? This cannot be undone.',
+      message: mediaCount > 0
+          ? 'Delete "${group.name}"? $mediaCount media item(s) will be moved to "Main".'
+          : 'Delete "${group.name}"?',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -300,6 +302,15 @@ class _LayoutMediaState extends State<LayoutMedia> {
       debugLabel: 'media-group-delete',
       mutate: () {
         _ensureMainGroup(appData);
+        GroupedListAlgorithms.reassignItemsToGroup<GameMediaAsset>(
+          items: appData.gameData.mediaAssets,
+          fromGroupId: groupId,
+          toGroupId: GameMediaGroup.mainId,
+          itemGroupIdOf: (asset) => asset.groupId,
+          setItemGroupId: (asset, nextGroupId) {
+            asset.groupId = nextGroupId;
+          },
+        );
         appData.gameData.mediaGroups.removeWhere((item) => item.id == groupId);
       },
     );

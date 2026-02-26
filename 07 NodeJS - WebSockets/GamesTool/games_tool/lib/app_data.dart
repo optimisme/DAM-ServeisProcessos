@@ -65,6 +65,7 @@ class AppData extends ChangeNotifier {
   static const String zonesFolderName = "zones";
   static const String tileMapFileFieldName = "tileMapFile";
   static const String zonesFileFieldName = "zonesFile";
+  static const String projectCommentsFieldName = "projectComments";
   static const Color defaultTilesetSelectionColor = Color(0xFFFFCC00);
   int frame = 0;
   final gameFileName = "game_data.json";
@@ -528,6 +529,8 @@ class AppData extends ChangeNotifier {
       if (!knownFolders.contains(folderName)) {
         final String inferredName =
             await _readProjectNameFromDisk(gameFile) ?? folderName;
+        final String inferredComments =
+            await _readProjectCommentsFromDisk(gameFile) ?? "";
         discoveredProjects.add(
           StoredProject(
             id: _newProjectId(),
@@ -535,6 +538,7 @@ class AppData extends ChangeNotifier {
             folderName: folderName,
             createdAt: DateTime.now().toUtc().toIso8601String(),
             updatedAt: DateTime.now().toUtc().toIso8601String(),
+            comments: inferredComments,
           ),
         );
       }
@@ -560,6 +564,21 @@ class AppData extends ChangeNotifier {
           return name.trim();
         }
       }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> _readProjectCommentsFromDisk(File gameFile) async {
+    try {
+      final dynamic decoded = jsonDecode(await gameFile.readAsString());
+      if (decoded is! Map) {
+        return null;
+      }
+      if (!decoded.containsKey(projectCommentsFieldName)) {
+        return null;
+      }
+      final dynamic comments = decoded[projectCommentsFieldName];
+      return comments is String ? _sanitizeProjectComments(comments) : "";
     } catch (_) {}
     return null;
   }
@@ -1578,6 +1597,7 @@ class AppData extends ChangeNotifier {
       final dynamic decoded = jsonDecode(await file.readAsString());
       if (decoded is Map<String, dynamic>) {
         decoded['name'] = cleanName;
+        decoded[projectCommentsFieldName] = project.comments;
         final String output = await _formatMapAsGameJson(decoded);
         await file.writeAsString(output);
       }
@@ -1708,6 +1728,16 @@ class AppData extends ChangeNotifier {
       if (gameData.name.trim().isNotEmpty) {
         project.name = gameData.name.trim();
       }
+      final String? commentsFromGameData =
+          decoded.containsKey(projectCommentsFieldName)
+              ? (decoded[projectCommentsFieldName] is String
+                  ? _sanitizeProjectComments(
+                      decoded[projectCommentsFieldName] as String)
+                  : "")
+              : null;
+      if (commentsFromGameData != null) {
+        project.comments = commentsFromGameData;
+      }
       project.updatedAt = DateTime.now().toUtc().toIso8601String();
       await _saveProjectsIndex();
 
@@ -1817,6 +1847,8 @@ class AppData extends ChangeNotifier {
             ),
           ) ??
           baseName;
+      final String inferredComments =
+          await _readProjectCommentsFromDisk(importedGameFile) ?? "";
 
       final String now = DateTime.now().toUtc().toIso8601String();
       final StoredProject importedProject = StoredProject(
@@ -1825,6 +1857,7 @@ class AppData extends ChangeNotifier {
         folderName: destinationFolderName,
         createdAt: now,
         updatedAt: now,
+        comments: inferredComments,
       );
       projects.add(importedProject);
       selectedProjectId = importedProject.id;
@@ -1876,16 +1909,25 @@ class AppData extends ChangeNotifier {
       if (!await gameDataFile.exists()) {
         throw Exception("Cannot export: missing $gameFileName");
       }
-      final List<int> gameDataBytes = await gameDataFile.readAsBytes();
-      archive.addFile(
-          ArchiveFile(gameFileName, gameDataBytes.length, gameDataBytes));
+      final List<int> gameDataBytesFromDisk = await gameDataFile.readAsBytes();
+      List<int> gameDataBytesForArchive = gameDataBytesFromDisk;
       final Set<String> archivedRelativePaths = <String>{gameFileName};
       dynamic decodedGameData;
       try {
-        decodedGameData = jsonDecode(utf8.decode(gameDataBytes));
+        decodedGameData = jsonDecode(utf8.decode(gameDataBytesFromDisk));
+        if (decodedGameData is Map<String, dynamic>) {
+          decodedGameData[projectCommentsFieldName] = project.comments;
+          final String output = await _formatMapAsGameJson(decodedGameData);
+          gameDataBytesForArchive = utf8.encode(output);
+        }
       } catch (_) {
         decodedGameData = null;
       }
+      archive.addFile(ArchiveFile(
+        gameFileName,
+        gameDataBytesForArchive.length,
+        gameDataBytesForArchive,
+      ));
 
       for (final String reference in referencedMediaFileNames()) {
         if (!_hasSupportedImageExtension(reference)) {
@@ -1997,6 +2039,7 @@ class AppData extends ChangeNotifier {
 
     final file = File("$filePath${Platform.pathSeparator}$fileName");
     final Map<String, dynamic> encoded = gameData.toJson();
+    encoded[projectCommentsFieldName] = project.comments;
     final Set<String> tileMapPaths =
         await _writeExternalTileMapsAndStripInlineFromGameData(
       encoded: encoded,

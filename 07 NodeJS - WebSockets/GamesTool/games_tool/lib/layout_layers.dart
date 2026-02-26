@@ -175,16 +175,16 @@ class LayoutLayersState extends State<LayoutLayers> {
       return false;
     }
 
-    final int layersToDelete = level.layers
+    final int layersInGroup = level.layers
         .where((layer) => _effectiveLayerGroupId(level, layer) == groupId)
         .length;
 
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete group',
-      message: layersToDelete > 0
-          ? 'Delete "${group.name}" and its $layersToDelete layer(s)? This cannot be undone.'
-          : 'Delete "${group.name}"? This cannot be undone.',
+      message: layersInGroup > 0
+          ? 'Delete "${group.name}"? $layersInGroup layer(s) will be moved to "Main".'
+          : 'Delete "${group.name}"?',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -206,19 +206,16 @@ class LayoutLayersState extends State<LayoutLayers> {
         if (groupIndex == -1) {
           return;
         }
-
-        final GameLayer? selectedLayer =
-            appData.selectedLayer >= 0 && appData.selectedLayer < layers.length
-                ? layers[appData.selectedLayer]
-                : null;
+        GroupedListAlgorithms.reassignItemsToGroup<GameLayer>(
+          items: layers,
+          fromGroupId: groupId,
+          toGroupId: GameListGroup.mainId,
+          itemGroupIdOf: (layer) => layer.groupId,
+          setItemGroupId: (layer, nextGroupId) {
+            layer.groupId = nextGroupId;
+          },
+        );
         groups.removeAt(groupIndex);
-        layers.removeWhere((layer) => layer.groupId == groupId);
-
-        if (selectedLayer == null) {
-          appData.selectedLayer = -1;
-          return;
-        }
-        appData.selectedLayer = layers.indexOf(selectedLayer);
       },
     );
 

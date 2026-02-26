@@ -370,30 +370,19 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
       return false;
     }
 
-    final List<GameAnimation> animationsToDelete = appData.gameData.animations
+    final List<GameAnimation> animationsInGroup = appData.gameData.animations
         .where(
           (animation) =>
               _effectiveAnimationGroupId(appData, animation) == groupId,
         )
         .toList(growable: false);
 
-    int totalUsage = 0;
-    for (final animation in animationsToDelete) {
-      totalUsage += _animationUsageCount(appData, animation.id);
-    }
-    if (totalUsage > 0) {
-      appData.projectStatusMessage =
-          'Group "${group.name}" contains animations used by sprites.';
-      appData.update();
-      return false;
-    }
-
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete group',
-      message: animationsToDelete.isNotEmpty
-          ? 'Delete "${group.name}" and its ${animationsToDelete.length} animation(s)? This cannot be undone.'
-          : 'Delete "${group.name}"? This cannot be undone.',
+      message: animationsInGroup.isNotEmpty
+          ? 'Delete "${group.name}"? ${animationsInGroup.length} animation(s) will be moved to "Main".'
+          : 'Delete "${group.name}"?',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -413,30 +402,16 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         if (groupIndex == -1) {
           return;
         }
-
-        final GameAnimation? selectedAnimation =
-            appData.selectedAnimation >= 0 &&
-                    appData.selectedAnimation < animations.length
-                ? animations[appData.selectedAnimation]
-                : null;
+        GroupedListAlgorithms.reassignItemsToGroup<GameAnimation>(
+          items: animations,
+          fromGroupId: groupId,
+          toGroupId: GameAnimation.defaultGroupId,
+          itemGroupIdOf: (animation) => animation.groupId,
+          setItemGroupId: (animation, nextGroupId) {
+            animation.groupId = nextGroupId;
+          },
+        );
         groups.removeAt(groupIndex);
-        animations.removeWhere((animation) => animation.groupId == groupId);
-
-        if (selectedAnimation == null) {
-          appData.selectedAnimation = -1;
-          _syncFrameSelectionToAnimation(appData, null);
-          return;
-        }
-        appData.selectedAnimation = animations.indexOf(selectedAnimation);
-        if (appData.selectedAnimation >= 0 &&
-            appData.selectedAnimation < animations.length) {
-          _syncFrameSelectionToAnimation(
-            appData,
-            animations[appData.selectedAnimation],
-          );
-        } else {
-          _syncFrameSelectionToAnimation(appData, null);
-        }
       },
     );
 

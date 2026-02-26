@@ -418,16 +418,16 @@ class LayoutZonesState extends State<LayoutZones> {
       return false;
     }
 
-    final int zonesToDelete = level.zones
+    final int zonesInGroup = level.zones
         .where((zone) => _effectiveZoneGroupId(level, zone) == groupId)
         .length;
 
     final bool? confirmed = await CDKDialogsManager.showConfirm(
       context: context,
       title: 'Delete group',
-      message: zonesToDelete > 0
-          ? 'Delete "${group.name}" and its $zonesToDelete zone(s)? This cannot be undone.'
-          : 'Delete "${group.name}"? This cannot be undone.',
+      message: zonesInGroup > 0
+          ? 'Delete "${group.name}"? $zonesInGroup zone(s) will be moved to "Main".'
+          : 'Delete "${group.name}"?',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       isDestructive: true,
@@ -449,21 +449,16 @@ class LayoutZonesState extends State<LayoutZones> {
         if (groupIndex == -1) {
           return;
         }
-
-        final GameZone? selectedZone =
-            appData.selectedZone >= 0 && appData.selectedZone < zones.length
-                ? zones[appData.selectedZone]
-                : null;
+        GroupedListAlgorithms.reassignItemsToGroup<GameZone>(
+          items: zones,
+          fromGroupId: groupId,
+          toGroupId: GameZoneGroup.mainId,
+          itemGroupIdOf: (zone) => zone.groupId,
+          setItemGroupId: (zone, nextGroupId) {
+            zone.groupId = nextGroupId;
+          },
+        );
         groups.removeAt(groupIndex);
-        zones.removeWhere((zone) => zone.groupId == groupId);
-
-        if (selectedZone == null) {
-          appData.selectedZone = -1;
-          return;
-        }
-
-        final int nextSelectedIndex = zones.indexOf(selectedZone);
-        appData.selectedZone = nextSelectedIndex;
       },
     );
 

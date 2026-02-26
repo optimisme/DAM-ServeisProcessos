@@ -16,7 +16,8 @@ import 'package:game_example/utils_gt/utils_gt.dart';
 /// sprite handles, viewport mode, and viewport origin.
 class LevelGame extends FlameGame {
   static const String loadingOverlayId = 'level_loading';
-  static const Duration minimumLoadingDuration = Duration(seconds: 2);
+  static const String decorationsCounterOverlayId = 'decorations_counter';
+  static const Duration minimumLoadingDuration = Duration(seconds: 1);
 
   LevelGame({
     required this.projectRoot,
@@ -41,6 +42,8 @@ class LevelGame extends FlameGame {
   final ValueNotifier<LevelLoadingState> loadingState = ValueNotifier(
     const LevelLoadingState.hidden(),
   );
+
+  final ValueNotifier<int> removedDecorationsCount = ValueNotifier(0);
 
   GamesToolLoadedProject? _loadedProject;
   bool _isLoadingLevel = false;
@@ -69,6 +72,7 @@ class LevelGame extends FlameGame {
   @override
   void onRemove() {
     loadingState.dispose();
+    removedDecorationsCount.dispose();
     super.onRemove();
   }
 
@@ -154,6 +158,9 @@ class LevelGame extends FlameGame {
       timer.cancel();
       stopwatch.stop();
       _setLoadingState(isVisible: false, progress: 0, message: '');
+      if (!overlays.isActive(decorationsCounterOverlayId)) {
+        overlays.add(decorationsCounterOverlayId);
+      }
       _isLoadingLevel = false;
     }
   }

@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:game_example/gameplay/level_game.dart';
 import 'package:game_example/utils_flame/utils_flame.dart';
 import 'package:game_example/utils_gt/utils_gt.dart';
 
@@ -13,13 +16,22 @@ class HeroMovementModule extends GameplayModule {
     this.heroSpriteName = 'Heroi',
     this.speed = 75,
     this.enableCameraFollow = true,
-    this.cameraFollowMaxSpeed = 70,
+    this.cameraFollowMaxSpeed = 0,
+    this.clampCameraToWorldBounds = false,
+    this.collisionTopInset = 0.5,
   });
 
   final String heroSpriteName;
   final double speed;
   final bool enableCameraFollow;
   final double cameraFollowMaxSpeed;
+  final bool clampCameraToWorldBounds;
+
+  /// Fraction of the sprite height to skip from the top when building the
+  /// collision box. `0.5` means only the bottom half collides (feet-only),
+  /// which is the standard for top-down games where the character head/body
+  /// floats above the ground plane. Range: 0.0 (full sprite) – 0.9.
+  final double collisionTopInset;
 
   @override
   Future<void> onLevelMounted(GameplayContext context) async {
@@ -28,15 +40,23 @@ class HeroMovementModule extends GameplayModule {
     );
     if (hero == null || !hero.isAnimated) return;
 
+    final ValueNotifier<int>? counter = context.game is LevelGame
+        ? (context.game as LevelGame).removedDecorationsCount
+        : null;
+
     await context.game.world.add(
       _HeroMovementController(
         hero: hero,
         loadedProject: context.mountResult.loadedProject,
+        loadedLevel: context.mountResult.loadedLevel,
         game: context.game,
         speed: speed,
         enableCameraFollow: enableCameraFollow,
         cameraFollowMaxSpeed: cameraFollowMaxSpeed,
+        clampCameraToWorldBounds: clampCameraToWorldBounds,
         worldBounds: context.mountResult.worldBounds,
+        collisionTopInset: collisionTopInset.clamp(0.0, 0.9),
+        removedDecorationsCount: counter,
       ),
     );
   }
@@ -46,23 +66,40 @@ class _HeroMovementController extends Component {
   _HeroMovementController({
     required GamesToolSpriteHandle hero,
     required GamesToolLoadedProject loadedProject,
+    required GamesToolLoadedLevel loadedLevel,
     required FlameGame game,
     required this.speed,
     required this.enableCameraFollow,
     required this.cameraFollowMaxSpeed,
+    required this.clampCameraToWorldBounds,
+    required this.collisionTopInset,
+    required this.removedDecorationsCount,
     required Rect worldBounds,
   }) : _hero = hero,
        _loadedProject = loadedProject,
+       _loadedLevel = loadedLevel,
        _game = game,
-       _worldBounds = worldBounds;
+       _worldBounds = worldBounds,
+       _blockingZones = loadedLevel.zones
+           .where(
+             (GamesToolZone z) =>
+                 _normalizeZoneType(z.type) == 'mur' ||
+                 _normalizeZoneType(z.type) == 'aigua',
+           )
+           .toList(growable: false);
 
   final GamesToolSpriteHandle _hero;
   final GamesToolLoadedProject _loadedProject;
+  final GamesToolLoadedLevel _loadedLevel;
   final FlameGame _game;
   final double speed;
+  final ValueNotifier<int>? removedDecorationsCount;
   final bool enableCameraFollow;
   final double cameraFollowMaxSpeed;
+  final bool clampCameraToWorldBounds;
+  final double collisionTopInset;
   final Rect _worldBounds;
+  final List<GamesToolZone> _blockingZones;
 
   _HeroDirection _facing = _HeroDirection.down;
   bool _isWalking = false;
@@ -73,10 +110,18 @@ class _HeroMovementController extends Component {
   final Vector2 _cameraTarget = Vector2.zero();
   final Vector2 _cameraDelta = Vector2.zero();
   final Vector2 _heroCenter = Vector2.zero();
+  final Vector2 _movementDelta = Vector2.zero();
+  GamesToolZoneTracker? _zoneTracker;
+  List<List<int>>? _decorationsTileMap;
+  int _decorationsTileWidth = 0;
+  int _decorationsTileHeight = 0;
+  double _decorationsBaseX = 0;
+  double _decorationsBaseY = 0;
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+    _initZoneInteractions();
     if (enableCameraFollow) {
       _snapCameraToHero();
     }
@@ -90,8 +135,12 @@ class _HeroMovementController extends Component {
     final bool hasMovement = movement.length2 > 0;
     if (hasMovement) {
       if (movement.length2 > 1) movement.normalize();
-      _hero.position.add(movement * (speed * dt));
+      _movementDelta
+        ..setFrom(movement)
+        ..scale(speed * dt);
+      _applyMovementWithZones(_movementDelta);
     }
+    _updateZoneTracking();
 
     final _HeroDirection previousFacing = _facing;
     if (hasMovement) {
@@ -110,13 +159,17 @@ class _HeroMovementController extends Component {
 
   void _snapCameraToHero() {
     _cameraTarget.setFrom(_heroCenterPoint());
-    _clampTargetToWorldBounds(_cameraTarget);
-    _game.camera.viewfinder.position = _cameraTarget;
+    if (clampCameraToWorldBounds) {
+      _clampTargetToWorldBounds(_cameraTarget);
+    }
+    _game.camera.viewfinder.position = _cameraTarget.clone();
   }
 
   void _updateCamera(double dt) {
     _cameraTarget.setFrom(_heroCenterPoint());
-    _clampTargetToWorldBounds(_cameraTarget);
+    if (clampCameraToWorldBounds) {
+      _clampTargetToWorldBounds(_cameraTarget);
+    }
 
     final Vector2 current = _game.camera.viewfinder.position;
     _cameraDelta
@@ -125,29 +178,193 @@ class _HeroMovementController extends Component {
 
     final double distance = _cameraDelta.length;
     if (distance <= 0.0001) {
-      current.setFrom(_cameraTarget);
+      _game.camera.viewfinder.position = _cameraTarget.clone();
       return;
     }
 
     if (cameraFollowMaxSpeed <= 0) {
-      current.setFrom(_cameraTarget);
+      _game.camera.viewfinder.position = _cameraTarget.clone();
       return;
     }
 
     final double maxStep = cameraFollowMaxSpeed * dt;
     if (distance <= maxStep) {
-      current.setFrom(_cameraTarget);
+      _game.camera.viewfinder.position = _cameraTarget.clone();
       return;
     }
 
     _cameraDelta.scale(maxStep / distance);
-    current.add(_cameraDelta);
+    _game.camera.viewfinder.position = current + _cameraDelta;
+  }
+
+  /// Returns the visual top-left corner of the hero in world space,
+  /// accounting for the flip-induced position offset applied by [setFlip].
+  double _heroVisualLeft() =>
+      _hero.flipX ? _hero.position.x - _hero.size.x : _hero.position.x;
+  double _heroVisualTop() =>
+      _hero.flipY ? _hero.position.y - _hero.size.y : _hero.position.y;
+
+  /// Pixel height skipped from the top of the sprite for collision/zone checks.
+  double get _collisionTopOffset => _hero.size.y * collisionTopInset;
+
+  void _applyMovementWithZones(Vector2 delta) {
+    final double startVisualX = _heroVisualLeft();
+    final double startVisualY = _heroVisualTop();
+
+    // Try full diagonal move.
+    if (!_isBlockedAtVisual(startVisualX + delta.x, startVisualY + delta.y)) {
+      _hero.position.x += delta.x;
+      _hero.position.y += delta.y;
+      return;
+    }
+
+    // Try horizontal-only slide.
+    if (delta.x != 0) {
+      if (!_isBlockedAtVisual(startVisualX + delta.x, startVisualY)) {
+        _hero.position.x += delta.x;
+      }
+    }
+
+    // Try vertical-only slide (from wherever we ended up above).
+    if (delta.y != 0) {
+      final double currentVisualY = _heroVisualTop();
+      if (!_isBlockedAtVisual(_heroVisualLeft(), currentVisualY + delta.y)) {
+        _hero.position.y += delta.y;
+      }
+    }
+  }
+
+  void _initZoneInteractions() {
+    _zoneTracker = _loadedLevel.createZoneTracker(
+      type: 'Arbre',
+      onEnter: (GamesToolZone zone) {
+        _clearClosestDecorationTile(zone);
+      },
+    );
+    _bindDecorationsLayerTileMap();
+  }
+
+  void _updateZoneTracking() {
+    final GamesToolZoneTracker? tracker = _zoneTracker;
+    if (tracker == null) return;
+    final double topOffset = _collisionTopOffset;
+    final double vx = _heroVisualLeft();
+    final double vy = _heroVisualTop() + topOffset;
+    tracker.update(
+      vx.floor(),
+      vy.floor(),
+      width: math.max(1, _hero.size.x.ceil()),
+      height: math.max(1, (_hero.size.y - topOffset).ceil()),
+    );
+  }
+
+  bool _isBlockedAtVisual(double visualX, double visualY) {
+    if (_blockingZones.isEmpty) return false;
+    final double topOffset = _collisionTopOffset;
+    final GamesToolRect playerRect = GamesToolRect(
+      x: visualX.floor(),
+      y: (visualY + topOffset).floor(),
+      width: math.max(1, _hero.size.x.ceil()),
+      height: math.max(1, (_hero.size.y - topOffset).ceil()),
+    );
+    for (final GamesToolZone zone in _blockingZones) {
+      if (zone.bounds.overlaps(playerRect)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _bindDecorationsLayerTileMap() {
+    GamesToolLayer? decorationsLayer;
+    for (final GamesToolLayer layer in _loadedLevel.layers) {
+      if (layer.name.trim().toLowerCase() == 'decoracions') {
+        decorationsLayer = layer;
+        break;
+      }
+    }
+    if (decorationsLayer == null) return;
+
+    final GamesToolTileMapFile? tileMapFile = _loadedProject.tileMapForLayer(
+      decorationsLayer,
+    );
+    if (tileMapFile == null) return;
+
+    if (decorationsLayer.tilesWidth <= 0 || decorationsLayer.tilesHeight <= 0) {
+      return;
+    }
+    _decorationsTileMap = tileMapFile.tileMap;
+    _decorationsTileWidth = decorationsLayer.tilesWidth;
+    _decorationsTileHeight = decorationsLayer.tilesHeight;
+    _decorationsBaseX = decorationsLayer.x.toDouble();
+    _decorationsBaseY = decorationsLayer.y.toDouble();
+  }
+
+  void _clearClosestDecorationTile(GamesToolZone zone) {
+    final List<List<int>>? tileMap = _decorationsTileMap;
+    if (tileMap == null) return;
+    if (_decorationsTileWidth <= 0 || _decorationsTileHeight <= 0) return;
+
+    final Vector2 center = _heroCenterPoint();
+    final _TilePosition? selectedTile = _findClosestDecorationTile(
+      centerX: center.x,
+      centerY: center.y,
+      tileMap: tileMap,
+      requiredOverlap: zone.bounds,
+    );
+    if (selectedTile == null) return;
+
+    tileMap[selectedTile.row][selectedTile.col] = -1;
+    final ValueNotifier<int>? counter = removedDecorationsCount;
+    if (counter != null) counter.value += 1;
+  }
+
+  _TilePosition? _findClosestDecorationTile({
+    required double centerX,
+    required double centerY,
+    required List<List<int>> tileMap,
+    GamesToolRect? requiredOverlap,
+  }) {
+    _TilePosition? best;
+    double bestDistance2 = double.infinity;
+
+    for (int rowIndex = 0; rowIndex < tileMap.length; rowIndex++) {
+      final List<int> row = tileMap[rowIndex];
+      for (int colIndex = 0; colIndex < row.length; colIndex++) {
+        if (row[colIndex] < 0) continue;
+
+        final int tileX =
+            (_decorationsBaseX + (colIndex * _decorationsTileWidth)).floor();
+        final int tileY =
+            (_decorationsBaseY + (rowIndex * _decorationsTileHeight)).floor();
+        if (requiredOverlap != null) {
+          final GamesToolRect tileRect = GamesToolRect(
+            x: tileX,
+            y: tileY,
+            width: _decorationsTileWidth,
+            height: _decorationsTileHeight,
+          );
+          if (!requiredOverlap.overlaps(tileRect)) continue;
+        }
+
+        final double tileCenterX = tileX + (_decorationsTileWidth * 0.5);
+        final double tileCenterY = tileY + (_decorationsTileHeight * 0.5);
+        final double dx = tileCenterX - centerX;
+        final double dy = tileCenterY - centerY;
+        final double distance2 = dx * dx + dy * dy;
+        if (distance2 >= bestDistance2) continue;
+
+        bestDistance2 = distance2;
+        best = _TilePosition(row: rowIndex, col: colIndex);
+      }
+    }
+    return best;
   }
 
   Vector2 _heroCenterPoint() => _heroCenter
     ..setValues(
-      _hero.position.x + _hero.size.x * 0.5,
-      _hero.position.y + _hero.size.y * 0.5,
+      _hero.position.x + _hero.size.x * (_hero.flipX ? -0.5 : 0.5),
+      _hero.position.y + _hero.size.y * (_hero.flipY ? -0.5 : 0.5),
     );
 
   void _clampTargetToWorldBounds(Vector2 target) {
@@ -313,6 +530,15 @@ class _HeroMovementController extends Component {
     }
   }
 }
+
+class _TilePosition {
+  const _TilePosition({required this.row, required this.col});
+
+  final int row;
+  final int col;
+}
+
+String _normalizeZoneType(String value) => value.trim().toLowerCase();
 
 enum _HeroDirection {
   up,

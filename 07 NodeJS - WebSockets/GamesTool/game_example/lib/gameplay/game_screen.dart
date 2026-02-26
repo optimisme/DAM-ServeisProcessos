@@ -54,6 +54,9 @@ class _GameScreenState extends State<GameScreen> {
                   LevelGame.loadingOverlayId:
                       (BuildContext context, LevelGame game) =>
                           _LevelLoadingOverlay(game: game),
+                  LevelGame.decorationsCounterOverlayId:
+                      (BuildContext context, LevelGame game) =>
+                          _DecorationsCounter(game: game),
                 },
             errorBuilder: (BuildContext ctx, Object error) => Center(
               child: Padding(
@@ -84,6 +87,42 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DecorationsCounter extends StatelessWidget {
+  const _DecorationsCounter({required this.game});
+
+  final LevelGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+        child: ValueListenableBuilder<int>(
+          valueListenable: game.removedDecorationsCount,
+          builder: (BuildContext context, int count, Widget? _) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Trees: $count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

@@ -47,6 +47,8 @@ class _GameScreenState extends State<GameScreen> {
         children: <Widget>[
           GameWidget<LevelGame>(
             game: _game,
+            loadingBuilder: (BuildContext context) =>
+                _GameWidgetLoadingOverlay(game: _game),
             overlayBuilderMap:
                 <String, Widget Function(BuildContext, LevelGame)>{
                   LevelGame.loadingOverlayId:
@@ -94,6 +96,50 @@ class _LevelLoadingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _GameLoadingOverlayScaffold(
+      child: ValueListenableBuilder<LevelLoadingState>(
+        valueListenable: game.loadingState,
+        builder: (BuildContext context, LevelLoadingState state, Widget? _) {
+          return _GameLoadingPanel(
+            message: state.message,
+            progress: state.progress,
+            showIndeterminateWhenZero: false,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _GameWidgetLoadingOverlay extends StatelessWidget {
+  const _GameWidgetLoadingOverlay({required this.game});
+
+  final LevelGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GameLoadingOverlayScaffold(
+      child: ValueListenableBuilder<LevelLoadingState>(
+        valueListenable: game.loadingState,
+        builder: (BuildContext context, LevelLoadingState state, Widget? _) {
+          return _GameLoadingPanel(
+            message: state.message,
+            progress: state.progress,
+            showIndeterminateWhenZero: true,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _GameLoadingOverlayScaffold extends StatelessWidget {
+  const _GameLoadingOverlayScaffold({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return ColoredBox(
       color: const Color(0xCC000000),
       child: Center(
@@ -101,48 +147,62 @@ class _LevelLoadingOverlay extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 360),
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: ValueListenableBuilder<LevelLoadingState>(
-              valueListenable: game.loadingState,
-              builder:
-                  (BuildContext context, LevelLoadingState state, Widget? _) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Text(
-                          'Loading',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          state.message,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(height: 16),
-                        LinearProgressIndicator(
-                          value: state.progress,
-                          minHeight: 8,
-                          backgroundColor: Colors.white12,
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${(state.progress * 100).round()}%',
-                          style: const TextStyle(color: Colors.white60),
-                        ),
-                      ],
-                    );
-                  },
-            ),
+            child: child,
           ),
         ),
       ),
+    );
+  }
+}
+
+class _GameLoadingPanel extends StatelessWidget {
+  const _GameLoadingPanel({
+    required this.message,
+    required this.progress,
+    required this.showIndeterminateWhenZero,
+  });
+
+  final String message;
+  final double progress;
+  final bool showIndeterminateWhenZero;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasMessage = message.trim().isNotEmpty;
+    final String safeMessage = hasMessage ? message : 'Initializing game...';
+    final bool useIndeterminate = showIndeterminateWhenZero && progress <= 0;
+    final double safeProgress = progress.clamp(0.0, 1.0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        const Text(
+          'Loading',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          safeMessage,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white70),
+        ),
+        const SizedBox(height: 16),
+        LinearProgressIndicator(
+          value: useIndeterminate ? null : safeProgress,
+          minHeight: 8,
+          backgroundColor: Colors.white12,
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          useIndeterminate ? '...' : '${(safeProgress * 100).round()}%',
+          style: const TextStyle(color: Colors.white60),
+        ),
+      ],
     );
   }
 }

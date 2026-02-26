@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flame/components.dart';
+import 'package:flame/effects.dart';
+import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
 import 'package:game_example/utils_flame/utils_flame.dart';
@@ -9,10 +11,17 @@ import 'package:game_example/utils_gt/utils_gt.dart';
 import '../core/gameplay_module.dart';
 
 class HeroMovementModule extends GameplayModule {
-  const HeroMovementModule({this.heroSpriteName = 'Heroi', this.speed = 90});
+  const HeroMovementModule({
+    this.heroSpriteName = 'Heroi',
+    this.speed = 75,
+    this.enableCameraFollow = true,
+    this.cameraFollowMaxSpeed = 70,
+  });
 
   final String heroSpriteName;
   final double speed;
+  final bool enableCameraFollow;
+  final double cameraFollowMaxSpeed;
 
   @override
   Future<void> onLevelMounted(GameplayContext context) async {
@@ -29,7 +38,35 @@ class HeroMovementModule extends GameplayModule {
         speed: speed,
       ),
     );
+
+    if (!enableCameraFollow) return;
+
+    context.game.camera.setBounds(
+      Rectangle.fromRect(context.mountResult.worldBounds),
+      considerViewport: true,
+    );
+    context.game.camera.follow(
+      _HeroCenterTarget(hero),
+      maxSpeed: cameraFollowMaxSpeed <= 0
+          ? double.infinity
+          : cameraFollowMaxSpeed,
+      snap: true,
+    );
   }
+}
+
+class _HeroCenterTarget implements ReadOnlyPositionProvider {
+  _HeroCenterTarget(this.hero);
+
+  final GamesToolSpriteHandle hero;
+  final Vector2 _center = Vector2.zero();
+
+  @override
+  Vector2 get position => _center
+    ..setValues(
+      hero.position.x + hero.size.x * 0.5,
+      hero.position.y + hero.size.y * 0.5,
+    );
 }
 
 class _HeroMovementController extends Component {

@@ -623,6 +623,21 @@ class AppData extends ChangeNotifier {
     return candidate;
   }
 
+  Future<String> _buildUniqueDirectoryNameInDirectory(
+    String parentDirectoryPath,
+    String baseDirectoryName,
+  ) async {
+    String candidate = baseDirectoryName;
+    int cnt = 2;
+    while (await Directory(
+      "$parentDirectoryPath${Platform.pathSeparator}$candidate",
+    ).exists()) {
+      candidate = "${baseDirectoryName}_$cnt";
+      cnt++;
+    }
+    return candidate;
+  }
+
   Future<String> _buildUniqueFileNameInDirectory(
     String directoryPath,
     String originalFileName,
@@ -1901,107 +1916,19 @@ class AppData extends ChangeNotifier {
       final Directory sourceDirectory = Directory(
         "$projectsPath${Platform.pathSeparator}${project.folderName}",
       );
-      final Archive archive = Archive();
-
-      final File gameDataFile = File(
-        "${sourceDirectory.path}${Platform.pathSeparator}$gameFileName",
+      final Map<String, List<int>> exportFiles = await _buildProjectExportFiles(
+        project: project,
+        sourceDirectoryPath: sourceDirectory.path,
       );
-      if (!await gameDataFile.exists()) {
-        throw Exception("Cannot export: missing $gameFileName");
-      }
-      final List<int> gameDataBytesFromDisk = await gameDataFile.readAsBytes();
-      List<int> gameDataBytesForArchive = gameDataBytesFromDisk;
-      final Set<String> archivedRelativePaths = <String>{gameFileName};
-      dynamic decodedGameData;
-      try {
-        decodedGameData = jsonDecode(utf8.decode(gameDataBytesFromDisk));
-        if (decodedGameData is Map<String, dynamic>) {
-          decodedGameData[projectCommentsFieldName] = project.comments;
-          final String output = await _formatMapAsGameJson(decodedGameData);
-          gameDataBytesForArchive = utf8.encode(output);
-        }
-      } catch (_) {
-        decodedGameData = null;
-      }
-      archive.addFile(ArchiveFile(
-        gameFileName,
-        gameDataBytesForArchive.length,
-        gameDataBytesForArchive,
-      ));
-
-      for (final String reference in referencedMediaFileNames()) {
-        if (!_hasSupportedImageExtension(reference)) {
-          continue;
-        }
-        final String relativePath = _normalizeProjectRelativePath(reference);
-        if (relativePath.isEmpty ||
-            relativePath == gameFileName ||
-            archivedRelativePaths.contains(relativePath)) {
-          continue;
-        }
-        final File mediaFile = File(
-          _projectAbsolutePathForRelativePath(
-              sourceDirectory.path, relativePath),
-        );
-        if (!await mediaFile.exists()) {
-          if (kDebugMode) {
-            print("Skipping missing referenced media file: $relativePath");
-          }
-          continue;
-        }
-        final List<int> bytes = await mediaFile.readAsBytes();
-        archive.addFile(ArchiveFile(relativePath, bytes.length, bytes));
-        archivedRelativePaths.add(relativePath);
-      }
-
-      for (final String reference
-          in _collectExternalTileMapPathsFromDecodedGameData(decodedGameData)) {
-        final String relativePath = _normalizeProjectRelativePath(reference);
-        if (relativePath.isEmpty ||
-            relativePath == gameFileName ||
-            archivedRelativePaths.contains(relativePath)) {
-          continue;
-        }
-        final File tileMapFile = File(
-          _projectAbsolutePathForRelativePath(
-            sourceDirectory.path,
-            relativePath,
+      final Archive archive = Archive();
+      for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
+        archive.addFile(
+          ArchiveFile(
+            entry.key,
+            entry.value.length,
+            entry.value,
           ),
         );
-        if (!await tileMapFile.exists()) {
-          if (kDebugMode) {
-            print("Skipping missing referenced tilemap file: $relativePath");
-          }
-          continue;
-        }
-        final List<int> bytes = await tileMapFile.readAsBytes();
-        archive.addFile(ArchiveFile(relativePath, bytes.length, bytes));
-        archivedRelativePaths.add(relativePath);
-      }
-
-      for (final String reference
-          in _collectExternalZonePathsFromDecodedGameData(decodedGameData)) {
-        final String relativePath = _normalizeProjectRelativePath(reference);
-        if (relativePath.isEmpty ||
-            relativePath == gameFileName ||
-            archivedRelativePaths.contains(relativePath)) {
-          continue;
-        }
-        final File zonesFile = File(
-          _projectAbsolutePathForRelativePath(
-            sourceDirectory.path,
-            relativePath,
-          ),
-        );
-        if (!await zonesFile.exists()) {
-          if (kDebugMode) {
-            print("Skipping missing referenced zones file: $relativePath");
-          }
-          continue;
-        }
-        final List<int> bytes = await zonesFile.readAsBytes();
-        archive.addFile(ArchiveFile(relativePath, bytes.length, bytes));
-        archivedRelativePaths.add(relativePath);
       }
 
       final List<int> zipBytes = ZipEncoder().encode(archive);
@@ -2014,6 +1941,132 @@ class AppData extends ChangeNotifier {
         print("Error exporting project: $e");
       }
       projectStatusMessage = "Export failed: $e";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<Map<String, List<int>>> _buildProjectExportFiles({
+    required StoredProject project,
+    required String sourceDirectoryPath,
+  }) async {
+    final Map<String, List<int>> exportFiles = <String, List<int>>{};
+    final Set<String> exportedRelativePaths = <String>{};
+
+    final File gameDataFile = File(
+      "$sourceDirectoryPath${Platform.pathSeparator}$gameFileName",
+    );
+    if (!await gameDataFile.exists()) {
+      throw Exception("Cannot export: missing $gameFileName");
+    }
+    final List<int> gameDataBytesFromDisk = await gameDataFile.readAsBytes();
+    List<int> gameDataBytesForExport = gameDataBytesFromDisk;
+    dynamic decodedGameData;
+    try {
+      decodedGameData = jsonDecode(utf8.decode(gameDataBytesFromDisk));
+      if (decodedGameData is Map<String, dynamic>) {
+        decodedGameData[projectCommentsFieldName] = project.comments;
+        final String output = await _formatMapAsGameJson(decodedGameData);
+        gameDataBytesForExport = utf8.encode(output);
+      }
+    } catch (_) {
+      decodedGameData = null;
+    }
+    exportFiles[gameFileName] = gameDataBytesForExport;
+    exportedRelativePaths.add(gameFileName);
+
+    Future<void> addReferencedFile({
+      required String rawReference,
+      required String debugLabel,
+    }) async {
+      final String relativePath = _normalizeProjectRelativePath(rawReference);
+      if (relativePath.isEmpty ||
+          relativePath == gameFileName ||
+          exportedRelativePaths.contains(relativePath)) {
+        return;
+      }
+      final File sourceFile = File(
+        _projectAbsolutePathForRelativePath(sourceDirectoryPath, relativePath),
+      );
+      if (!await sourceFile.exists()) {
+        if (kDebugMode) {
+          print("Skipping missing referenced $debugLabel file: $relativePath");
+        }
+        return;
+      }
+      exportFiles[relativePath] = await sourceFile.readAsBytes();
+      exportedRelativePaths.add(relativePath);
+    }
+
+    for (final String reference in referencedMediaFileNames()) {
+      if (!_hasSupportedImageExtension(reference)) {
+        continue;
+      }
+      await addReferencedFile(rawReference: reference, debugLabel: "media");
+    }
+    for (final String reference
+        in _collectExternalTileMapPathsFromDecodedGameData(decodedGameData)) {
+      await addReferencedFile(rawReference: reference, debugLabel: "tilemap");
+    }
+    for (final String reference
+        in _collectExternalZonePathsFromDecodedGameData(decodedGameData)) {
+      await addReferencedFile(rawReference: reference, debugLabel: "zones");
+    }
+
+    return exportFiles;
+  }
+
+  Future<bool> exportSelectedProjectToFolder() async {
+    try {
+      await flushPendingAutosave();
+      final StoredProject? project = selectedProject;
+      if (project == null) {
+        return false;
+      }
+
+      final String? destinationRootPath =
+          await FilePicker.platform.getDirectoryPath(
+        dialogTitle: "Export Project to Folder",
+        initialDirectory: projectsPath,
+      );
+      if (destinationRootPath == null) {
+        return false;
+      }
+
+      final String destinationFolderName =
+          await _buildUniqueDirectoryNameInDirectory(
+        destinationRootPath,
+        project.folderName,
+      );
+      final Directory destinationDirectory = Directory(
+        "$destinationRootPath${Platform.pathSeparator}$destinationFolderName",
+      );
+      await destinationDirectory.create(recursive: true);
+
+      final Directory sourceDirectory = Directory(
+        "$projectsPath${Platform.pathSeparator}${project.folderName}",
+      );
+      final Map<String, List<int>> exportFiles = await _buildProjectExportFiles(
+        project: project,
+        sourceDirectoryPath: sourceDirectory.path,
+      );
+
+      for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
+        final String outputPath =
+            "${destinationDirectory.path}${Platform.pathSeparator}${entry.key.replaceAll('/', Platform.pathSeparator)}";
+        final File outputFile = File(outputPath);
+        await outputFile.parent.create(recursive: true);
+        await outputFile.writeAsBytes(entry.value);
+      }
+
+      projectStatusMessage = "Exported folder to ${destinationDirectory.path}";
+      notifyListeners();
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error exporting project to folder: $e");
+      }
+      projectStatusMessage = "Export to folder failed: $e";
       notifyListeners();
       return false;
     }

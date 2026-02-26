@@ -81,6 +81,17 @@ class LayoutProjects extends StatelessWidget {
                 }
               : null,
         ),
+        sectionCard(
+          title: "Export to folder",
+          description:
+              "Copy the selected project to a folder you choose, keeping files uncompressed and preserving the project structure.",
+          buttonLabel: "Export to folder",
+          onPressed: hasSelectedProject
+              ? () async {
+                  await appData.exportSelectedProjectToFolder();
+                }
+              : null,
+        ),
       ],
     );
   }

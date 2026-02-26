@@ -22,6 +22,7 @@ class GameLevel {
     'indigo',
     'purple',
     'pink',
+    'black',
   ];
   static const String defaultViewportInitialColor = 'green';
   static const String defaultViewportPreviewColor = 'blue';

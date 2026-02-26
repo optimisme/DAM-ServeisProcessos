@@ -1,6 +1,6 @@
 import '../core/gameplay_module.dart';
 
-/// Level-specific extension point for level index 0.
+/// Level-specific extension point for level index 1.
 class Level001ActionsModule extends GameplayModule {
   const Level001ActionsModule();
 

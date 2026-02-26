@@ -668,13 +668,13 @@ class AppData extends ChangeNotifier {
   }
 
   String _defaultTileMapRelativePath(int levelIndex, int layerIndex) {
-    final String level = (levelIndex + 1).toString().padLeft(3, '0');
-    final String layer = (layerIndex + 1).toString().padLeft(3, '0');
+    final String level = levelIndex.toString().padLeft(3, '0');
+    final String layer = layerIndex.toString().padLeft(3, '0');
     return '$tilemapsFolderName/level_${level}_layer_$layer.json';
   }
 
   String _defaultZonesRelativePath(int levelIndex) {
-    final String level = (levelIndex + 1).toString().padLeft(3, '0');
+    final String level = levelIndex.toString().padLeft(3, '0');
     return '$zonesFolderName/level_${level}_zones.json';
   }
 
@@ -1044,7 +1044,7 @@ class AppData extends ChangeNotifier {
         if (relativePath.isEmpty ||
             !relativePath.toLowerCase().endsWith('.json')) {
           throw Exception(
-            'Invalid "$tileMapFileFieldName" value for level ${levelIndex + 1}, layer ${layerIndex + 1}.',
+            'Invalid "$tileMapFileFieldName" value for level $levelIndex, layer $layerIndex.',
           );
         }
         final List<List<int>> tileMapRows = await _readExternalTileMapRows(
@@ -1084,7 +1084,7 @@ class AppData extends ChangeNotifier {
       if (relativePath.isEmpty ||
           !relativePath.toLowerCase().endsWith('.json')) {
         throw Exception(
-          'Invalid "$zonesFileFieldName" value for level ${levelIndex + 1}.',
+          'Invalid "$zonesFileFieldName" value for level $levelIndex.',
         );
       }
 

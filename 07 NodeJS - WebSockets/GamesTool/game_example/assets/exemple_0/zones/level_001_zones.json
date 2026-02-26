@@ -13,7 +13,7 @@
     {
       "id": "__group_1772101676619958_1",
       "name": "Llac petit",
-      "collapsed": true
+      "collapsed": false
     },
     {
       "id": "__group_1772101681753835_2",
@@ -706,8 +706,26 @@
       "type": "Aigua",
       "x": 277,
       "y": 420,
-      "width": 27,
+      "width": 25,
       "height": 40,
+      "color": "blue",
+      "groupId": "__group_1772101676619958_1"
+    },
+    {
+      "type": "Aigua",
+      "x": 322,
+      "y": 420,
+      "width": 24,
+      "height": 55,
+      "color": "blue",
+      "groupId": "__group_1772101676619958_1"
+    },
+    {
+      "type": "Aigua",
+      "x": 292,
+      "y": 460,
+      "width": 10,
+      "height": 16,
       "color": "blue",
       "groupId": "__group_1772101676619958_1"
     }

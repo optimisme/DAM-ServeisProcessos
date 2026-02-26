@@ -100,9 +100,9 @@ class _DecorationsCounter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Align(
-      alignment: Alignment.topLeft,
+      alignment: Alignment.topRight,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 0, 0),
+        padding: const EdgeInsets.fromLTRB(0, 12, 12, 0),
         child: ValueListenableBuilder<int>(
           valueListenable: game.removedDecorationsCount,
           builder: (BuildContext context, int count, Widget? _) {
@@ -113,7 +113,7 @@ class _DecorationsCounter extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                'Trees: $count',
+                'Arbres: $count',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13,

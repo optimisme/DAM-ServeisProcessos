@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add lib/gameplay/common/hero_movement_module.dart lib/gameplay/game_screen.dart lib/gameplay/level_game.dart)"
+    ]
+  }
+}

@@ -39,8 +39,8 @@
       ],
       "sprites": [
         {
-          "name": "Hero",
-          "type": "Hero",
+          "name": "Heroi",
+          "type": "Heroi",
           "animationId": "anim_1772099194341380",
           "x": 430,
           "y": 268,
@@ -315,7 +315,7 @@
     {
       "id": "__group_1772115382813671_1",
       "name": "Heroi Aturat",
-      "collapsed": false
+      "collapsed": true
     },
     {
       "id": "__group_1772115377170906_0",

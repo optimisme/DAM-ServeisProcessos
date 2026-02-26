@@ -19,8 +19,10 @@ class LevelMenuScreen extends StatefulWidget {
   final void Function(
     BuildContext context,
     String projectRoot,
+    String levelName,
     int levelIndex,
-  ) onLevelSelected;
+  )
+  onLevelSelected;
 
   /// Root directory to search for exported projects (default: `'assets'`).
   final String assetsRoot;
@@ -65,10 +67,7 @@ class _LevelMenuScreenState extends State<LevelMenuScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text(
-          'Games Tool',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Games Tool', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: FutureBuilder<List<_ProjectEntry>>(
@@ -109,8 +108,8 @@ class _LevelMenuScreenState extends State<LevelMenuScreen> {
               final GamesToolProject project = entry.loaded.project;
               return _ProjectSection(
                 project: project,
-                onLevelTap: (int levelIndex) =>
-                    widget.onLevelSelected(ctx2, entry.root, levelIndex),
+                onLevelTap: (int levelIndex, String levelName) => widget
+                    .onLevelSelected(ctx2, entry.root, levelName, levelIndex),
               );
             },
           );
@@ -125,13 +124,10 @@ class _LevelMenuScreenState extends State<LevelMenuScreen> {
 // ---------------------------------------------------------------------------
 
 class _ProjectSection extends StatelessWidget {
-  const _ProjectSection({
-    required this.project,
-    required this.onLevelTap,
-  });
+  const _ProjectSection({required this.project, required this.onLevelTap});
 
   final GamesToolProject project;
-  final void Function(int levelIndex) onLevelTap;
+  final void Function(int levelIndex, String levelName) onLevelTap;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +151,7 @@ class _ProjectSection extends StatelessWidget {
           (e) => _LevelTile(
             level: e.$2,
             levelIndex: e.$1,
-            onTap: () => onLevelTap(e.$1),
+            onTap: () => onLevelTap(e.$1, e.$2.name),
           ),
         ),
       ],
@@ -176,8 +172,9 @@ class _LevelTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String title =
-        level.name.isNotEmpty ? level.name : 'Level $levelIndex';
+    final String title = level.name.isNotEmpty
+        ? level.name
+        : 'Level $levelIndex';
     final String subtitle =
         '${level.viewportWidth} × ${level.viewportHeight}  •  '
         '${level.layers.length} layer${level.layers.length == 1 ? '' : 's'}  •  '

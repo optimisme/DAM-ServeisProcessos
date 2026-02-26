@@ -16,16 +16,23 @@ class GamesToolExampleApp extends StatelessWidget {
       title: 'Games Tool',
       theme: ThemeData.dark(),
       home: LevelMenuScreen(
-        onLevelSelected: (BuildContext ctx, String projectRoot, int levelIndex) {
-          Navigator.of(ctx).push(
-            MaterialPageRoute<void>(
-              builder: (_) => GameScreen(
-                projectRoot: projectRoot,
-                levelIndex: levelIndex,
-              ),
-            ),
-          );
-        },
+        onLevelSelected:
+            (
+              BuildContext ctx,
+              String projectRoot,
+              String levelName,
+              int levelIndex,
+            ) {
+              Navigator.of(ctx).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => GameScreen(
+                    projectRoot: projectRoot,
+                    levelName: levelName,
+                    levelIndexFallback: levelIndex,
+                  ),
+                ),
+              );
+            },
       ),
     );
   }

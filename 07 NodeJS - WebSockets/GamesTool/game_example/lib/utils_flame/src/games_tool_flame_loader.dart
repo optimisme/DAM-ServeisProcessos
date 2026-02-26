@@ -78,17 +78,25 @@ class GamesToolSpriteHandle {
     required GamesToolAnimatedSprite sprite,
     required SpriteAnimationComponent component,
     required this.loadedProject,
+    required bool initialFlipX,
+    required bool initialFlipY,
   }) : sprite = sprite, // ignore: prefer_initializing_formals
        _animComponent = component,
-       _staticComponent = null;
+       _staticComponent = null,
+       _flipX = initialFlipX,
+       _flipY = initialFlipY;
 
   GamesToolSpriteHandle._static({
     required GamesToolStaticSprite sprite,
     required SpriteComponent component,
     required this.loadedProject,
+    required bool initialFlipX,
+    required bool initialFlipY,
   }) : sprite = sprite, // ignore: prefer_initializing_formals
        _animComponent = null,
-       _staticComponent = component;
+       _staticComponent = component,
+       _flipX = initialFlipX,
+       _flipY = initialFlipY;
 
   /// The Games Tool sprite data this handle refers to.
   final GamesToolSprite sprite;
@@ -96,6 +104,8 @@ class GamesToolSpriteHandle {
 
   final SpriteAnimationComponent? _animComponent;
   final SpriteComponent? _staticComponent;
+  bool _flipX;
+  bool _flipY;
 
   /// The underlying Flame component placed in the world.
   PositionComponent get component =>
@@ -123,6 +133,21 @@ class GamesToolSpriteHandle {
   set position(Vector2 value) => component.position = value;
 
   Vector2 get size => component.size;
+
+  // ---- Runtime flip control ----------------------------------------------
+
+  /// Whether the sprite is currently mirrored horizontally.
+  bool get flipX => _flipX;
+
+  /// Whether the sprite is currently mirrored vertically.
+  bool get flipY => _flipY;
+
+  /// Updates horizontal/vertical mirroring while keeping the top-left world
+  /// position stable (same behaviour as initial loader flip).
+  void setFlip({bool? flipX, bool? flipY}) {
+    if (flipX != null) _setFlipX(flipX);
+    if (flipY != null) _setFlipY(flipY);
+  }
 
   // ---- Animation control -------------------------------------------------
 
@@ -208,6 +233,22 @@ class GamesToolSpriteHandle {
     );
     if (resetOnPlay) ac.animationTicker?.reset();
     ac.animationTicker?.paused = false;
+  }
+
+  void _setFlipX(bool value) {
+    if (_flipX == value) return;
+    final PositionComponent c = component;
+    c.scale.x = (value ? -1.0 : 1.0) * c.scale.x.abs();
+    c.position.x += value ? c.size.x : -c.size.x;
+    _flipX = value;
+  }
+
+  void _setFlipY(bool value) {
+    if (_flipY == value) return;
+    final PositionComponent c = component;
+    c.scale.y = (value ? -1.0 : 1.0) * c.scale.y.abs();
+    c.position.y += value ? c.size.y : -c.size.y;
+    _flipY = value;
   }
 }
 
@@ -779,6 +820,8 @@ class GamesToolFlameLoader {
           sprite: sprite,
           component: component,
           loadedProject: loadedProject,
+          initialFlipX: sprite.flipX,
+          initialFlipY: sprite.flipY,
         );
 
       case GamesToolStaticSprite():
@@ -825,6 +868,8 @@ class GamesToolFlameLoader {
           sprite: sprite,
           component: component,
           loadedProject: loadedProject,
+          initialFlipX: sprite.flipX,
+          initialFlipY: sprite.flipY,
         );
     }
   }

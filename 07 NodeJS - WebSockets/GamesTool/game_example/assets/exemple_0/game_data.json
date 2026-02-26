@@ -1,0 +1,350 @@
+{
+  "name": "Exemple 0",
+  "levels": [
+    {
+      "name": "L'era Xampinyó",
+      "description": "",
+      "layers": [
+        {
+          "name": "Decoracions",
+          "x": 0,
+          "y": 0,
+          "depth": 0.0,
+          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
+          "tilesWidth": 16,
+          "tilesHeight": 16,
+          "visible": true,
+          "groupId": "__main__",
+          "tileMapFile": "tilemaps/level_001_layer_001.json"
+        },
+        {
+          "name": "Terreny",
+          "x": 0,
+          "y": 0,
+          "depth": 0.0,
+          "tilesSheetFile": "media/punyworld-overworld-tileset.png",
+          "tilesWidth": 16,
+          "tilesHeight": 16,
+          "visible": true,
+          "groupId": "__main__",
+          "tileMapFile": "tilemaps/level_001_layer_002.json"
+        }
+      ],
+      "layerGroups": [
+        {
+          "id": "__main__",
+          "name": "Main",
+          "collapsed": false
+        }
+      ],
+      "sprites": [
+        {
+          "name": "Hero",
+          "type": "Hero",
+          "animationId": "anim_1772099194341380",
+          "x": 430,
+          "y": 268,
+          "width": 20,
+          "height": 20,
+          "imageFile": "media/16x16 Idle-Sheet.png",
+          "flipX": false,
+          "flipY": false,
+          "depth": 0.0,
+          "groupId": "__main__"
+        }
+      ],
+      "spriteGroups": [
+        {
+          "id": "__main__",
+          "name": "Main",
+          "collapsed": false
+        }
+      ],
+      "groupId": "__main__",
+      "viewportWidth": 320,
+      "viewportHeight": 180,
+      "viewportX": 280,
+      "viewportY": 175,
+      "viewportAdaptation": "letterbox",
+      "viewportInitialColor": "yellow",
+      "viewportPreviewColor": "pink",
+      "backgroundColorHex": "#DCDCE1",
+      "zonesFile": "zones/level_001_zones.json"
+    },
+    {
+      "name": "El prat Muu Muu",
+      "description": "",
+      "layers": [],
+      "layerGroups": [
+        {
+          "id": "__main__",
+          "name": "Main",
+          "collapsed": false
+        }
+      ],
+      "sprites": [],
+      "spriteGroups": [
+        {
+          "id": "__main__",
+          "name": "Main",
+          "collapsed": false
+        }
+      ],
+      "groupId": "__main__",
+      "viewportWidth": 320,
+      "viewportHeight": 180,
+      "viewportX": 0,
+      "viewportY": 0,
+      "viewportAdaptation": "letterbox",
+      "viewportInitialColor": "green",
+      "viewportPreviewColor": "blue",
+      "backgroundColorHex": "#DCDCE1",
+      "zonesFile": "zones/level_002_zones.json"
+    }
+  ],
+  "levelGroups": [
+    {
+      "id": "__main__",
+      "name": "Main",
+      "collapsed": false
+    }
+  ],
+  "mediaAssets": [
+    {
+      "name": "Terreny",
+      "fileName": "media/punyworld-overworld-tileset.png",
+      "mediaType": "tileset",
+      "tileWidth": 16,
+      "tileHeight": 16,
+      "selectionColorHex": "#FF2D55",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Heroi Aturat",
+      "fileName": "media/16x16 Idle-Sheet.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 20,
+      "tileHeight": 20,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Heroi Salt",
+      "fileName": "media/16x16 Jump-Sheet.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 20,
+      "tileHeight": 20,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    },
+    {
+      "name": "Heroi Camina",
+      "fileName": "media/16x16 Walk-Sheet.png",
+      "mediaType": "spritesheet",
+      "tileWidth": 20,
+      "tileHeight": 20,
+      "selectionColorHex": "#FFCC00",
+      "groupId": "__main__"
+    }
+  ],
+  "mediaGroups": [
+    {
+      "id": "__main__",
+      "name": "Main",
+      "collapsed": false
+    }
+  ],
+  "animations": [
+    {
+      "id": "anim_1772099194341380",
+      "name": "Heroi Aturat Avall",
+      "mediaFile": "media/16x16 Idle-Sheet.png",
+      "startFrame": 0,
+      "endFrame": 3,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115382813671_1"
+    },
+    {
+      "id": "anim_1772099235919869",
+      "name": "Heroi Aturat Avall-Dreta",
+      "mediaFile": "media/16x16 Idle-Sheet.png",
+      "startFrame": 4,
+      "endFrame": 7,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115382813671_1"
+    },
+    {
+      "id": "anim_1772099263954479",
+      "name": "Heroi Aturat Dreta",
+      "mediaFile": "media/16x16 Idle-Sheet.png",
+      "startFrame": 8,
+      "endFrame": 11,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115382813671_1"
+    },
+    {
+      "id": "anim_1772099284318147",
+      "name": "Heroi Aturat Amunt-Dreta",
+      "mediaFile": "media/16x16 Idle-Sheet.png",
+      "startFrame": 12,
+      "endFrame": 15,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115382813671_1"
+    },
+    {
+      "id": "anim_1772099299323661",
+      "name": "Heroi Aturat Amunt",
+      "mediaFile": "media/16x16 Idle-Sheet.png",
+      "startFrame": 16,
+      "endFrame": 19,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115382813671_1"
+    },
+    {
+      "id": "anim_1772099330451684",
+      "name": "Heroi Salt Avall",
+      "mediaFile": "media/16x16 Jump-Sheet.png",
+      "startFrame": 0,
+      "endFrame": 4,
+      "fps": 8.0,
+      "loop": false,
+      "groupId": "__group_1772115377170906_0"
+    },
+    {
+      "id": "anim_1772099342092609",
+      "name": "Heroi Salt Avall-Dreta",
+      "mediaFile": "media/16x16 Jump-Sheet.png",
+      "startFrame": 5,
+      "endFrame": 9,
+      "fps": 8.0,
+      "loop": false,
+      "groupId": "__group_1772115377170906_0"
+    },
+    {
+      "id": "anim_1772099350583942",
+      "name": "Heroi Salt Dreta",
+      "mediaFile": "media/16x16 Jump-Sheet.png",
+      "startFrame": 10,
+      "endFrame": 14,
+      "fps": 8.0,
+      "loop": false,
+      "groupId": "__group_1772115377170906_0"
+    },
+    {
+      "id": "anim_1772099360120626",
+      "name": "Heroi Salt Amunt-Dreta",
+      "mediaFile": "media/16x16 Jump-Sheet.png",
+      "startFrame": 15,
+      "endFrame": 19,
+      "fps": 8.0,
+      "loop": false,
+      "groupId": "__group_1772115377170906_0"
+    },
+    {
+      "id": "anim_1772099368150074",
+      "name": "Heroi Salt Amunt",
+      "mediaFile": "media/16x16 Jump-Sheet.png",
+      "startFrame": 20,
+      "endFrame": 24,
+      "fps": 8.0,
+      "loop": false,
+      "groupId": "__group_1772115377170906_0"
+    },
+    {
+      "id": "anim_1772099423666593",
+      "name": "Heroi Camina Avall",
+      "mediaFile": "media/16x16 Walk-Sheet.png",
+      "startFrame": 0,
+      "endFrame": 3,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115389184027_2"
+    },
+    {
+      "id": "anim_1772099432167084",
+      "name": "Heroi Camina Avall-Dreta",
+      "mediaFile": "media/16x16 Walk-Sheet.png",
+      "startFrame": 4,
+      "endFrame": 7,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115389184027_2"
+    },
+    {
+      "id": "anim_1772099439457925",
+      "name": "Heroi Camina Dreta",
+      "mediaFile": "media/16x16 Walk-Sheet.png",
+      "startFrame": 8,
+      "endFrame": 11,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115389184027_2"
+    },
+    {
+      "id": "anim_1772099455402130",
+      "name": "Heroi Camina Amunt-Dreta",
+      "mediaFile": "media/16x16 Walk-Sheet.png",
+      "startFrame": 12,
+      "endFrame": 15,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115389184027_2"
+    },
+    {
+      "id": "anim_1772099462736390",
+      "name": "Heroi Camina Amunt",
+      "mediaFile": "media/16x16 Walk-Sheet.png",
+      "startFrame": 16,
+      "endFrame": 19,
+      "fps": 8.0,
+      "loop": true,
+      "groupId": "__group_1772115389184027_2"
+    }
+  ],
+  "animationGroups": [
+    {
+      "id": "__main__",
+      "name": "Main",
+      "collapsed": false
+    },
+    {
+      "id": "__group_1772115382813671_1",
+      "name": "Heroi Aturat",
+      "collapsed": false
+    },
+    {
+      "id": "__group_1772115377170906_0",
+      "name": "Heroi Salt",
+      "collapsed": true
+    },
+    {
+      "id": "__group_1772115389184027_2",
+      "name": "Heroi Camina",
+      "collapsed": true
+    }
+  ],
+  "zoneTypes": [
+    {
+      "name": "Aigua",
+      "color": "blue"
+    },
+    {
+      "name": "Mur",
+      "color": "red"
+    },
+    {
+      "name": "Pont",
+      "color": "amber"
+    },
+    {
+      "name": "Arbre",
+      "color": "teal"
+    }
+  ],
+  "projectComments": "Personatge: https://erisesra.itch.io/character-templates-pack\nTerreny: https://merchant-shade.itch.io/16x16-puny-world"
+}

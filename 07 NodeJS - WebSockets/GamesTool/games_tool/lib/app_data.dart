@@ -14,6 +14,11 @@ import 'game_media_asset.dart';
 
 typedef ProjectMutation = void Function();
 typedef ProjectMutationValidator = String? Function();
+typedef ExportOverwriteConfirmation =
+    Future<bool> Function({
+      required String destinationFolderPath,
+      required List<String> conflictingRelativePaths,
+    });
 
 class StoredProject {
   final String id;
@@ -618,21 +623,6 @@ class AppData extends ChangeNotifier {
       "$projectsPath${Platform.pathSeparator}$candidate",
     ).exists()) {
       candidate = "${baseFolderName}_$cnt";
-      cnt++;
-    }
-    return candidate;
-  }
-
-  Future<String> _buildUniqueDirectoryNameInDirectory(
-    String parentDirectoryPath,
-    String baseDirectoryName,
-  ) async {
-    String candidate = baseDirectoryName;
-    int cnt = 2;
-    while (await Directory(
-      "$parentDirectoryPath${Platform.pathSeparator}$candidate",
-    ).exists()) {
-      candidate = "${baseDirectoryName}_$cnt";
       cnt++;
     }
     return candidate;
@@ -2016,7 +2006,9 @@ class AppData extends ChangeNotifier {
     return exportFiles;
   }
 
-  Future<bool> exportSelectedProjectToFolder() async {
+  Future<bool> exportSelectedProjectToFolder({
+    ExportOverwriteConfirmation? confirmOverwrite,
+  }) async {
     try {
       await flushPendingAutosave();
       final StoredProject? project = selectedProject;
@@ -2033,15 +2025,10 @@ class AppData extends ChangeNotifier {
         return false;
       }
 
-      final String destinationFolderName =
-          await _buildUniqueDirectoryNameInDirectory(
-        destinationRootPath,
-        project.folderName,
-      );
+      final String destinationFolderName = project.folderName;
       final Directory destinationDirectory = Directory(
         "$destinationRootPath${Platform.pathSeparator}$destinationFolderName",
       );
-      await destinationDirectory.create(recursive: true);
 
       final Directory sourceDirectory = Directory(
         "$projectsPath${Platform.pathSeparator}${project.folderName}",
@@ -2051,6 +2038,30 @@ class AppData extends ChangeNotifier {
         sourceDirectoryPath: sourceDirectory.path,
       );
 
+      final List<String> conflictingRelativePaths = <String>[];
+      for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
+        final String outputPath =
+            "${destinationDirectory.path}${Platform.pathSeparator}${entry.key.replaceAll('/', Platform.pathSeparator)}";
+        if (await File(outputPath).exists()) {
+          conflictingRelativePaths.add(entry.key);
+        }
+      }
+      if (conflictingRelativePaths.isNotEmpty) {
+        final bool allowOverwrite =
+            confirmOverwrite == null
+                ? false
+                : await confirmOverwrite(
+                    destinationFolderPath: destinationDirectory.path,
+                    conflictingRelativePaths: conflictingRelativePaths,
+                  );
+        if (!allowOverwrite) {
+          projectStatusMessage = "Export to folder cancelled";
+          notifyListeners();
+          return false;
+        }
+      }
+
+      await destinationDirectory.create(recursive: true);
       for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
         final String outputPath =
             "${destinationDirectory.path}${Platform.pathSeparator}${entry.key.replaceAll('/', Platform.pathSeparator)}";

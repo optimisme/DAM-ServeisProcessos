@@ -627,22 +627,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                       ),
                     ),
 
-                    const SizedBox(height: 6),
-                    CDKText(
-                      _adaptationDescription(adaptationIndex),
-                      role: CDKTextRole.caption,
-                      color: cdkColors.colorText,
-                    ),
-
                     const SizedBox(height: 14),
-
-                    // ── Hint ─────────────────────────────────────────────────
-                    CDKText(
-                      'Initial rectangle = initial position. Preview rectangle = preview position. '
-                      'Drag the preview rectangle on the canvas to move it, drag its bottom-right triangle to resize it, then use "Use preview values".',
-                      role: CDKTextRole.caption,
-                      color: cdkColors.colorText,
-                    ),
                   ],
                 ),
               ),
@@ -650,19 +635,6 @@ class LayoutViewportState extends State<LayoutViewport> {
           ),
       ],
     );
-  }
-
-  String _adaptationDescription(int index) {
-    switch (index) {
-      case 0:
-        return 'Letterbox: keeps the aspect ratio and adds bars on the sides or top/bottom.';
-      case 1:
-        return 'Expand: enlarges the visible area to fill the screen without distortion.';
-      case 2:
-        return 'Stretch: scales the viewport to fill the screen, ignoring aspect ratio.';
-      default:
-        return '';
-    }
   }
 }
 

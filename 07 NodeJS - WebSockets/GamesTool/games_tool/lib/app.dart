@@ -2,14 +2,68 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'layout.dart';
 
+class SystemAwareCDKApp extends StatefulWidget {
+  const SystemAwareCDKApp({
+    super.key,
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  State<SystemAwareCDKApp> createState() => _SystemAwareCDKAppState();
+}
+
+class _SystemAwareCDKAppState extends State<SystemAwareCDKApp>
+    with WidgetsBindingObserver {
+  late Brightness _platformBrightness;
+
+  CDKThemeAppearance get _appearance => _platformBrightness == Brightness.dark
+      ? CDKThemeAppearance.dark
+      : CDKThemeAppearance.light;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _platformBrightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    final Brightness nextBrightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    if (nextBrightness == _platformBrightness) {
+      return;
+    }
+    setState(() {
+      _platformBrightness = nextBrightness;
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CDKApp(
+      defaultAppearance: _appearance,
+      defaultColor: "systemBlue",
+      child: widget.child,
+    );
+  }
+}
+
 class App extends StatelessWidget {
   const App({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const CDKApp(
-      defaultAppearance: CDKThemeAppearance.system,
-      defaultColor: "systemBlue",
+    return const SystemAwareCDKApp(
       child: Layout(title: "Level builder"),
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'app_data.dart';
@@ -55,11 +54,7 @@ class _BootstrapAppState extends State<_BootstrapApp> {
       );
     }
 
-    return CDKApp(
-      defaultAppearance: CDKThemeAppearance.system,
-      defaultColor: "systemBlue",
-      child: const _LoadingScreen(),
-    );
+    return const SystemAwareCDKApp(child: _LoadingScreen());
   }
 }
 

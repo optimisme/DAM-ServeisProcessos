@@ -344,7 +344,14 @@ class LayoutLayersState extends State<LayoutLayers> {
     final int mapWidth = data.tilemapWidth < 1 ? 1 : data.tilemapWidth;
     final int mapHeight = data.tilemapHeight < 1 ? 1 : data.tilemapHeight;
 
-    appData.gameData.levels[appData.selectedLevel].layers.add(
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    _ensureMainLayerGroup(level);
+    final Set<String> validGroupIds = _layerGroupIds(level);
+    final String targetGroupId = validGroupIds.contains(data.groupId)
+        ? data.groupId
+        : GameListGroup.mainId;
+
+    level.layers.add(
       GameLayer(
         name: data.name,
         x: data.x,
@@ -358,7 +365,7 @@ class LayoutLayersState extends State<LayoutLayers> {
           (_) => List.filled(mapWidth, -1),
         ),
         visible: data.visible,
-        groupId: GameLayer.defaultGroupId,
+        groupId: targetGroupId,
       ),
     );
 
@@ -420,6 +427,9 @@ class LayoutLayersState extends State<LayoutLayers> {
     required String confirmLabel,
     required _LayerDialogData initialData,
     required List<GameMediaAsset> tilesetAssets,
+    List<GameListGroup> groupOptions = const <GameListGroup>[],
+    bool showGroupSelector = false,
+    String groupFieldLabel = 'Layer Group',
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -441,6 +451,9 @@ class LayoutLayersState extends State<LayoutLayers> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       tilesetAssets: tilesetAssets,
+      groupOptions: groupOptions,
+      showGroupSelector: showGroupSelector,
+      groupFieldLabel: groupFieldLabel,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
       onClose: () {
@@ -499,6 +512,13 @@ class LayoutLayersState extends State<LayoutLayers> {
   }
 
   Future<void> _promptAndAddLayer(List<GameMediaAsset> tilesetAssets) async {
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return;
+    }
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    _ensureMainLayerGroup(level);
     final GameMediaAsset first = tilesetAssets.first;
     final _LayerDialogData? data = await _promptLayerData(
       title: 'New layer',
@@ -514,13 +534,16 @@ class LayoutLayersState extends State<LayoutLayers> {
         tilemapWidth: 32,
         tilemapHeight: 16,
         visible: true,
+        groupId: GameListGroup.mainId,
       ),
       tilesetAssets: tilesetAssets,
+      groupOptions: _layerGroups(level),
+      showGroupSelector: true,
+      groupFieldLabel: 'Layer Group',
     );
     if (!mounted || data == null) {
       return;
     }
-    final AppData appData = Provider.of<AppData>(context, listen: false);
     appData.pushUndo();
     _addLayer(appData: appData, data: data);
     await _autoSaveIfPossible(appData);
@@ -562,8 +585,15 @@ class LayoutLayersState extends State<LayoutLayers> {
         tilemapWidth: mapWidth,
         tilemapHeight: mapHeight,
         visible: layer.visible,
+        groupId: _effectiveLayerGroupId(
+          appData.gameData.levels[appData.selectedLevel],
+          layer,
+        ),
       ),
       tilesetAssets: tilesetAssets,
+      groupOptions: _layerGroups(
+        appData.gameData.levels[appData.selectedLevel],
+      ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
       liveEdit: true,
@@ -1177,6 +1207,7 @@ class _LayerDialogData {
     required this.tilemapWidth,
     required this.tilemapHeight,
     required this.visible,
+    required this.groupId,
   });
 
   final String name;
@@ -1189,6 +1220,7 @@ class _LayerDialogData {
   final int tilemapWidth;
   final int tilemapHeight;
   final bool visible;
+  final String groupId;
 }
 
 class _LayerFormDialog extends StatefulWidget {
@@ -1197,6 +1229,9 @@ class _LayerFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.tilesetAssets,
+    required this.groupOptions,
+    required this.showGroupSelector,
+    required this.groupFieldLabel,
     this.liveEdit = false,
     this.onLiveChanged,
     this.onClose,
@@ -1209,6 +1244,9 @@ class _LayerFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _LayerDialogData initialData;
   final List<GameMediaAsset> tilesetAssets;
+  final List<GameListGroup> groupOptions;
+  final bool showGroupSelector;
+  final String groupFieldLabel;
   final bool liveEdit;
   final Future<void> Function(_LayerDialogData value)? onLiveChanged;
   final VoidCallback? onClose;
@@ -1244,6 +1282,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
 
   late bool _visible = widget.initialData.visible;
   late int _selectedAssetIndex = _resolveInitialAssetIndex();
+  late String _selectedGroupId = _resolveInitialGroupId();
   EditSession<_LayerDialogData>? _editSession;
 
   int _resolveInitialAssetIndex() {
@@ -1254,6 +1293,18 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
       if (found != -1) return found;
     }
     return 0;
+  }
+
+  String _resolveInitialGroupId() {
+    for (final group in widget.groupOptions) {
+      if (group.id == widget.initialData.groupId) {
+        return group.id;
+      }
+    }
+    if (widget.groupOptions.isNotEmpty) {
+      return widget.groupOptions.first.id;
+    }
+    return GameListGroup.mainId;
   }
 
   GameMediaAsset get _selectedAsset =>
@@ -1292,6 +1343,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
       tilemapWidth: int.tryParse(_tilemapWidthController.text.trim()) ?? 32,
       tilemapHeight: int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
       visible: _visible,
+      groupId: _selectedGroupId,
     );
   }
 
@@ -1330,6 +1382,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
         tilemapWidth: int.tryParse(_tilemapWidthController.text.trim()) ?? 32,
         tilemapHeight: int.tryParse(_tilemapHeightController.text.trim()) ?? 16,
         visible: _visible,
+        groupId: _selectedGroupId,
       ),
     );
   }
@@ -1350,7 +1403,8 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
             a.tilesSheetFile == b.tilesSheetFile &&
             a.tilemapWidth == b.tilemapWidth &&
             a.tilemapHeight == b.tilemapHeight &&
-            a.visible == b.visible,
+            a.visible == b.visible &&
+            a.groupId == b.groupId,
       );
     }
   }
@@ -1496,6 +1550,28 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
             ],
           ),
           SizedBox(height: spacing.md),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            EditorLabeledField(
+              label: widget.groupFieldLabel,
+              child: CDKButtonSelect(
+                selectedIndex: widget.groupOptions
+                    .indexWhere((group) => group.id == _selectedGroupId)
+                    .clamp(0, widget.groupOptions.length - 1),
+                options: widget.groupOptions
+                    .map((group) => group.name.trim().isEmpty
+                        ? GameListGroup.defaultMainName
+                        : group.name)
+                    .toList(growable: false),
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedGroupId = widget.groupOptions[index].id;
+                  });
+                  _onInputChanged();
+                },
+              ),
+            ),
+            SizedBox(height: spacing.md),
+          ],
           EditorLabeledField(
             label: 'Tilesheet',
             child: Column(

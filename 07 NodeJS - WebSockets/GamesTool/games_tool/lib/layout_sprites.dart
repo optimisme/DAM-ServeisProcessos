@@ -356,6 +356,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required int y,
     required GameAnimation animation,
     required AppData appData,
+    String groupId = GameListGroup.mainId,
     bool flipX = false,
     bool flipY = false,
     double depth = 0.0,
@@ -373,6 +374,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       imageFile: animation.mediaFile,
       flipX: flipX,
       flipY: flipY,
+      groupId: groupId,
     );
   }
 
@@ -396,6 +398,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
         y: sprite.y,
         animation: animation,
         appData: appData,
+        groupId: sprite.groupId,
         flipX: sprite.flipX,
         flipY: sprite.flipY,
         depth: sprite.depth,
@@ -413,6 +416,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       imageFile: sprite.imageFile,
       flipX: sprite.flipX,
       flipY: sprite.flipY,
+      groupId: sprite.groupId,
     );
   }
 
@@ -423,7 +427,13 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (appData.selectedLevel == -1) {
       return;
     }
-    appData.gameData.levels[appData.selectedLevel].sprites.add(
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    _ensureMainSpriteGroup(level);
+    final Set<String> validGroupIds = _spriteGroupIds(level);
+    final String targetGroupId = validGroupIds.contains(data.groupId)
+        ? data.groupId
+        : GameListGroup.mainId;
+    level.sprites.add(
       GameSprite(
         name: data.name,
         animationId: data.animationId,
@@ -435,7 +445,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
         imageFile: data.imageFile,
         flipX: data.flipX,
         flipY: data.flipY,
-        groupId: GameSprite.defaultGroupId,
+        groupId: targetGroupId,
       ),
     );
     appData.selectedSprite = -1;
@@ -477,6 +487,9 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required String confirmLabel,
     required _SpriteDialogData initialData,
     required List<GameAnimation> animations,
+    List<GameListGroup> groupOptions = const <GameListGroup>[],
+    bool showGroupSelector = false,
+    String groupFieldLabel = 'Sprite Group',
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -498,6 +511,9 @@ class LayoutSpritesState extends State<LayoutSprites> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       animations: animations,
+      groupOptions: groupOptions,
+      showGroupSelector: showGroupSelector,
+      groupFieldLabel: groupFieldLabel,
       resolveMediaByFileName: appData.mediaAssetByFileName,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
@@ -558,6 +574,12 @@ class LayoutSpritesState extends State<LayoutSprites> {
 
   Future<void> _promptAndAddSprite(List<GameAnimation> animations) async {
     final AppData appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return;
+    }
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    _ensureMainSpriteGroup(level);
     final GameAnimation? defaultAnimation =
         _defaultAnimation(appData, animations);
     if (defaultAnimation == null) {
@@ -573,8 +595,12 @@ class LayoutSpritesState extends State<LayoutSprites> {
         y: 0,
         animation: defaultAnimation,
         appData: appData,
+        groupId: GameListGroup.mainId,
       ),
       animations: animations,
+      groupOptions: _spriteGroups(level),
+      showGroupSelector: true,
+      groupFieldLabel: 'Sprite Group',
     );
     if (!mounted || data == null) {
       return;
@@ -638,6 +664,9 @@ class LayoutSpritesState extends State<LayoutSprites> {
         animations: animations,
       ),
       animations: animations,
+      groupOptions: _spriteGroups(
+        appData.gameData.levels[appData.selectedLevel],
+      ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
       liveEdit: true,
@@ -1185,6 +1214,7 @@ class _SpriteDialogData {
     required this.imageFile,
     required this.flipX,
     required this.flipY,
+    required this.groupId,
   });
 
   final String name;
@@ -1197,6 +1227,7 @@ class _SpriteDialogData {
   final String imageFile;
   final bool flipX;
   final bool flipY;
+  final String groupId;
 }
 
 class _SpriteFormDialog extends StatefulWidget {
@@ -1205,6 +1236,9 @@ class _SpriteFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.animations,
+    required this.groupOptions,
+    required this.showGroupSelector,
+    required this.groupFieldLabel,
     required this.resolveMediaByFileName,
     this.liveEdit = false,
     this.onLiveChanged,
@@ -1218,6 +1252,9 @@ class _SpriteFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _SpriteDialogData initialData;
   final List<GameAnimation> animations;
+  final List<GameListGroup> groupOptions;
+  final bool showGroupSelector;
+  final String groupFieldLabel;
   final GameMediaAsset? Function(String fileName) resolveMediaByFileName;
   final bool liveEdit;
   final Future<void> Function(_SpriteDialogData value)? onLiveChanged;
@@ -1244,6 +1281,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     text: widget.initialData.depth.toString(),
   );
   late int _selectedAnimationIndex = _resolveInitialAnimationIndex();
+  late String _selectedGroupId = _resolveInitialGroupId();
   late bool _flipX = widget.initialData.flipX;
   late bool _flipY = widget.initialData.flipY;
   EditSession<_SpriteDialogData>? _editSession;
@@ -1266,6 +1304,18 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       }
     }
     return 0;
+  }
+
+  String _resolveInitialGroupId() {
+    for (final group in widget.groupOptions) {
+      if (group.id == widget.initialData.groupId) {
+        return group.id;
+      }
+    }
+    if (widget.groupOptions.isNotEmpty) {
+      return widget.groupOptions.first.id;
+    }
+    return GameListGroup.mainId;
   }
 
   GameAnimation? get _selectedAnimation {
@@ -1310,6 +1360,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       imageFile: animation?.mediaFile ?? widget.initialData.imageFile,
       flipX: _flipX,
       flipY: _flipY,
+      groupId: _selectedGroupId,
     );
   }
 
@@ -1354,7 +1405,8 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
             a.height == b.height &&
             a.imageFile == b.imageFile &&
             a.flipX == b.flipX &&
-            a.flipY == b.flipY,
+            a.flipY == b.flipY &&
+            a.groupId == b.groupId,
       );
     }
   }
@@ -1416,6 +1468,28 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            EditorLabeledField(
+              label: widget.groupFieldLabel,
+              child: CDKButtonSelect(
+                selectedIndex: widget.groupOptions
+                    .indexWhere((group) => group.id == _selectedGroupId)
+                    .clamp(0, widget.groupOptions.length - 1),
+                options: widget.groupOptions
+                    .map((group) => group.name.trim().isEmpty
+                        ? GameListGroup.defaultMainName
+                        : group.name)
+                    .toList(growable: false),
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedGroupId = widget.groupOptions[index].id;
+                  });
+                  _onInputChanged();
+                },
+              ),
+            ),
+            SizedBox(height: spacing.sm),
+          ],
           Row(
             children: [
               Expanded(

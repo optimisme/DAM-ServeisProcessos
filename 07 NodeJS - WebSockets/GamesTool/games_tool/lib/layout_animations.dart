@@ -558,6 +558,12 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     required AppData appData,
     required _AnimationDialogData data,
   }) {
+    _ensureMainAnimationGroup(appData);
+    final Set<String> validGroupIds =
+        _animationGroups(appData).map((group) => group.id).toSet();
+    final String targetGroupId = validGroupIds.contains(data.groupId)
+        ? data.groupId
+        : GameListGroup.mainId;
     appData.gameData.animations.add(
       GameAnimation(
         id: 'anim_${DateTime.now().microsecondsSinceEpoch}',
@@ -567,7 +573,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         endFrame: data.endFrame,
         fps: data.fps,
         loop: data.loop,
-        groupId: GameAnimation.defaultGroupId,
+        groupId: targetGroupId,
       ),
     );
     appData.selectedAnimation = -1;
@@ -605,6 +611,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     required String confirmLabel,
     required _AnimationDialogData initialData,
     required List<GameMediaAsset> sourceAssets,
+    List<GameListGroup> groupOptions = const <GameListGroup>[],
+    bool showGroupSelector = false,
+    String groupFieldLabel = 'Animation Group',
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -626,6 +635,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       sourceAssets: sourceAssets,
+      groupOptions: groupOptions,
+      showGroupSelector: showGroupSelector,
+      groupFieldLabel: groupFieldLabel,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
       onClose: () {
@@ -687,6 +699,8 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     if (sourceAssets.isEmpty) {
       return;
     }
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    _ensureMainAnimationGroup(appData);
     final GameMediaAsset first = sourceAssets.first;
     final _AnimationDialogData? data = await _promptAnimationData(
       title: 'New animation',
@@ -698,13 +712,16 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         endFrame: 0,
         fps: 12.0,
         loop: true,
+        groupId: GameListGroup.mainId,
       ),
       sourceAssets: sourceAssets,
+      groupOptions: _animationGroups(appData),
+      showGroupSelector: true,
+      groupFieldLabel: 'Animation Group',
     );
     if (!mounted || data == null) {
       return;
     }
-    final AppData appData = Provider.of<AppData>(context, listen: false);
     await appData.runProjectMutation(
       debugLabel: 'animation-add',
       mutate: () {
@@ -779,8 +796,10 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         endFrame: animation.endFrame,
         fps: animation.fps,
         loop: animation.loop,
+        groupId: _effectiveAnimationGroupId(appData, animation),
       ),
       sourceAssets: sourceAssets,
+      groupOptions: _animationGroups(appData),
       anchorKey: anchorKey,
       useArrowedPopover: true,
       liveEdit: true,
@@ -1335,6 +1354,7 @@ class _AnimationDialogData {
     required this.endFrame,
     required this.fps,
     required this.loop,
+    required this.groupId,
   });
 
   final String name;
@@ -1343,6 +1363,7 @@ class _AnimationDialogData {
   final int endFrame;
   final double fps;
   final bool loop;
+  final String groupId;
 }
 
 class _AnimationFormDialog extends StatefulWidget {
@@ -1351,6 +1372,9 @@ class _AnimationFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.sourceAssets,
+    required this.groupOptions,
+    required this.showGroupSelector,
+    required this.groupFieldLabel,
     this.liveEdit = false,
     this.onLiveChanged,
     this.onClose,
@@ -1363,6 +1387,9 @@ class _AnimationFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _AnimationDialogData initialData;
   final List<GameMediaAsset> sourceAssets;
+  final List<GameListGroup> groupOptions;
+  final bool showGroupSelector;
+  final String groupFieldLabel;
   final bool liveEdit;
   final Future<void> Function(_AnimationDialogData value)? onLiveChanged;
   final VoidCallback? onClose;
@@ -1387,6 +1414,7 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
   );
   late bool _loop = widget.initialData.loop;
   late int _selectedAssetIndex = _resolveInitialAssetIndex();
+  late String _selectedGroupId = _resolveInitialGroupId();
   EditSession<_AnimationDialogData>? _editSession;
 
   int _resolveInitialAssetIndex() {
@@ -1399,6 +1427,18 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
       }
     }
     return 0;
+  }
+
+  String _resolveInitialGroupId() {
+    for (final group in widget.groupOptions) {
+      if (group.id == widget.initialData.groupId) {
+        return group.id;
+      }
+    }
+    if (widget.groupOptions.isNotEmpty) {
+      return widget.groupOptions.first.id;
+    }
+    return GameListGroup.mainId;
   }
 
   GameMediaAsset? get _selectedAsset {
@@ -1453,6 +1493,7 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
       endFrame: end < start ? start : end,
       fps: _parseFps(_fpsController.text) ?? 12.0,
       loop: _loop,
+      groupId: _selectedGroupId,
     );
   }
 
@@ -1499,7 +1540,8 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
             a.startFrame == b.startFrame &&
             a.endFrame == b.endFrame &&
             a.fps == b.fps &&
-            a.loop == b.loop,
+            a.loop == b.loop &&
+            a.groupId == b.groupId,
       );
     }
   }
@@ -1560,6 +1602,28 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            EditorLabeledField(
+              label: widget.groupFieldLabel,
+              child: CDKButtonSelect(
+                selectedIndex: widget.groupOptions
+                    .indexWhere((group) => group.id == _selectedGroupId)
+                    .clamp(0, widget.groupOptions.length - 1),
+                options: widget.groupOptions
+                    .map((group) => group.name.trim().isEmpty
+                        ? GameListGroup.defaultMainName
+                        : group.name)
+                    .toList(growable: false),
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedGroupId = widget.groupOptions[index].id;
+                  });
+                  _onInputChanged();
+                },
+              ),
+            ),
+            SizedBox(height: spacing.sm),
+          ],
           EditorLabeledField(
             label: 'Source Media',
             child: mediaOptions.isEmpty

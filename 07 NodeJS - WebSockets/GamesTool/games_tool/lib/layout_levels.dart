@@ -319,8 +319,12 @@ class LayoutLevelsState extends State<LayoutLevels> {
     required String name,
     required String description,
     required String backgroundColorHex,
+    required String groupId,
   }) {
     _ensureMainLevelGroup(appData);
+    final Set<String> validGroupIds = _levelGroupIds(appData);
+    final String targetGroupId =
+        validGroupIds.contains(groupId) ? groupId : GameListGroup.mainId;
     final newLevel = GameLevel(
       name: name,
       description: description,
@@ -328,7 +332,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       zones: [],
       sprites: [],
       backgroundColorHex: backgroundColorHex,
-      groupId: GameListGroup.mainId,
+      groupId: targetGroupId,
     );
 
     appData.gameData.levels.add(newLevel);
@@ -342,7 +346,10 @@ class LayoutLevelsState extends State<LayoutLevels> {
     String initialName = "",
     String initialDescription = "",
     String initialBackgroundColorHex = "#DCDCE1",
+    String initialGroupId = GameListGroup.mainId,
     int? editingIndex,
+    bool showGroupSelector = false,
+    String groupFieldLabel = "Level Group",
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -372,6 +379,10 @@ class LayoutLevelsState extends State<LayoutLevels> {
       initialName: initialName,
       initialDescription: initialDescription,
       initialBackgroundColorHex: initialBackgroundColorHex,
+      initialGroupId: initialGroupId,
+      groupOptions: _levelGroups(appData),
+      showGroupSelector: showGroupSelector,
+      groupFieldLabel: groupFieldLabel,
       existingNames: existingNames,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
@@ -431,20 +442,25 @@ class LayoutLevelsState extends State<LayoutLevels> {
   }
 
   Future<void> _promptAndAddLevel() async {
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    _ensureMainLevelGroup(appData);
     final _LevelDialogData? levelData = await _promptLevelData(
       title: "New level",
       confirmLabel: "Add",
+      initialGroupId: GameListGroup.mainId,
+      showGroupSelector: true,
+      groupFieldLabel: "Level Group",
     );
     if (levelData == null || !mounted) {
       return;
     }
-    final appData = Provider.of<AppData>(context, listen: false);
     appData.pushUndo();
     _addLevel(
       appData: appData,
       name: levelData.name,
       description: levelData.description,
       backgroundColorHex: levelData.backgroundColorHex,
+      groupId: levelData.groupId,
     );
     await _autoSaveIfPossible(appData);
   }
@@ -490,6 +506,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       initialName: selected.name,
       initialDescription: selected.description,
       initialBackgroundColorHex: selected.backgroundColorHex,
+      initialGroupId: _effectiveLevelGroupId(appData, selected),
       editingIndex: index,
       anchorKey: anchorKey,
       useArrowedPopover: true,
@@ -989,11 +1006,13 @@ class _LevelDialogData {
     required this.name,
     required this.description,
     required this.backgroundColorHex,
+    required this.groupId,
   });
 
   final String name;
   final String description;
   final String backgroundColorHex;
+  final String groupId;
 }
 
 class _LevelFormDialog extends StatefulWidget {
@@ -1003,6 +1022,10 @@ class _LevelFormDialog extends StatefulWidget {
     required this.initialName,
     required this.initialDescription,
     required this.initialBackgroundColorHex,
+    required this.initialGroupId,
+    required this.groupOptions,
+    required this.showGroupSelector,
+    required this.groupFieldLabel,
     required this.existingNames,
     this.liveEdit = false,
     this.onLiveChanged,
@@ -1017,6 +1040,10 @@ class _LevelFormDialog extends StatefulWidget {
   final String initialName;
   final String initialDescription;
   final String initialBackgroundColorHex;
+  final String initialGroupId;
+  final List<GameListGroup> groupOptions;
+  final bool showGroupSelector;
+  final String groupFieldLabel;
   final Set<String> existingNames;
   final bool liveEdit;
   final Future<void> Function(_LevelDialogData value)? onLiveChanged;
@@ -1038,11 +1065,24 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   final GlobalKey _backgroundColorAnchorKey = GlobalKey();
   final FocusNode _nameFocusNode = FocusNode();
   String? _errorText;
+  late String _selectedGroupId = _resolveInitialGroupId();
   late String _backgroundColorHex = _toHexColor(
     _parseHexColor(
         widget.initialBackgroundColorHex, _defaultLevelBackgroundColor),
   );
   EditSession<_LevelDialogData>? _editSession;
+
+  String _resolveInitialGroupId() {
+    for (final group in widget.groupOptions) {
+      if (group.id == widget.initialGroupId) {
+        return group.id;
+      }
+    }
+    if (widget.groupOptions.isNotEmpty) {
+      return widget.groupOptions.first.id;
+    }
+    return GameListGroup.mainId;
+  }
 
   Color _parseHexColor(String hex, Color fallback) {
     final String cleaned = hex.trim().replaceFirst('#', '').toUpperCase();
@@ -1107,6 +1147,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
       name: _nameController.text.trim(),
       description: _descriptionController.text.trim(),
       backgroundColorHex: _backgroundColorHex,
+      groupId: _selectedGroupId,
     );
   }
 
@@ -1157,6 +1198,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
         name: cleanedName,
         description: _descriptionController.text.trim(),
         backgroundColorHex: _backgroundColorHex,
+        groupId: _selectedGroupId,
       ),
     );
   }
@@ -1172,7 +1214,8 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
         areEqual: (a, b) =>
             a.name == b.name &&
             a.description == b.description &&
-            a.backgroundColorHex == b.backgroundColorHex,
+            a.backgroundColorHex == b.backgroundColorHex &&
+            a.groupId == b.groupId,
       );
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1249,6 +1292,28 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            EditorLabeledField(
+              label: widget.groupFieldLabel,
+              child: CDKButtonSelect(
+                selectedIndex: widget.groupOptions
+                    .indexWhere((group) => group.id == _selectedGroupId)
+                    .clamp(0, widget.groupOptions.length - 1),
+                options: widget.groupOptions
+                    .map((group) => group.name.trim().isEmpty
+                        ? GameListGroup.defaultMainName
+                        : group.name)
+                    .toList(growable: false),
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedGroupId = widget.groupOptions[index].id;
+                  });
+                  _onInputChanged();
+                },
+              ),
+            ),
+            SizedBox(height: spacing.sm),
+          ],
           EditorLabeledField(
             label: 'Background color',
             child: Row(

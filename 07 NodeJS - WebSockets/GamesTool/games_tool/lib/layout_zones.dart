@@ -585,6 +585,10 @@ class LayoutZonesState extends State<LayoutZones> {
     }
     final GameLevel level = appData.gameData.levels[appData.selectedLevel];
     _ensureMainGroupInLevel(level);
+    final Set<String> validGroupIds = _groupIds(level);
+    final String targetGroupId = validGroupIds.contains(data.groupId)
+        ? data.groupId
+        : GameZoneGroup.mainId;
     level.zones.add(
       GameZone(
         type: data.type,
@@ -593,7 +597,7 @@ class LayoutZonesState extends State<LayoutZones> {
         width: data.width,
         height: data.height,
         color: _zoneColorForTypeName(appData, data.type),
-        groupId: GameZoneGroup.mainId,
+        groupId: targetGroupId,
       ),
     );
     appData.selectedZone = -1;
@@ -631,6 +635,9 @@ class LayoutZonesState extends State<LayoutZones> {
     required String confirmLabel,
     required _ZoneDialogData initialData,
     required List<GameZoneType> zoneTypes,
+    List<GameZoneGroup> groupOptions = const <GameZoneGroup>[],
+    bool showGroupSelector = false,
+    String groupFieldLabel = 'Zone Group',
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -651,6 +658,9 @@ class LayoutZonesState extends State<LayoutZones> {
       confirmLabel: confirmLabel,
       initialData: initialData,
       zoneTypes: zoneTypes,
+      groupOptions: groupOptions,
+      showGroupSelector: showGroupSelector,
+      groupFieldLabel: groupFieldLabel,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
       onClose: () {
@@ -710,6 +720,12 @@ class LayoutZonesState extends State<LayoutZones> {
 
   Future<void> _promptAndAddZone() async {
     final appData = Provider.of<AppData>(context, listen: false);
+    if (appData.selectedLevel == -1 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return;
+    }
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    _ensureMainGroupInLevel(level);
     final List<GameZoneType> zoneTypes = _zoneTypes(appData);
     if (zoneTypes.isEmpty) {
       return;
@@ -723,8 +739,12 @@ class LayoutZonesState extends State<LayoutZones> {
         y: 0,
         width: 50,
         height: 50,
+        groupId: GameZoneGroup.mainId,
       ),
       zoneTypes: zoneTypes,
+      groupOptions: _zoneGroups(level),
+      showGroupSelector: true,
+      groupFieldLabel: 'Zone Group',
     );
     if (!mounted || data == null) {
       return;
@@ -821,8 +841,15 @@ class LayoutZonesState extends State<LayoutZones> {
         y: zone.y,
         width: zone.width,
         height: zone.height,
+        groupId: _effectiveZoneGroupId(
+          appData.gameData.levels[appData.selectedLevel],
+          zone,
+        ),
       ),
       zoneTypes: zoneTypes,
+      groupOptions: _zoneGroups(
+        appData.gameData.levels[appData.selectedLevel],
+      ),
       anchorKey: anchorKey,
       useArrowedPopover: true,
       liveEdit: true,
@@ -1530,6 +1557,7 @@ class _ZoneDialogData {
     required this.y,
     required this.width,
     required this.height,
+    required this.groupId,
   });
 
   final String type;
@@ -1537,6 +1565,7 @@ class _ZoneDialogData {
   final int y;
   final int width;
   final int height;
+  final String groupId;
 }
 
 class _ZoneFormDialog extends StatefulWidget {
@@ -1545,6 +1574,9 @@ class _ZoneFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialData,
     required this.zoneTypes,
+    required this.groupOptions,
+    required this.showGroupSelector,
+    required this.groupFieldLabel,
     this.liveEdit = false,
     this.onLiveChanged,
     this.onClose,
@@ -1557,6 +1589,9 @@ class _ZoneFormDialog extends StatefulWidget {
   final String confirmLabel;
   final _ZoneDialogData initialData;
   final List<GameZoneType> zoneTypes;
+  final List<GameZoneGroup> groupOptions;
+  final bool showGroupSelector;
+  final String groupFieldLabel;
   final bool liveEdit;
   final Future<void> Function(_ZoneDialogData value)? onLiveChanged;
   final VoidCallback? onClose;
@@ -1583,6 +1618,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
     text: widget.initialData.height.toString(),
   );
   late String _selectedType = _resolveInitialType();
+  late String _selectedGroupId = _resolveInitialGroupId();
   EditSession<_ZoneDialogData>? _editSession;
 
   String _resolveInitialType() {
@@ -1595,6 +1631,18 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
     return '';
   }
 
+  String _resolveInitialGroupId() {
+    for (final group in widget.groupOptions) {
+      if (group.id == widget.initialData.groupId) {
+        return group.id;
+      }
+    }
+    if (widget.groupOptions.isNotEmpty) {
+      return widget.groupOptions.first.id;
+    }
+    return GameZoneGroup.mainId;
+  }
+
   bool get _isValid =>
       _selectedType.trim().isNotEmpty && widget.zoneTypes.isNotEmpty;
 
@@ -1605,6 +1653,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
       y: int.tryParse(_yController.text.trim()) ?? 0,
       width: int.tryParse(_widthController.text.trim()) ?? 50,
       height: int.tryParse(_heightController.text.trim()) ?? 50,
+      groupId: _selectedGroupId,
     );
   }
 
@@ -1669,6 +1718,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
         y: int.tryParse(_yController.text.trim()) ?? 0,
         width: int.tryParse(_widthController.text.trim()) ?? 50,
         height: int.tryParse(_heightController.text.trim()) ?? 50,
+        groupId: _selectedGroupId,
       ),
     );
   }
@@ -1686,7 +1736,8 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
             a.x == b.x &&
             a.y == b.y &&
             a.width == b.width &&
-            a.height == b.height,
+            a.height == b.height &&
+            a.groupId == b.groupId,
       );
     }
   }
@@ -1769,6 +1820,28 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            EditorLabeledField(
+              label: widget.groupFieldLabel,
+              child: CDKButtonSelect(
+                selectedIndex: widget.groupOptions
+                    .indexWhere((group) => group.id == _selectedGroupId)
+                    .clamp(0, widget.groupOptions.length - 1),
+                options: widget.groupOptions
+                    .map((group) => group.name.trim().isEmpty
+                        ? GameZoneGroup.defaultMainName
+                        : group.name)
+                    .toList(growable: false),
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedGroupId = widget.groupOptions[index].id;
+                  });
+                  _onInputChanged();
+                },
+              ),
+            ),
+            SizedBox(height: spacing.sm),
+          ],
           Row(
             children: [
               Expanded(

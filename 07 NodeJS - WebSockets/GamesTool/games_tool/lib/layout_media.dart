@@ -427,6 +427,10 @@ class _LayoutMediaState extends State<LayoutMedia> {
     required _MediaDialogData data,
   }) {
     _ensureMainGroup(appData);
+    final Set<String> validGroupIds = _mediaGroupIds(appData);
+    final String targetGroupId = validGroupIds.contains(data.groupId)
+        ? data.groupId
+        : GameMediaGroup.mainId;
     appData.gameData.mediaAssets.add(
       GameMediaAsset(
         name: data.name,
@@ -434,7 +438,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
         mediaType: data.mediaType,
         tileWidth: data.tileWidth,
         tileHeight: data.tileHeight,
-        groupId: GameMediaGroup.mainId,
+        groupId: targetGroupId,
       ),
     );
     appData.selectedMedia = appData.gameData.mediaAssets.length - 1;
@@ -466,6 +470,9 @@ class _LayoutMediaState extends State<LayoutMedia> {
     required String title,
     required String confirmLabel,
     required _MediaDialogData initialData,
+    List<GameMediaGroup> groupOptions = const <GameMediaGroup>[],
+    bool showGroupSelector = false,
+    String groupFieldLabel = 'Media Group',
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     bool liveEdit = false,
@@ -486,6 +493,9 @@ class _LayoutMediaState extends State<LayoutMedia> {
       title: title,
       confirmLabel: confirmLabel,
       initialData: initialData,
+      groupOptions: groupOptions,
+      showGroupSelector: showGroupSelector,
+      groupFieldLabel: groupFieldLabel,
       liveEdit: liveEdit,
       onLiveChanged: onLiveChanged,
       onClose: () {
@@ -545,6 +555,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
 
   Future<void> _pickAndPromptAddMedia() async {
     final appData = Provider.of<AppData>(context, listen: false);
+    _ensureMainGroup(appData);
     final String fileName = await appData.pickImageFile();
     if (!mounted || fileName.isEmpty) {
       return;
@@ -574,7 +585,11 @@ class _LayoutMediaState extends State<LayoutMedia> {
         tileWidth: defaultWidth,
         tileHeight: defaultHeight,
         previewPath: previewPath,
+        groupId: GameMediaGroup.mainId,
       ),
+      groupOptions: _mediaGroups(appData),
+      showGroupSelector: true,
+      groupFieldLabel: 'Media Group',
     );
 
     if (!mounted || data == null) {
@@ -731,7 +746,9 @@ class _LayoutMediaState extends State<LayoutMedia> {
         tileWidth: asset.tileWidth,
         tileHeight: asset.tileHeight,
         previewPath: _resolveMediaPreviewPath(appData, asset.fileName),
+        groupId: _effectiveMediaGroupId(appData, asset),
       ),
+      groupOptions: _mediaGroups(appData),
       anchorKey: anchorKey,
       useArrowedPopover: true,
       liveEdit: true,
@@ -1102,8 +1119,8 @@ class _LayoutMediaState extends State<LayoutMedia> {
                               child: Row(
                                 children: [
                                   CupertinoButton(
-                                    padding:
-                                        const EdgeInsets.symmetric(horizontal: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 2),
                                     minimumSize: const Size(20, 20),
                                     onPressed: () async {
                                       await _toggleGroupCollapsed(
@@ -1377,6 +1394,7 @@ class _MediaDialogData {
     required this.tileWidth,
     required this.tileHeight,
     required this.previewPath,
+    required this.groupId,
   });
 
   final String name;
@@ -1385,6 +1403,7 @@ class _MediaDialogData {
   final int tileWidth;
   final int tileHeight;
   final String previewPath;
+  final String groupId;
 }
 
 class _MediaFormDialog extends StatefulWidget {
@@ -1392,6 +1411,9 @@ class _MediaFormDialog extends StatefulWidget {
     required this.title,
     required this.confirmLabel,
     required this.initialData,
+    required this.groupOptions,
+    required this.showGroupSelector,
+    required this.groupFieldLabel,
     this.liveEdit = false,
     this.onLiveChanged,
     this.onClose,
@@ -1403,6 +1425,9 @@ class _MediaFormDialog extends StatefulWidget {
   final String title;
   final String confirmLabel;
   final _MediaDialogData initialData;
+  final List<GameMediaGroup> groupOptions;
+  final bool showGroupSelector;
+  final String groupFieldLabel;
   final bool liveEdit;
   final Future<void> Function(_MediaDialogData value)? onLiveChanged;
   final VoidCallback? onClose;
@@ -1430,8 +1455,21 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
   late String _mediaType = _typeValues.contains(widget.initialData.mediaType)
       ? widget.initialData.mediaType
       : 'tileset';
+  late String _selectedGroupId = _resolveInitialGroupId();
   String? _sizeError;
   EditSession<_MediaDialogData>? _editSession;
+
+  String _resolveInitialGroupId() {
+    for (final group in widget.groupOptions) {
+      if (group.id == widget.initialData.groupId) {
+        return group.id;
+      }
+    }
+    if (widget.groupOptions.isNotEmpty) {
+      return widget.groupOptions.first.id;
+    }
+    return GameMediaGroup.mainId;
+  }
 
   bool get _hasTileGrid => _typeValues.contains(_mediaType);
 
@@ -1466,6 +1504,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
       tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
       tileHeight: int.tryParse(_tileHeightController.text.trim()) ?? 32,
       previewPath: widget.initialData.previewPath,
+      groupId: _selectedGroupId,
     );
   }
 
@@ -1519,6 +1558,7 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
         tileWidth: int.tryParse(_tileWidthController.text.trim()) ?? 32,
         tileHeight: int.tryParse(_tileHeightController.text.trim()) ?? 32,
         previewPath: widget.initialData.previewPath,
+        groupId: _selectedGroupId,
       ),
     );
   }
@@ -1535,7 +1575,8 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
             a.name == b.name &&
             a.mediaType == b.mediaType &&
             a.tileWidth == b.tileWidth &&
-            a.tileHeight == b.tileHeight,
+            a.tileHeight == b.tileHeight &&
+            a.groupId == b.groupId,
       );
     }
   }
@@ -1600,6 +1641,28 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
             ),
           ),
           SizedBox(height: spacing.md),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            EditorLabeledField(
+              label: widget.groupFieldLabel,
+              child: CDKButtonSelect(
+                selectedIndex: widget.groupOptions
+                    .indexWhere((group) => group.id == _selectedGroupId)
+                    .clamp(0, widget.groupOptions.length - 1),
+                options: widget.groupOptions
+                    .map((group) => group.name.trim().isEmpty
+                        ? GameMediaGroup.defaultMainName
+                        : group.name)
+                    .toList(growable: false),
+                onSelected: (int index) {
+                  setState(() {
+                    _selectedGroupId = widget.groupOptions[index].id;
+                  });
+                  _onInputChanged();
+                },
+              ),
+            ),
+            SizedBox(height: spacing.md),
+          ],
           EditorLabeledField(
             label: 'Kind',
             child: CDKPickerButtonsSegmented(

@@ -18,10 +18,6 @@ class _SystemAwareCDKAppState extends State<SystemAwareCDKApp>
     with WidgetsBindingObserver {
   late Brightness _platformBrightness;
 
-  CDKThemeAppearance get _appearance => _platformBrightness == Brightness.dark
-      ? CDKThemeAppearance.dark
-      : CDKThemeAppearance.light;
-
   @override
   void initState() {
     super.initState();
@@ -67,10 +63,7 @@ class _SystemAwareCDKAppState extends State<SystemAwareCDKApp>
   @override
   Widget build(BuildContext context) {
     return CDKApp(
-      // CDKApp caches defaultAppearance on first build, so force remount when
-      // platform brightness changes to keep following system theme at runtime.
-      key: ValueKey<Brightness>(_platformBrightness),
-      defaultAppearance: _appearance,
+      defaultAppearance: CDKThemeAppearance.system,
       defaultColor: "systemBlue",
       child: widget.child,
     );

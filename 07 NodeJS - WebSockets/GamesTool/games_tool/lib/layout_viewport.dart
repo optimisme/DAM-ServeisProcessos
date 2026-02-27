@@ -633,7 +633,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                     CDKText(
                       _adaptationDescription(adaptationIndex),
                       role: CDKTextRole.caption,
-                      color: cdkColors.colorTextSecondary,
+                      color: cdkColors.colorText,
                     ),
 
                     const SizedBox(height: 14),

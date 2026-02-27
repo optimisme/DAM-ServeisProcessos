@@ -39,6 +39,8 @@ const List<_AccentColorOption> _tilesetAccentOptions = [
   _AccentColorOption(label: 'Yellow', color: Color(0xFFFFCC00)),
 ];
 
+enum _TilesetCanvasTool { pointer, hand }
+
 class LayoutTilemaps extends StatefulWidget {
   const LayoutTilemaps({super.key});
 
@@ -55,19 +57,11 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
   bool _isDraggingSelection = false;
   Future<ui.Image>? _tilesetImageFuture;
   String _tilesetImagePath = '';
-  final ScrollController _tilesetHorizontalScrollController =
-      ScrollController();
-  final ScrollController _tilesetVerticalScrollController = ScrollController();
   double _tilesetZoom = 1.0;
+  Offset _tilesetPanOffset = Offset.zero;
+  _TilesetCanvasTool _tilesetCanvasTool = _TilesetCanvasTool.hand;
   bool _isTrackpadPanZoomActive = false;
   double _lastTrackpadScale = 1.0;
-
-  @override
-  void dispose() {
-    _tilesetHorizontalScrollController.dispose();
-    _tilesetVerticalScrollController.dispose();
-    super.dispose();
-  }
 
   void _ensureTilesetImageFuture(AppData appData, String tilesheetPath) {
     if (_tilesetImageFuture != null && _tilesetImagePath == tilesheetPath) {
@@ -121,14 +115,48 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
   }
 
   Widget _buildSelectionColorRow(AppData appData, GameLayer layer) {
+    void toggleEraser() {
+      appData.tilemapEraserEnabled = !appData.tilemapEraserEnabled;
+      appData.update();
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: _TilesetSelectionColorPicker(
-        selectedColor:
-            appData.tilesetSelectionColorForFile(layer.tilesSheetFile),
-        onSelect: (Color color) {
-          unawaited(_setSelectionColorForLayer(appData, layer, color));
-        },
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CDKText(
+                'Erase',
+                role: CDKTextRole.caption,
+              ),
+              const SizedBox(height: 6),
+              CDKButton(
+                style: appData.tilemapEraserEnabled
+                    ? CDKButtonStyle.action
+                    : CDKButtonStyle.normal,
+                onPressed: toggleEraser,
+                child: const Icon(
+                  CupertinoIcons.trash,
+                  size: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          const Spacer(),
+          _TilesetSelectionColorPicker(
+            selectedColor:
+                appData.tilesetSelectionColorForFile(layer.tilesSheetFile),
+            onSelect: (Color color) {
+              unawaited(_setSelectionColorForLayer(appData, layer, color));
+            },
+            compact: true,
+          ),
+        ],
       ),
     );
   }
@@ -142,6 +170,140 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
     setState(() {
       _tilesetZoom = clamped;
     });
+  }
+
+  void _handleTilesetPointerScroll({
+    required PointerScrollEvent scrollEvent,
+    required Size viewportSize,
+    required ui.Image image,
+  }) {
+    final double dx = scrollEvent.scrollDelta.dx;
+    final double dy = scrollEvent.scrollDelta.dy;
+
+    if (_tilesetHandToolActive && dx != 0) {
+      _panTilesetByDelta(
+        delta: Offset(dx, 0),
+        viewportSize: viewportSize,
+        image: image,
+      );
+    }
+
+    if (dy != 0) {
+      _zoomTilesetAtLocalPosition(
+        localPosition: scrollEvent.localPosition,
+        zoomDelta: dy < 0 ? _tilesetZoomStep : -_tilesetZoomStep,
+        viewportSize: viewportSize,
+        image: image,
+      );
+    }
+  }
+
+  void _handleTilesetPointerPanZoom({
+    required PointerPanZoomUpdateEvent event,
+    required Size viewportSize,
+    required ui.Image image,
+  }) {
+    final double scaleDelta = event.scale / _lastTrackpadScale;
+    _lastTrackpadScale = event.scale;
+    final bool hasPinchScale = (scaleDelta - 1.0).abs() >= 0.0001;
+
+    if (_tilesetHandToolActive && event.panDelta.dx != 0) {
+      _panTilesetByDelta(
+        delta: Offset(event.panDelta.dx, 0),
+        viewportSize: viewportSize,
+        image: image,
+      );
+    }
+
+    if (!hasPinchScale && event.panDelta.dy != 0) {
+      final double zoomDelta = (-event.panDelta.dy / 80.0) * _tilesetZoomStep;
+      _zoomTilesetAtLocalPosition(
+        localPosition: event.localPosition,
+        zoomDelta: zoomDelta,
+        viewportSize: viewportSize,
+        image: image,
+      );
+    }
+
+    if (!hasPinchScale) {
+      return;
+    }
+    final double zoomDelta =
+        (math.log(scaleDelta) / math.ln2) * (_tilesetZoomStep * 2);
+    _zoomTilesetAtLocalPosition(
+      localPosition: event.localPosition,
+      zoomDelta: zoomDelta,
+      viewportSize: viewportSize,
+      image: image,
+    );
+  }
+
+  ({
+    double imageScale,
+    Offset baseOffset,
+  }) _tilesetMetrics({
+    required Size viewportSize,
+    required ui.Image image,
+    required double zoom,
+  }) {
+    const double padding = 8.0;
+    final double maxWidth = math.max(1, viewportSize.width - padding * 2);
+    final double maxHeight = math.max(1, viewportSize.height - padding * 2);
+    final double fitScale = math.min(
+      maxWidth / image.width,
+      maxHeight / image.height,
+    );
+    final double imageScale = fitScale * zoom;
+    final double drawWidth = image.width * imageScale;
+    final double drawHeight = image.height * imageScale;
+    final Offset baseOffset = Offset(
+      (viewportSize.width - drawWidth) / 2,
+      (viewportSize.height - drawHeight) / 2,
+    );
+    return (
+      imageScale: imageScale,
+      baseOffset: baseOffset,
+    );
+  }
+
+  Offset _clampTilesetPanOffset({
+    required Offset panOffset,
+    required Size viewportSize,
+    required ui.Image image,
+    required double zoom,
+  }) {
+    final ({
+      double imageScale,
+      Offset baseOffset,
+    }) metrics = _tilesetMetrics(
+      viewportSize: viewportSize,
+      image: image,
+      zoom: zoom,
+    );
+    final double drawWidth = image.width * metrics.imageScale;
+    final double drawHeight = image.height * metrics.imageScale;
+
+    final double clampedDx;
+    if (drawWidth <= viewportSize.width) {
+      clampedDx = 0;
+    } else {
+      final double minDx =
+          viewportSize.width - metrics.baseOffset.dx - drawWidth;
+      final double maxDx = -metrics.baseOffset.dx;
+      clampedDx = panOffset.dx.clamp(minDx, maxDx).toDouble();
+    }
+
+    final double clampedDy;
+    if (drawHeight <= viewportSize.height) {
+      clampedDy = 0;
+    } else {
+      final double minDy =
+          viewportSize.height - metrics.baseOffset.dy - drawHeight;
+      final double maxDy = -metrics.baseOffset.dy;
+      clampedDy = panOffset.dy.clamp(minDy, maxDy).toDouble();
+    }
+
+    return Offset(clampedDx, clampedDy);
   }
 
   void _zoomTilesetAtLocalPosition({
@@ -159,151 +321,107 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
       return;
     }
 
-    const double padding = 8.0;
-    ({
-      double imageScale,
-      Offset imageOffset,
-    }) metricsForZoom(double zoom) {
-      final double maxWidth = math.max(1, viewportSize.width - padding * 2);
-      final double maxHeight = math.max(1, viewportSize.height - padding * 2);
-      final double fitScale = math.min(
-        maxWidth / image.width,
-        maxHeight / image.height,
-      );
-      final double imageScale = fitScale * zoom;
-      final double drawWidth = image.width * imageScale;
-      final double drawHeight = image.height * imageScale;
-      final double contentWidth =
-          math.max(viewportSize.width, drawWidth + padding * 2);
-      final double contentHeight =
-          math.max(viewportSize.height, drawHeight + padding * 2);
-      final Offset imageOffset = Offset(
-        (contentWidth - drawWidth) / 2,
-        (contentHeight - drawHeight) / 2,
-      );
-      return (
-        imageScale: imageScale,
-        imageOffset: imageOffset,
-      );
-    }
-
     final ({
       double imageScale,
-      Offset imageOffset,
-    }) oldMetrics = metricsForZoom(_tilesetZoom);
-    final double oldHorizontalOffset =
-        _tilesetHorizontalScrollController.hasClients
-            ? _tilesetHorizontalScrollController.offset
-            : 0.0;
-    final double oldVerticalOffset = _tilesetVerticalScrollController.hasClients
-        ? _tilesetVerticalScrollController.offset
-        : 0.0;
-    final Offset viewportPoint = Offset(
-      localPosition.dx - oldHorizontalOffset,
-      localPosition.dy - oldVerticalOffset,
+      Offset baseOffset,
+    }) oldMetrics = _tilesetMetrics(
+      viewportSize: viewportSize,
+      image: image,
+      zoom: _tilesetZoom,
     );
+    final Offset oldPanOffset = _clampTilesetPanOffset(
+      panOffset: _tilesetPanOffset,
+      viewportSize: viewportSize,
+      image: image,
+      zoom: _tilesetZoom,
+    );
+    final Offset oldImageOffset = oldMetrics.baseOffset + oldPanOffset;
     final Offset focalImagePoint = Offset(
-      (localPosition.dx - oldMetrics.imageOffset.dx) / oldMetrics.imageScale,
-      (localPosition.dy - oldMetrics.imageOffset.dy) / oldMetrics.imageScale,
+      (localPosition.dx - oldImageOffset.dx) / oldMetrics.imageScale,
+      (localPosition.dy - oldImageOffset.dy) / oldMetrics.imageScale,
+    );
+    final ({
+      double imageScale,
+      Offset baseOffset,
+    }) newMetrics = _tilesetMetrics(
+      viewportSize: viewportSize,
+      image: image,
+      zoom: nextZoom,
+    );
+    final Offset targetPanOffset = Offset(
+      localPosition.dx -
+          newMetrics.baseOffset.dx -
+          focalImagePoint.dx * newMetrics.imageScale,
+      localPosition.dy -
+          newMetrics.baseOffset.dy -
+          focalImagePoint.dy * newMetrics.imageScale,
+    );
+    final Offset clampedPanOffset = _clampTilesetPanOffset(
+      panOffset: targetPanOffset,
+      viewportSize: viewportSize,
+      image: image,
+      zoom: nextZoom,
     );
 
     setState(() {
       _tilesetZoom = nextZoom;
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          !_tilesetHorizontalScrollController.hasClients ||
-          !_tilesetVerticalScrollController.hasClients) {
-        return;
-      }
-
-      final ({
-        double imageScale,
-        Offset imageOffset,
-      }) newMetrics = metricsForZoom(nextZoom);
-      final Offset newLocalPosition = Offset(
-        newMetrics.imageOffset.dx + focalImagePoint.dx * newMetrics.imageScale,
-        newMetrics.imageOffset.dy + focalImagePoint.dy * newMetrics.imageScale,
-      );
-      final double targetHorizontal = newLocalPosition.dx - viewportPoint.dx;
-      final double targetVertical = newLocalPosition.dy - viewportPoint.dy;
-      final double clampedHorizontal = targetHorizontal
-          .clamp(
-            0.0,
-            _tilesetHorizontalScrollController.position.maxScrollExtent,
-          )
-          .toDouble();
-      final double clampedVertical = targetVertical
-          .clamp(
-            0.0,
-            _tilesetVerticalScrollController.position.maxScrollExtent,
-          )
-          .toDouble();
-
-      _tilesetHorizontalScrollController.jumpTo(clampedHorizontal);
-      _tilesetVerticalScrollController.jumpTo(clampedVertical);
+      _tilesetPanOffset = clampedPanOffset;
     });
   }
 
-  Widget _buildToolRow(AppData appData) {
-    void toggleEraser() {
-      appData.tilemapEraserEnabled = !appData.tilemapEraserEnabled;
-      appData.update();
-    }
+  bool get _tilesetPointerToolActive =>
+      _tilesetCanvasTool == _TilesetCanvasTool.pointer;
+  bool get _tilesetHandToolActive =>
+      _tilesetCanvasTool == _TilesetCanvasTool.hand;
 
+  void _panTilesetByDelta({
+    required Offset delta,
+    required Size viewportSize,
+    required ui.Image image,
+  }) {
+    setState(() {
+      _tilesetPanOffset = _clampTilesetPanOffset(
+        panOffset: _tilesetPanOffset + delta,
+        viewportSize: viewportSize,
+        image: image,
+        zoom: _tilesetZoom,
+      );
+    });
+  }
+
+  Widget _buildZoomAndToolRow() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Row(
         children: [
-          const CDKText(
-            'Erase',
-            role: CDKTextRole.caption,
-          ),
-          const SizedBox(width: 8),
-          CDKButton(
-            style: appData.tilemapEraserEnabled
-                ? CDKButtonStyle.action
-                : CDKButtonStyle.normal,
-            onPressed: toggleEraser,
-            child: const Icon(
-              CupertinoIcons.trash,
-              size: 14,
-            ),
-          ),
-          const Spacer(),
-          const CDKText(
-            'Zoom',
-            role: CDKTextRole.caption,
-          ),
-          const SizedBox(width: 8),
-          CDKButton(
-            style: CDKButtonStyle.normal,
-            enabled: _tilesetZoom > _minTilesetZoom,
-            onPressed: () => _setTilesetZoom(_tilesetZoom - _tilesetZoomStep),
-            child: const Icon(
-              CupertinoIcons.minus,
-              size: 14,
-            ),
-          ),
-          const SizedBox(width: 6),
           CDKButton(
             style: CDKButtonStyle.normal,
             enabled: (_tilesetZoom - 1.0).abs() > 0.0001,
             onPressed: () => _setTilesetZoom(1.0),
-            child: CDKText(
-              '${(_tilesetZoom * 100).round()}%',
-              role: CDKTextRole.caption,
+            child: const Icon(
+              CupertinoIcons.arrow_counterclockwise,
+              size: 14,
             ),
           ),
-          const SizedBox(width: 6),
-          CDKButton(
-            style: CDKButtonStyle.normal,
-            enabled: _tilesetZoom < _maxTilesetZoom,
-            onPressed: () => _setTilesetZoom(_tilesetZoom + _tilesetZoomStep),
-            child: const Icon(
-              CupertinoIcons.plus,
-              size: 14,
+          const Spacer(),
+          SizedBox(
+            width: 80,
+            child: CDKPickerButtonsBar(
+              selectedStates: <bool>[
+                _tilesetPointerToolActive,
+                _tilesetHandToolActive
+              ],
+              options: const [
+                Icon(CupertinoIcons.cursor_rays),
+                Icon(CupertinoIcons.hand_raised),
+              ],
+              onChanged: (states) {
+                setState(() {
+                  _tilesetCanvasTool = states.length > 1 && states[1] == true
+                      ? _TilesetCanvasTool.hand
+                      : _TilesetCanvasTool.pointer;
+                });
+              },
             ),
           ),
         ],
@@ -516,8 +634,6 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
         _buildHeader(),
         _buildSelectionColorRow(appData, layer),
         const SizedBox(height: 6),
-        _buildToolRow(appData),
-        const SizedBox(height: 6),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: CDKText(
@@ -548,11 +664,13 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 8.0),
           child: CDKText(
-            'Click to toggle one tile. Drag to select a tile block.',
+            'Pointer: click/drag tiles. Hand: drag to pan. Scroll to zoom.',
             role: CDKTextRole.caption,
             secondary: true,
           ),
         ),
+        const SizedBox(height: 6),
+        _buildZoomAndToolRow(),
         const SizedBox(height: 8),
         Expanded(
           child: FutureBuilder<ui.Image>(
@@ -576,219 +694,186 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
 
               return LayoutBuilder(
                 builder: (context, constraints) {
-                  const double padding = 8.0;
-                  final double maxWidth =
-                      math.max(1, constraints.maxWidth - padding * 2);
-                  final double maxHeight =
-                      math.max(1, constraints.maxHeight - padding * 2);
-                  final double fitScale = math.min(
-                    maxWidth / image.width,
-                    maxHeight / image.height,
+                  final Size viewportSize = Size(
+                    constraints.maxWidth,
+                    constraints.maxHeight,
                   );
-                  final double imageScale = fitScale * _tilesetZoom;
-                  final double drawWidth = image.width * imageScale;
-                  final double drawHeight = image.height * imageScale;
-                  final double contentWidth =
-                      math.max(constraints.maxWidth, drawWidth + padding * 2);
-                  final double contentHeight =
-                      math.max(constraints.maxHeight, drawHeight + padding * 2);
-                  final Offset imageOffset = Offset(
-                    (contentWidth - drawWidth) / 2,
-                    (contentHeight - drawHeight) / 2,
+                  final ({
+                    double imageScale,
+                    Offset baseOffset,
+                  }) metrics = _tilesetMetrics(
+                    viewportSize: viewportSize,
+                    image: image,
+                    zoom: _tilesetZoom,
                   );
+                  final Offset panOffset = _clampTilesetPanOffset(
+                    panOffset: _tilesetPanOffset,
+                    viewportSize: viewportSize,
+                    image: image,
+                    zoom: _tilesetZoom,
+                  );
+                  final double imageScale = metrics.imageScale;
+                  final Offset imageOffset = metrics.baseOffset + panOffset;
 
-                  return CupertinoScrollbar(
-                    controller: _tilesetVerticalScrollController,
-                    child: SingleChildScrollView(
-                      controller: _tilesetVerticalScrollController,
-                      child: CupertinoScrollbar(
-                        controller: _tilesetHorizontalScrollController,
-                        notificationPredicate: (notification) =>
-                            notification.depth == 1,
-                        child: SingleChildScrollView(
-                          controller: _tilesetHorizontalScrollController,
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: contentWidth,
-                            height: contentHeight,
-                            child: Listener(
-                              onPointerPanZoomStart:
-                                  (PointerPanZoomStartEvent _) {
-                                _isTrackpadPanZoomActive = true;
-                                _lastTrackpadScale = 1.0;
-                                _isDraggingSelection = false;
-                                _dragSelectionStartTile = null;
-                              },
-                              onPointerPanZoomUpdate:
-                                  (PointerPanZoomUpdateEvent event) {
-                                if (!_isTrackpadPanZoomActive) {
-                                  _isTrackpadPanZoomActive = true;
-                                }
-                                final double scaleDelta =
-                                    event.scale / _lastTrackpadScale;
-                                _lastTrackpadScale = event.scale;
-                                if ((scaleDelta - 1.0).abs() < 0.0001) {
-                                  return;
-                                }
-                                final double zoomDelta =
-                                    (math.log(scaleDelta) / math.ln2) *
-                                        (_tilesetZoomStep * 2);
-                                _zoomTilesetAtLocalPosition(
-                                  localPosition: event.localPosition,
-                                  zoomDelta: zoomDelta,
-                                  viewportSize: Size(
-                                    constraints.maxWidth,
-                                    constraints.maxHeight,
-                                  ),
-                                  image: image,
-                                );
-                              },
-                              onPointerPanZoomEnd: (PointerPanZoomEndEvent _) {
-                                _isTrackpadPanZoomActive = false;
-                                _lastTrackpadScale = 1.0;
-                              },
-                              onPointerSignal: (event) {
-                                if (event is! PointerScrollEvent) {
-                                  return;
-                                }
-                                GestureBinding.instance.pointerSignalResolver
-                                    .register(
-                                  event,
-                                  (PointerSignalEvent resolvedEvent) {
-                                    final PointerScrollEvent scrollEvent =
-                                        resolvedEvent as PointerScrollEvent;
-                                    final double dy =
-                                        scrollEvent.scrollDelta.dy;
-                                    if (dy == 0) {
-                                      return;
-                                    }
-                                    _zoomTilesetAtLocalPosition(
-                                      localPosition: scrollEvent.localPosition,
-                                      zoomDelta: dy < 0
-                                          ? _tilesetZoomStep
-                                          : -_tilesetZoomStep,
-                                      viewportSize: Size(
-                                        constraints.maxWidth,
-                                        constraints.maxHeight,
-                                      ),
-                                      image: image,
-                                    );
-                                  },
-                                );
-                              },
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTapUp: (details) {
-                                  if (_isTrackpadPanZoomActive ||
-                                      details.kind !=
-                                          ui.PointerDeviceKind.mouse) {
-                                    return;
-                                  }
-                                  if (appData.tilemapEraserEnabled) {
-                                    return;
-                                  }
-                                  _toggleSingleTileSelection(
-                                    appData: appData,
-                                    layer: layer,
-                                    image: image,
-                                    localPosition: details.localPosition,
-                                    imageOffset: imageOffset,
-                                    imageScale: imageScale,
-                                  );
-                                },
-                                onPanStart: (details) {
-                                  if (_isTrackpadPanZoomActive ||
-                                      details.kind !=
-                                          ui.PointerDeviceKind.mouse) {
-                                    _dragSelectionStartTile = null;
-                                    _isDraggingSelection = false;
-                                    return;
-                                  }
-                                  if (appData.tilemapEraserEnabled) {
-                                    _dragSelectionStartTile = null;
-                                    _isDraggingSelection = false;
-                                    return;
-                                  }
-                                  final Offset? tile = _tileFromLocalPosition(
-                                    localPosition: details.localPosition,
-                                    imageOffset: imageOffset,
-                                    imageScale: imageScale,
-                                    layer: layer,
-                                    image: image,
-                                  );
-                                  if (tile == null) {
-                                    _dragSelectionStartTile = null;
-                                    _isDraggingSelection = false;
-                                    return;
-                                  }
-                                  _dragSelectionStartTile = tile;
-                                  _isDraggingSelection = true;
-                                  _setRectTileSelection(
-                                    appData: appData,
-                                    layer: layer,
-                                    image: image,
-                                    startTile: tile,
-                                    endTile: tile,
-                                  );
-                                },
-                                onPanUpdate: (details) {
-                                  if (!_isDraggingSelection ||
-                                      _dragSelectionStartTile == null) {
-                                    return;
-                                  }
-                                  final Offset? tile = _tileFromLocalPosition(
-                                    localPosition: details.localPosition,
-                                    imageOffset: imageOffset,
-                                    imageScale: imageScale,
-                                    layer: layer,
-                                    image: image,
-                                  );
-                                  if (tile == null) return;
-                                  _setRectTileSelection(
-                                    appData: appData,
-                                    layer: layer,
-                                    image: image,
-                                    startTile: _dragSelectionStartTile!,
-                                    endTile: tile,
-                                  );
-                                },
-                                onPanEnd: (_) {
-                                  _isDraggingSelection = false;
-                                  _dragSelectionStartTile = null;
-                                },
-                                child: CustomPaint(
-                                  painter: _TilesetSelectionPainter(
-                                    image: image,
-                                    imageOffset: imageOffset,
-                                    imageScale: imageScale,
-                                    tileWidth: layer.tilesWidth.toDouble(),
-                                    tileHeight: layer.tilesHeight.toDouble(),
-                                    selectionColStart:
-                                        appData.tilemapEraserEnabled
-                                            ? -1
-                                            : appData.tilesetSelectionColStart,
-                                    selectionRowStart:
-                                        appData.tilemapEraserEnabled
-                                            ? -1
-                                            : appData.tilesetSelectionRowStart,
-                                    selectionColEnd:
-                                        appData.tilemapEraserEnabled
-                                            ? -1
-                                            : appData.tilesetSelectionColEnd,
-                                    selectionRowEnd:
-                                        appData.tilemapEraserEnabled
-                                            ? -1
-                                            : appData.tilesetSelectionRowEnd,
-                                    selectionColor:
-                                        appData.tilesetSelectionColorForFile(
-                                      layer.tilesSheetFile,
-                                    ),
-                                  ),
-                                  child: const SizedBox.expand(),
-                                ),
-                              ),
+                  return ClipRect(
+                    child: Listener(
+                      onPointerPanZoomStart: (PointerPanZoomStartEvent _) {
+                        _isTrackpadPanZoomActive = true;
+                        _lastTrackpadScale = 1.0;
+                        _isDraggingSelection = false;
+                        _dragSelectionStartTile = null;
+                      },
+                      onPointerPanZoomUpdate:
+                          (PointerPanZoomUpdateEvent event) {
+                        if (!_isTrackpadPanZoomActive) {
+                          _isTrackpadPanZoomActive = true;
+                        }
+                        _handleTilesetPointerPanZoom(
+                          event: event,
+                          viewportSize: viewportSize,
+                          image: image,
+                        );
+                      },
+                      onPointerPanZoomEnd: (PointerPanZoomEndEvent _) {
+                        _isTrackpadPanZoomActive = false;
+                        _lastTrackpadScale = 1.0;
+                      },
+                      onPointerSignal: (event) {
+                        if (event is! PointerScrollEvent) {
+                          return;
+                        }
+                        GestureBinding.instance.pointerSignalResolver.register(
+                          event,
+                          (PointerSignalEvent resolvedEvent) {
+                            final PointerScrollEvent scrollEvent =
+                                resolvedEvent as PointerScrollEvent;
+                            _handleTilesetPointerScroll(
+                              scrollEvent: scrollEvent,
+                              viewportSize: viewportSize,
+                              image: image,
+                            );
+                          },
+                        );
+                      },
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (details) {
+                          if (!_tilesetPointerToolActive) {
+                            return;
+                          }
+                          if (_isTrackpadPanZoomActive ||
+                              details.kind != ui.PointerDeviceKind.mouse) {
+                            return;
+                          }
+                          if (appData.tilemapEraserEnabled) {
+                            return;
+                          }
+                          _toggleSingleTileSelection(
+                            appData: appData,
+                            layer: layer,
+                            image: image,
+                            localPosition: details.localPosition,
+                            imageOffset: imageOffset,
+                            imageScale: imageScale,
+                          );
+                        },
+                        onPanStart: (details) {
+                          if (_tilesetHandToolActive) {
+                            _dragSelectionStartTile = null;
+                            _isDraggingSelection = false;
+                            return;
+                          }
+                          if (_isTrackpadPanZoomActive ||
+                              details.kind != ui.PointerDeviceKind.mouse) {
+                            _dragSelectionStartTile = null;
+                            _isDraggingSelection = false;
+                            return;
+                          }
+                          if (appData.tilemapEraserEnabled) {
+                            _dragSelectionStartTile = null;
+                            _isDraggingSelection = false;
+                            return;
+                          }
+                          final Offset? tile = _tileFromLocalPosition(
+                            localPosition: details.localPosition,
+                            imageOffset: imageOffset,
+                            imageScale: imageScale,
+                            layer: layer,
+                            image: image,
+                          );
+                          if (tile == null) {
+                            _dragSelectionStartTile = null;
+                            _isDraggingSelection = false;
+                            return;
+                          }
+                          _dragSelectionStartTile = tile;
+                          _isDraggingSelection = true;
+                          _setRectTileSelection(
+                            appData: appData,
+                            layer: layer,
+                            image: image,
+                            startTile: tile,
+                            endTile: tile,
+                          );
+                        },
+                        onPanUpdate: (details) {
+                          if (_tilesetHandToolActive) {
+                            _panTilesetByDelta(
+                              delta: details.delta,
+                              viewportSize: viewportSize,
+                              image: image,
+                            );
+                            return;
+                          }
+                          if (!_isDraggingSelection ||
+                              _dragSelectionStartTile == null) {
+                            return;
+                          }
+                          final Offset? tile = _tileFromLocalPosition(
+                            localPosition: details.localPosition,
+                            imageOffset: imageOffset,
+                            imageScale: imageScale,
+                            layer: layer,
+                            image: image,
+                          );
+                          if (tile == null) return;
+                          _setRectTileSelection(
+                            appData: appData,
+                            layer: layer,
+                            image: image,
+                            startTile: _dragSelectionStartTile!,
+                            endTile: tile,
+                          );
+                        },
+                        onPanEnd: (_) {
+                          _isDraggingSelection = false;
+                          _dragSelectionStartTile = null;
+                        },
+                        child: CustomPaint(
+                          painter: _TilesetSelectionPainter(
+                            image: image,
+                            imageOffset: imageOffset,
+                            imageScale: imageScale,
+                            tileWidth: layer.tilesWidth.toDouble(),
+                            tileHeight: layer.tilesHeight.toDouble(),
+                            selectionColStart: appData.tilemapEraserEnabled
+                                ? -1
+                                : appData.tilesetSelectionColStart,
+                            selectionRowStart: appData.tilemapEraserEnabled
+                                ? -1
+                                : appData.tilesetSelectionRowStart,
+                            selectionColEnd: appData.tilemapEraserEnabled
+                                ? -1
+                                : appData.tilesetSelectionColEnd,
+                            selectionRowEnd: appData.tilemapEraserEnabled
+                                ? -1
+                                : appData.tilesetSelectionRowEnd,
+                            selectionColor:
+                                appData.tilesetSelectionColorForFile(
+                              layer.tilesSheetFile,
                             ),
                           ),
+                          child: const SizedBox.expand(),
                         ),
                       ),
                     ),
@@ -915,14 +1000,43 @@ class _TilesetSelectionColorPicker extends StatelessWidget {
   const _TilesetSelectionColorPicker({
     required this.selectedColor,
     required this.onSelect,
+    this.compact = false,
   });
 
   final Color selectedColor;
   final ValueChanged<Color> onSelect;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CDKText(
+            'Selection Color',
+            role: CDKTextRole.caption,
+          ),
+          SizedBox(height: spacing.xs),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: spacing.xs,
+            runSpacing: spacing.xs,
+            children: _tilesetAccentOptions.map((option) {
+              final bool isSelected = option.color == selectedColor;
+              return SelectableColorSwatch(
+                color: option.color,
+                selected: isSelected,
+                onTap: () => onSelect(option.color),
+              );
+            }).toList(growable: false),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

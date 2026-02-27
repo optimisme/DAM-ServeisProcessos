@@ -1511,53 +1511,81 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
             ],
           ),
           SizedBox(height: spacing.md),
-          EditorLabeledField(
-            label: 'Animation',
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      if (animationOptions.isNotEmpty)
-                        CDKButtonSelect(
-                          selectedIndex: _selectedAnimationIndex,
-                          options: animationOptions,
-                          onSelected: (int index) {
-                            setState(() {
-                              _selectedAnimationIndex = index;
-                            });
-                            _onInputChanged();
-                          },
-                        )
-                      else
-                        const Expanded(
-                          child: CDKText(
-                            'No animations available',
-                            role: CDKTextRole.caption,
-                            secondary: true,
-                          ),
-                        ),
-                      if (animation != null) ...[
-                        SizedBox(width: spacing.sm),
-                        Expanded(
-                          child: CDKText(
-                            'Frame size: ${(media?.tileWidth ?? widget.initialData.width)}×${(media?.tileHeight ?? widget.initialData.height)} px',
-                            role: CDKTextRole.caption,
-                            color: cdkColors.colorText,
-                            textAlign: TextAlign.right,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ],
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: CDKText(
+                      'Animation',
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                    ),
                   ),
-                ),
-                SizedBox(width: spacing.md),
-                SizedBox(
-                  width: 70,
-                  child: EditorLabeledField(
-                    label: 'Flip X',
+                  SizedBox(width: spacing.md),
+                  SizedBox(
+                    width: 70,
+                    child: CDKText(
+                      'Flip X',
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                    ),
+                  ),
+                  SizedBox(width: spacing.sm),
+                  SizedBox(
+                    width: 70,
+                    child: CDKText(
+                      'Flip Y',
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        if (animationOptions.isNotEmpty)
+                          CDKButtonSelect(
+                            selectedIndex: _selectedAnimationIndex,
+                            options: animationOptions,
+                            onSelected: (int index) {
+                              setState(() {
+                                _selectedAnimationIndex = index;
+                              });
+                              _onInputChanged();
+                            },
+                          )
+                        else
+                          const Expanded(
+                            child: CDKText(
+                              'No animations available',
+                              role: CDKTextRole.caption,
+                              secondary: true,
+                            ),
+                          ),
+                        if (animation != null) ...[
+                          SizedBox(width: spacing.sm),
+                          Flexible(
+                            child: CDKText(
+                              'Frame size: ${(media?.tileWidth ?? widget.initialData.width)}×${(media?.tileHeight ?? widget.initialData.height)} px',
+                              role: CDKTextRole.caption,
+                              color: cdkColors.colorText,
+                              textAlign: TextAlign.right,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  SizedBox(
+                    width: 70,
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: SizedBox(
@@ -1578,12 +1606,9 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
                       ),
                     ),
                   ),
-                ),
-                SizedBox(width: spacing.sm),
-                SizedBox(
-                  width: 70,
-                  child: EditorLabeledField(
-                    label: 'Flip Y',
+                  SizedBox(width: spacing.sm),
+                  SizedBox(
+                    width: 70,
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: SizedBox(
@@ -1604,9 +1629,9 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
           if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
             SizedBox(height: spacing.md),

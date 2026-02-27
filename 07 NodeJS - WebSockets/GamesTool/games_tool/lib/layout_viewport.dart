@@ -588,6 +588,13 @@ class LayoutViewportState extends State<LayoutViewport> {
                     ),
 
                     const SizedBox(height: 12),
+                    CDKText(
+                      'Preview: X $previewX, Y $previewY, ${previewWidth}x$previewHeight',
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         CDKButton(
@@ -602,15 +609,6 @@ class LayoutViewportState extends State<LayoutViewport> {
                               ? () => _resetToDefaults(appData)
                               : null,
                           child: const Text('Reset to defaults'),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: CDKText(
-                            'Preview: X $previewX, Y $previewY, ${previewWidth}x$previewHeight',
-                            role: CDKTextRole.caption,
-                            color: cdkColors.colorTextSecondary,
-                            overflow: TextOverflow.ellipsis,
-                          ),
                         ),
                       ],
                     ),
@@ -643,7 +641,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                       'Initial rectangle = initial position. Preview rectangle = preview position. '
                       'Drag the preview rectangle on the canvas to move it, drag its bottom-right triangle to resize it, then use "Use preview values".',
                       role: CDKTextRole.caption,
-                      color: cdkColors.colorTextSecondary,
+                      color: cdkColors.colorText,
                     ),
                   ],
                 ),

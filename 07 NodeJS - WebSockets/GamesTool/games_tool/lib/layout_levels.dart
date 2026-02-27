@@ -319,6 +319,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     required String name,
     required String description,
     required String backgroundColorHex,
+    required double parallaxSensitivity,
     required String groupId,
   }) {
     _ensureMainLevelGroup(appData);
@@ -332,6 +333,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       zones: [],
       sprites: [],
       backgroundColorHex: backgroundColorHex,
+      parallaxSensitivity: parallaxSensitivity,
       groupId: targetGroupId,
     );
 
@@ -346,6 +348,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     String initialName = "",
     String initialDescription = "",
     String initialBackgroundColorHex = "#DCDCE1",
+    double initialParallaxSensitivity = GameLevel.defaultParallaxSensitivity,
     String initialGroupId = GameListGroup.mainId,
     int? editingIndex,
     bool showGroupSelector = false,
@@ -379,6 +382,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       initialName: initialName,
       initialDescription: initialDescription,
       initialBackgroundColorHex: initialBackgroundColorHex,
+      initialParallaxSensitivity: initialParallaxSensitivity,
       initialGroupId: initialGroupId,
       groupOptions: _levelGroups(appData),
       showGroupSelector: showGroupSelector,
@@ -460,6 +464,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       name: levelData.name,
       description: levelData.description,
       backgroundColorHex: levelData.backgroundColorHex,
+      parallaxSensitivity: levelData.parallaxSensitivity,
       groupId: levelData.groupId,
     );
     await _autoSaveIfPossible(appData);
@@ -506,6 +511,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       initialName: selected.name,
       initialDescription: selected.description,
       initialBackgroundColorHex: selected.backgroundColorHex,
+      initialParallaxSensitivity: selected.parallaxSensitivity,
       initialGroupId: _effectiveLevelGroupId(appData, selected),
       editingIndex: index,
       anchorKey: anchorKey,
@@ -522,6 +528,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
               name: value.name,
               description: value.description,
               backgroundColorHex: value.backgroundColorHex,
+              parallaxSensitivity: value.parallaxSensitivity,
             );
           },
         );
@@ -536,6 +543,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     required String name,
     required String description,
     required String backgroundColorHex,
+    required double parallaxSensitivity,
   }) {
     if (index >= 0 && index < appData.gameData.levels.length) {
       final previous = appData.gameData.levels[index];
@@ -557,6 +565,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
         viewportInitialColor: previous.viewportInitialColor,
         viewportPreviewColor: previous.viewportPreviewColor,
         backgroundColorHex: backgroundColorHex,
+        parallaxSensitivity: parallaxSensitivity,
       );
       appData.selectedLevel = index;
     }
@@ -1006,12 +1015,14 @@ class _LevelDialogData {
     required this.name,
     required this.description,
     required this.backgroundColorHex,
+    required this.parallaxSensitivity,
     required this.groupId,
   });
 
   final String name;
   final String description;
   final String backgroundColorHex;
+  final double parallaxSensitivity;
   final String groupId;
 }
 
@@ -1022,6 +1033,7 @@ class _LevelFormDialog extends StatefulWidget {
     required this.initialName,
     required this.initialDescription,
     required this.initialBackgroundColorHex,
+    required this.initialParallaxSensitivity,
     required this.initialGroupId,
     required this.groupOptions,
     required this.showGroupSelector,
@@ -1040,6 +1052,7 @@ class _LevelFormDialog extends StatefulWidget {
   final String initialName;
   final String initialDescription;
   final String initialBackgroundColorHex;
+  final double initialParallaxSensitivity;
   final String initialGroupId;
   final List<GameListGroup> groupOptions;
   final bool showGroupSelector;
@@ -1062,6 +1075,10 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   );
   late final TextEditingController _descriptionController =
       TextEditingController(text: widget.initialDescription);
+  late final TextEditingController _parallaxSensitivityController =
+      TextEditingController(
+    text: widget.initialParallaxSensitivity.toString(),
+  );
   final GlobalKey _backgroundColorAnchorKey = GlobalKey();
   final FocusNode _nameFocusNode = FocusNode();
   String? _errorText;
@@ -1143,12 +1160,29 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   }
 
   _LevelDialogData _currentData() {
+    final double? parsedParallaxSensitivity = _parseParallaxSensitivity(
+      _parallaxSensitivityController.text,
+    );
     return _LevelDialogData(
       name: _nameController.text.trim(),
       description: _descriptionController.text.trim(),
       backgroundColorHex: _backgroundColorHex,
+      parallaxSensitivity:
+          parsedParallaxSensitivity ?? GameLevel.defaultParallaxSensitivity,
       groupId: _selectedGroupId,
     );
+  }
+
+  double? _parseParallaxSensitivity(String value) {
+    final String cleaned = value.trim().replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return null;
+    }
+    final double? parsed = double.tryParse(cleaned);
+    if (parsed == null || !parsed.isFinite || parsed < 0) {
+      return null;
+    }
+    return parsed;
   }
 
   String? _validateData(_LevelDialogData data) {
@@ -1158,6 +1192,10 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
     }
     if (widget.existingNames.contains(cleaned.toLowerCase())) {
       return 'Another level is named like that.';
+    }
+    if (_parseParallaxSensitivity(_parallaxSensitivityController.text) ==
+        null) {
+      return 'Parallax sensitivity must be a number >= 0.';
     }
     return null;
   }
@@ -1188,9 +1226,18 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
 
   void _confirm() {
     final String cleanedName = _nameController.text.trim();
+    final double? parsedParallaxSensitivity = _parseParallaxSensitivity(
+      _parallaxSensitivityController.text,
+    );
     _validate(cleanedName);
     if (cleanedName.isEmpty ||
-        widget.existingNames.contains(cleanedName.toLowerCase())) {
+        widget.existingNames.contains(cleanedName.toLowerCase()) ||
+        parsedParallaxSensitivity == null) {
+      if (parsedParallaxSensitivity == null) {
+        setState(() {
+          _errorText = 'Parallax sensitivity must be a number >= 0.';
+        });
+      }
       return;
     }
     widget.onConfirm(
@@ -1198,6 +1245,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
         name: cleanedName,
         description: _descriptionController.text.trim(),
         backgroundColorHex: _backgroundColorHex,
+        parallaxSensitivity: parsedParallaxSensitivity,
         groupId: _selectedGroupId,
       ),
     );
@@ -1215,6 +1263,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
             a.name == b.name &&
             a.description == b.description &&
             a.backgroundColorHex == b.backgroundColorHex &&
+            a.parallaxSensitivity == b.parallaxSensitivity &&
             a.groupId == b.groupId,
       );
     }
@@ -1233,6 +1282,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
     }
     _nameController.dispose();
     _descriptionController.dispose();
+    _parallaxSensitivityController.dispose();
     _nameFocusNode.dispose();
     super.dispose();
   }
@@ -1293,26 +1343,51 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
-          EditorLabeledField(
-            label: 'Background color',
-            child: Row(
-              children: [
-                CDKButtonColor(
-                  key: _backgroundColorAnchorKey,
-                  color: _parseHexColor(
-                      _backgroundColorHex, _defaultLevelBackgroundColor),
-                  onPressed: _showBackgroundColorPicker,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: CDKText(
-                    _backgroundColorHex,
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Background color',
+                  child: Row(
+                    children: [
+                      CDKButtonColor(
+                        key: _backgroundColorAnchorKey,
+                        color: _parseHexColor(
+                            _backgroundColorHex, _defaultLevelBackgroundColor),
+                        onPressed: _showBackgroundColorPicker,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: CDKText(
+                          _backgroundColorHex,
+                          role: CDKTextRole.caption,
+                          color: cdkColors.colorText,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Parallax sensitivity',
+                  child: CDKFieldText(
+                    placeholder: '0.08',
+                    controller: _parallaxSensitivityController,
+                    onChanged: (_) => _onInputChanged(),
+                    onSubmitted: (_) {
+                      if (widget.liveEdit) {
+                        _onInputChanged();
+                        return;
+                      }
+                      _confirm();
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
           if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
             SizedBox(height: spacing.sm),

@@ -445,7 +445,10 @@ class _LayoutState extends State<Layout> {
   }
 
   Offset _parallaxImageOffsetForLayer(AppData appData, GameLayer layer) {
-    final double parallax = LayoutUtils.parallaxFactorForDepth(layer.depth);
+    final double parallax = LayoutUtils.parallaxFactorForDepth(
+      layer.depth,
+      sensitivity: LayoutUtils.parallaxSensitivityForSelectedLevel(appData),
+    );
     return Offset(
       appData.imageOffset.dx * parallax,
       appData.imageOffset.dy * parallax,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'app_data.dart';
 import 'game_animation.dart';
 import 'game_layer.dart';
+import 'game_level.dart';
 import 'game_media_asset.dart';
 import 'game_sprite.dart';
 import 'game_zone.dart';
@@ -13,7 +14,6 @@ import 'layout_sprites.dart';
 import 'layout_zones.dart';
 
 class LayoutUtils {
-  static const double _depthParallaxStep = 0.08;
   static const double _minParallaxFactor = 0.25;
   static const double _maxParallaxFactor = 4.0;
   static const double _editorTicksPerSecond = 10.0;
@@ -136,13 +136,30 @@ class LayoutUtils {
 
   /// Maps depth displacement to a parallax factor.
   /// Negative depth => closer (moves faster), positive depth => farther (moves slower).
-  static double parallaxFactorForDepth(double depth) {
-    final double factor = math.exp(-depth * _depthParallaxStep);
+  static double parallaxFactorForDepth(
+    double depth, {
+    double sensitivity = GameLevel.defaultParallaxSensitivity,
+  }) {
+    final double normalizedSensitivity = sensitivity.isFinite
+        ? math.max(0.0, sensitivity)
+        : GameLevel.defaultParallaxSensitivity;
+    final double factor = math.exp(-depth * normalizedSensitivity);
     return factor.clamp(_minParallaxFactor, _maxParallaxFactor).toDouble();
   }
 
+  static double parallaxSensitivityForSelectedLevel(AppData appData) {
+    if (appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return GameLevel.defaultParallaxSensitivity;
+    }
+    return appData.gameData.levels[appData.selectedLevel].parallaxSensitivity;
+  }
+
   static Offset _parallaxImageOffsetForLayer(AppData appData, GameLayer layer) {
-    final double parallax = parallaxFactorForDepth(layer.depth);
+    final double parallax = parallaxFactorForDepth(
+      layer.depth,
+      sensitivity: parallaxSensitivityForSelectedLevel(appData),
+    );
     return Offset(
       appData.imageOffset.dx * parallax,
       appData.imageOffset.dy * parallax,

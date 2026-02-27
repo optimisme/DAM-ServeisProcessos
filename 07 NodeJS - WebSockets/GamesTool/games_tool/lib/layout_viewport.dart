@@ -845,6 +845,7 @@ class _ViewportPreviewPainter extends CustomPainter {
   void _paintScene(Canvas canvas, _PreviewSceneMapping mapping) {
     final double cameraX = previewX.toDouble();
     final double cameraY = previewY.toDouble();
+    final double levelParallaxSensitivity = level.parallaxSensitivity;
     final double scaleX = mapping.contentRect.width / mapping.cameraWorldW;
     final double scaleY = mapping.contentRect.height / mapping.cameraWorldH;
     final Paint drawPaint = Paint()..filterQuality = FilterQuality.none;
@@ -866,7 +867,10 @@ class _ViewportPreviewPainter extends CustomPainter {
       final int cols = layer.tileMap.first.length;
       final double layerX = layer.x.toDouble();
       final double layerY = layer.y.toDouble();
-      final double parallax = LayoutUtils.parallaxFactorForDepth(layer.depth);
+      final double parallax = LayoutUtils.parallaxFactorForDepth(
+        layer.depth,
+        sensitivity: levelParallaxSensitivity,
+      );
       final double cameraPx = cameraX * parallax;
       final double cameraPy = cameraY * parallax;
       final double visibleLeft = cameraPx;
@@ -929,7 +933,10 @@ class _ViewportPreviewPainter extends CustomPainter {
       final Rect srcRect =
           Rect.fromLTWH(frameIndex * spriteWidth, 0, spriteWidth, spriteHeight);
 
-      final double parallax = LayoutUtils.parallaxFactorForDepth(sprite.depth);
+      final double parallax = LayoutUtils.parallaxFactorForDepth(
+        sprite.depth,
+        sensitivity: levelParallaxSensitivity,
+      );
       final double cameraPx = cameraX * parallax;
       final double cameraPy = cameraY * parallax;
       final Rect dstRect = Rect.fromLTWH(

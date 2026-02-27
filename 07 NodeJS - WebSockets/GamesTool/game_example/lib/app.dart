@@ -1,5 +1,5 @@
 import 'package:flutter/cupertino.dart';
-import 'layout.dart';
+import 'menu.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -9,7 +9,7 @@ class App extends StatelessWidget {
     return const CupertinoApp(
       debugShowCheckedModeBanner: false,
       theme: CupertinoThemeData(brightness: Brightness.light),
-      home: Layout(),
+      home: Menu(),
     );
   }
 }

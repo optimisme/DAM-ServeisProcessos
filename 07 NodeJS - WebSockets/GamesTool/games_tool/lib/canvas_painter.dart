@@ -131,6 +131,7 @@ class CanvasPainter extends CustomPainter {
     // Draw each layer directly in world space from the image cache
     if (appData.selectedLevel != -1) {
       final level = appData.gameData.levels[appData.selectedLevel];
+      final double levelParallaxSensitivity = level.parallaxSensitivity;
 
       for (int li = level.layers.length - 1; li >= 0; li--) {
         final layer = level.layers[li];
@@ -147,7 +148,10 @@ class CanvasPainter extends CustomPainter {
         final int cols = layer.tileMap.isNotEmpty ? layer.tileMap[0].length : 0;
         final double lx = layer.x.toDouble();
         final double ly = layer.y.toDouble();
-        final double parallax = LayoutUtils.parallaxFactorForDepth(layer.depth);
+        final double parallax = LayoutUtils.parallaxFactorForDepth(
+          layer.depth,
+          sensitivity: levelParallaxSensitivity,
+        );
         final double parallaxDx = (vOffset.dx * (parallax - 1.0)) / vScale;
         final double parallaxDy = (vOffset.dy * (parallax - 1.0)) / vScale;
         final double drawLx = lx + parallaxDx;
@@ -312,8 +316,10 @@ class CanvasPainter extends CustomPainter {
             totalFrames: frames,
           );
           final double spriteFrameX = frameIndex * spriteWidth;
-          final double spriteParallax =
-              LayoutUtils.parallaxFactorForDepth(sprite.depth);
+          final double spriteParallax = LayoutUtils.parallaxFactorForDepth(
+            sprite.depth,
+            sensitivity: levelParallaxSensitivity,
+          );
           final double spriteX = sprite.x.toDouble() +
               (vOffset.dx * (spriteParallax - 1.0)) / vScale;
           final double spriteY = sprite.y.toDouble() +

@@ -14,11 +14,10 @@ import 'game_media_asset.dart';
 
 typedef ProjectMutation = void Function();
 typedef ProjectMutationValidator = String? Function();
-typedef ExportOverwriteConfirmation =
-    Future<bool> Function({
-      required String destinationFolderPath,
-      required List<String> conflictingRelativePaths,
-    });
+typedef ExportOverwriteConfirmation = Future<bool> Function({
+  required String destinationFolderPath,
+  required List<String> conflictingRelativePaths,
+});
 
 class StoredProject {
   final String id;
@@ -92,6 +91,7 @@ class AppData extends ChangeNotifier {
   String selectedSection = "projects";
   int selectedLevel = -1;
   int selectedLayer = -1;
+  Set<int> selectedLayerIndices = <int>{};
   int selectedZone = -1;
   int selectedSprite = -1;
   int selectedAnimation = -1;
@@ -1454,6 +1454,7 @@ class AppData extends ChangeNotifier {
     fileName = "";
     selectedLevel = -1;
     selectedLayer = -1;
+    selectedLayerIndices = <int>{};
     selectedZone = -1;
     selectedSprite = -1;
     selectedAnimation = -1;
@@ -1530,6 +1531,7 @@ class AppData extends ChangeNotifier {
     gameData = GameData(name: defaultName, levels: []);
     selectedLevel = -1;
     selectedLayer = -1;
+    selectedLayerIndices = <int>{};
     selectedZone = -1;
     selectedSprite = -1;
     selectedAnimation = -1;
@@ -1703,6 +1705,7 @@ class AppData extends ChangeNotifier {
       }
       selectedLevel = -1;
       selectedLayer = -1;
+      selectedLayerIndices = <int>{};
       selectedZone = -1;
       selectedSprite = -1;
       selectedAnimation = -1;
@@ -2047,13 +2050,12 @@ class AppData extends ChangeNotifier {
         }
       }
       if (conflictingRelativePaths.isNotEmpty) {
-        final bool allowOverwrite =
-            confirmOverwrite == null
-                ? false
-                : await confirmOverwrite(
-                    destinationFolderPath: destinationDirectory.path,
-                    conflictingRelativePaths: conflictingRelativePaths,
-                  );
+        final bool allowOverwrite = confirmOverwrite == null
+            ? false
+            : await confirmOverwrite(
+                destinationFolderPath: destinationDirectory.path,
+                conflictingRelativePaths: conflictingRelativePaths,
+              );
         if (!allowOverwrite) {
           projectStatusMessage = "Export to folder cancelled";
           notifyListeners();

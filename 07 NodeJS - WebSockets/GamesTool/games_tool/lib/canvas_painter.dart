@@ -9,8 +9,13 @@ import 'layout_utils.dart';
 class CanvasPainter extends CustomPainter {
   final ui.Image layerImage;
   final AppData appData;
+  final Set<int> selectedLayerIndices;
 
-  CanvasPainter(this.layerImage, this.appData);
+  CanvasPainter(
+    this.layerImage,
+    this.appData, {
+    Set<int>? selectedLayerIndices,
+  }) : selectedLayerIndices = selectedLayerIndices ?? const <int>{};
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -199,12 +204,14 @@ class CanvasPainter extends CustomPainter {
           );
         }
 
-        // Draw selection border only in tilemap view (not in layers preview).
-        if (!renderingLayersPreview &&
-            (appData.selectedSection == 'layers' ||
-                appData.selectedSection == 'tilemap') &&
-            li == appData.selectedLayer) {
-          final Color selectedColor = renderingTilemap
+        final bool isSelectedInLayersView = renderingLayersPreview &&
+            appData.selectedSection == 'layers' &&
+            selectedLayerIndices.contains(li);
+        final bool isSelectedInTilemapView = !renderingLayersPreview &&
+            appData.selectedSection == 'tilemap' &&
+            li == appData.selectedLayer;
+        if (isSelectedInLayersView || isSelectedInTilemapView) {
+          final Color selectedColor = isSelectedInTilemapView
               ? appData.tilesetSelectionColorForFile(layer.tilesSheetFile)
               : const Color(0xFF2196F3);
           final Paint selPaint = Paint()

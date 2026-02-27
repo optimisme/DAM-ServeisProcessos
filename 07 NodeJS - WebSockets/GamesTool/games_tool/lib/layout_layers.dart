@@ -363,6 +363,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     );
 
     appData.selectedLayer = -1;
+    appData.selectedLayerIndices = <int>{};
     appData.update();
   }
 
@@ -411,6 +412,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     );
 
     appData.selectedLayer = index;
+    appData.selectedLayerIndices = <int>{index};
   }
 
   Future<_LayerDialogData?> _promptLayerData({
@@ -600,6 +602,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     appData.pushUndo();
     layers.removeAt(index);
     appData.selectedLayer = -1;
+    appData.selectedLayerIndices = <int>{};
     appData.update();
     await _autoSaveIfPossible(appData);
   }
@@ -629,10 +632,12 @@ class LayoutLayersState extends State<LayoutLayers> {
   void _selectLayer(AppData appData, int index, bool isSelected) {
     if (isSelected) {
       appData.selectedLayer = -1;
+      appData.selectedLayerIndices = <int>{};
       appData.update();
       return;
     }
     appData.selectedLayer = index;
+    appData.selectedLayerIndices = <int>{index};
     appData.update();
   }
 
@@ -660,6 +665,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                     level, level.layers[appData.selectedLayer]) ==
                 group.id) {
           appData.selectedLayer = -1;
+          appData.selectedLayerIndices = <int>{};
         }
       },
     );
@@ -705,6 +711,8 @@ class LayoutLayersState extends State<LayoutLayers> {
       },
       selectedIndex: appData.selectedLayer,
     );
+    appData.selectedLayerIndices =
+        appData.selectedLayer >= 0 ? <int>{appData.selectedLayer} : <int>{};
   }
 
   void _onReorder(
@@ -815,6 +823,9 @@ class LayoutLayersState extends State<LayoutLayers> {
 
     final level = appData.gameData.levels[appData.selectedLevel];
     final layerRows = _buildLayerRows(level);
+    final Set<int> multiSelectedLayerIndices = appData.selectedLayerIndices
+        .where((index) => index >= 0 && index < level.layers.length)
+        .toSet();
     final List<GameMediaAsset> tilesetAssets = appData.gameData.mediaAssets
         .where((a) => a.hasTileGrid)
         .toList(growable: false);
@@ -919,8 +930,8 @@ class LayoutLayersState extends State<LayoutLayers> {
                               child: Row(
                                 children: [
                                   CupertinoButton(
-                                    padding:
-                                        const EdgeInsets.symmetric(horizontal: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 2),
                                     minimumSize: const Size(20, 20),
                                     onPressed: () async {
                                       await _toggleGroupCollapsed(
@@ -1001,6 +1012,9 @@ class LayoutLayersState extends State<LayoutLayers> {
 
                         final int layerIndex = row.itemIndex!;
                         final bool isSelected =
+                            multiSelectedLayerIndices.contains(layerIndex) ||
+                                layerIndex == appData.selectedLayer;
+                        final bool isPrimarySelected =
                             layerIndex == appData.selectedLayer;
                         final GameLayer layer = row.item!;
                         final int mapWidth = layer.tileMap.isEmpty
@@ -1070,7 +1084,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                                             ],
                                           ),
                                         ),
-                                        if (isSelected)
+                                        if (isPrimarySelected)
                                           MouseRegion(
                                             cursor: SystemMouseCursors.click,
                                             child: CupertinoButton(
@@ -1096,7 +1110,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                                               ),
                                             ),
                                           ),
-                                        if (isSelected && hasTilesets)
+                                        if (isPrimarySelected && hasTilesets)
                                           MouseRegion(
                                             cursor: SystemMouseCursors.click,
                                             child: CupertinoButton(

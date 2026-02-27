@@ -9,6 +9,8 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'canvas_painter.dart';
+import 'game_layer.dart';
+import 'game_level.dart';
 import 'layout_animations.dart';
 import 'layout_sprites.dart';
 import 'layout_layers.dart';
@@ -29,6 +31,8 @@ class Layout extends StatefulWidget {
   @override
   State<Layout> createState() => _LayoutState();
 }
+
+enum _LayersCanvasTool { arrow, hand }
 
 class _LayoutState extends State<Layout> {
   // Clau del layout escollit
@@ -52,6 +56,7 @@ class _LayoutState extends State<Layout> {
   bool _isPaintingTilemap = false;
   bool _didModifyZoneDuringGesture = false;
   bool _didModifySpriteDuringGesture = false;
+  bool _didModifyLayerDuringGesture = false;
   bool _didModifyAnimationDuringGesture = false;
   bool _didModifyTilemapDuringGesture = false;
   int? _animationDragStartFrame;
@@ -61,7 +66,16 @@ class _LayoutState extends State<Layout> {
   bool _pendingLayersViewportCenter = false;
   int? _pendingLevelsViewportFitLevelIndex;
   int? _lastAutoFramedLevelIndex;
+  final Set<int> _selectedLayerIndices = <int>{};
+  final Map<int, Offset> _layerDragOffsetsByIndex = <int, Offset>{};
+  int _layerSelectionLevelIndex = -1;
+  bool _isMarqueeSelectingLayers = false;
+  bool _marqueeSelectionAdditive = false;
+  Offset? _layersMarqueeStartLocal;
+  Offset? _layersMarqueeCurrentLocal;
+  Set<int> _marqueeBaseLayerSelection = <int>{};
   final FocusNode _focusNode = FocusNode();
+  _LayersCanvasTool _layersCanvasTool = _LayersCanvasTool.arrow;
   List<String> sections = [
     'projects',
     'media',
@@ -405,6 +419,353 @@ class _LayoutState extends State<Layout> {
     appData.queueAutosave();
   }
 
+  bool _isLayerSelectionModifierPressed() {
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    return keyboard.isShiftPressed ||
+        keyboard.isControlPressed ||
+        keyboard.isMetaPressed;
+  }
+
+  Offset _parallaxImageOffsetForLayer(AppData appData, GameLayer layer) {
+    final double parallax = LayoutUtils.parallaxFactorForDepth(layer.depth);
+    return Offset(
+      appData.imageOffset.dx * parallax,
+      appData.imageOffset.dy * parallax,
+    );
+  }
+
+  int _firstLayerIndexInSelection(Set<int> selection) {
+    if (selection.isEmpty) {
+      return -1;
+    }
+    final List<int> sorted = selection.toList()..sort();
+    return sorted.first;
+  }
+
+  Rect? get _layersMarqueeRect {
+    if (!_isMarqueeSelectingLayers ||
+        _layersMarqueeStartLocal == null ||
+        _layersMarqueeCurrentLocal == null) {
+      return null;
+    }
+    return Rect.fromPoints(
+        _layersMarqueeStartLocal!, _layersMarqueeCurrentLocal!);
+  }
+
+  void _publishLayerSelectionToAppData(AppData appData) {
+    final Set<int> next = Set<int>.from(_selectedLayerIndices);
+    if (appData.selectedLayerIndices.length == next.length &&
+        appData.selectedLayerIndices.containsAll(next)) {
+      return;
+    }
+    appData.selectedLayerIndices = next;
+  }
+
+  Rect? _layerScreenRect(AppData appData, GameLayer layer) {
+    if (!layer.visible ||
+        layer.tileMap.isEmpty ||
+        layer.tileMap.first.isEmpty ||
+        layer.tilesWidth <= 0 ||
+        layer.tilesHeight <= 0) {
+      return null;
+    }
+    final int rows = layer.tileMap.length;
+    final int cols = layer.tileMap.first.length;
+    final Offset parallaxOffset = _parallaxImageOffsetForLayer(appData, layer);
+    final double scale = appData.scaleFactor;
+    final double left = parallaxOffset.dx + layer.x * scale;
+    final double top = parallaxOffset.dy + layer.y * scale;
+    final double width = cols * layer.tilesWidth * scale;
+    final double height = rows * layer.tilesHeight * scale;
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+    return Rect.fromLTWH(left, top, width, height);
+  }
+
+  Set<int> _layerIndicesInMarqueeRect(AppData appData, Rect marqueeRect) {
+    if (appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return <int>{};
+    }
+    final List<GameLayer> layers =
+        appData.gameData.levels[appData.selectedLevel].layers;
+    final Set<int> hits = <int>{};
+    for (int i = 0; i < layers.length; i++) {
+      final Rect? layerRect = _layerScreenRect(appData, layers[i]);
+      if (layerRect == null) {
+        continue;
+      }
+      if (marqueeRect.overlaps(layerRect)) {
+        hits.add(i);
+      }
+    }
+    return hits;
+  }
+
+  bool _applyMarqueeSelection(AppData appData) {
+    final Rect? marqueeRect = _layersMarqueeRect;
+    if (marqueeRect == null) {
+      return false;
+    }
+    final Set<int> hitSelection =
+        _layerIndicesInMarqueeRect(appData, marqueeRect);
+    final Set<int> nextSelection = _marqueeSelectionAdditive
+        ? <int>{..._marqueeBaseLayerSelection, ...hitSelection}
+        : hitSelection;
+    final int preferredPrimary = hitSelection.isEmpty
+        ? appData.selectedLayer
+        : _firstLayerIndexInSelection(hitSelection);
+    return _setLayerSelection(
+      appData,
+      nextSelection,
+      preferredPrimary: preferredPrimary,
+    );
+  }
+
+  Set<int> _validatedLayerSelection(AppData appData, Iterable<int> input) {
+    if (appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return <int>{};
+    }
+    final int layerCount =
+        appData.gameData.levels[appData.selectedLevel].layers.length;
+    final Set<int> output = <int>{};
+    for (final int index in input) {
+      if (index >= 0 && index < layerCount) {
+        output.add(index);
+      }
+    }
+    return output;
+  }
+
+  Set<int> _selectedLayersForCurrentLevel(AppData appData) {
+    return _validatedLayerSelection(appData, appData.selectedLayerIndices);
+  }
+
+  bool _hasMultipleLayersSelected(AppData appData) {
+    return _selectedLayersForCurrentLevel(appData).length > 1;
+  }
+
+  bool _setLayerSelection(
+    AppData appData,
+    Set<int> nextSelection, {
+    int? preferredPrimary,
+  }) {
+    final Set<int> validated = _validatedLayerSelection(appData, nextSelection);
+    final int nextPrimary = validated.isEmpty
+        ? -1
+        : (preferredPrimary != null && validated.contains(preferredPrimary)
+            ? preferredPrimary
+            : _firstLayerIndexInSelection(validated));
+    final bool sameSelection =
+        validated.length == _selectedLayerIndices.length &&
+            _selectedLayerIndices.containsAll(validated);
+    final bool samePrimary = appData.selectedLayer == nextPrimary;
+    if (sameSelection && samePrimary) {
+      return false;
+    }
+    _selectedLayerIndices
+      ..clear()
+      ..addAll(validated);
+    appData.selectedLayer = nextPrimary;
+    _publishLayerSelectionToAppData(appData);
+    return true;
+  }
+
+  void _syncLayerSelectionState(AppData appData) {
+    if ((appData.selectedSection != 'layers' &&
+            appData.selectedSection != 'tilemap') ||
+        appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      _selectedLayerIndices.clear();
+      _layerDragOffsetsByIndex.clear();
+      _isMarqueeSelectingLayers = false;
+      _layersMarqueeStartLocal = null;
+      _layersMarqueeCurrentLocal = null;
+      _marqueeBaseLayerSelection = <int>{};
+      _layerSelectionLevelIndex = -1;
+      _publishLayerSelectionToAppData(appData);
+      return;
+    }
+
+    if (_layerSelectionLevelIndex != appData.selectedLevel) {
+      _selectedLayerIndices.clear();
+      _layerDragOffsetsByIndex.clear();
+      _layerSelectionLevelIndex = appData.selectedLevel;
+    }
+
+    final Set<int> validated =
+        _validatedLayerSelection(appData, appData.selectedLayerIndices);
+    if (validated.length != _selectedLayerIndices.length ||
+        !_selectedLayerIndices.containsAll(validated)) {
+      _selectedLayerIndices
+        ..clear()
+        ..addAll(validated);
+    }
+
+    final bool selectedLayerValid = validated.contains(appData.selectedLayer);
+    final bool appDataSelectionValid = appData.selectedLayer >= 0 &&
+        appData.selectedLayer <
+            appData.gameData.levels[appData.selectedLevel].layers.length;
+    if (selectedLayerValid || !appDataSelectionValid) {
+      _publishLayerSelectionToAppData(appData);
+      return;
+    }
+
+    _selectedLayerIndices
+      ..clear()
+      ..add(appData.selectedLayer);
+    _publishLayerSelectionToAppData(appData);
+  }
+
+  bool _startDraggingSelectedLayers(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return false;
+    }
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    final Set<int> selection = _validatedLayerSelection(
+      appData,
+      _selectedLayerIndices,
+    );
+    if (selection.isEmpty) {
+      return false;
+    }
+
+    final Map<int, Offset> offsets = <int, Offset>{};
+    for (final int layerIndex in selection) {
+      final GameLayer layer = level.layers[layerIndex];
+      if (!layer.visible) {
+        continue;
+      }
+      final Offset worldPos = LayoutUtils.translateCoords(
+        localPosition,
+        _parallaxImageOffsetForLayer(appData, layer),
+        appData.scaleFactor,
+      );
+      offsets[layerIndex] =
+          worldPos - Offset(layer.x.toDouble(), layer.y.toDouble());
+    }
+    if (offsets.isEmpty) {
+      return false;
+    }
+
+    appData.pushUndo();
+    _layerDragOffsetsByIndex
+      ..clear()
+      ..addAll(offsets);
+    return true;
+  }
+
+  bool _dragSelectedLayers(AppData appData, Offset localPosition) {
+    if (appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length ||
+        _layerDragOffsetsByIndex.isEmpty) {
+      return false;
+    }
+    final List<GameLayer> layers =
+        appData.gameData.levels[appData.selectedLevel].layers;
+    bool changed = false;
+
+    for (final MapEntry<int, Offset> entry
+        in _layerDragOffsetsByIndex.entries) {
+      final int layerIndex = entry.key;
+      if (layerIndex < 0 || layerIndex >= layers.length) {
+        continue;
+      }
+      final GameLayer oldLayer = layers[layerIndex];
+      final Offset worldPos = LayoutUtils.translateCoords(
+        localPosition,
+        _parallaxImageOffsetForLayer(appData, oldLayer),
+        appData.scaleFactor,
+      );
+      final int newX = (worldPos.dx - entry.value.dx).round();
+      final int newY = (worldPos.dy - entry.value.dy).round();
+      if (newX == oldLayer.x && newY == oldLayer.y) {
+        continue;
+      }
+      layers[layerIndex] = GameLayer(
+        name: oldLayer.name,
+        x: newX,
+        y: newY,
+        depth: oldLayer.depth,
+        tilesSheetFile: oldLayer.tilesSheetFile,
+        tilesWidth: oldLayer.tilesWidth,
+        tilesHeight: oldLayer.tilesHeight,
+        tileMap: oldLayer.tileMap,
+        visible: oldLayer.visible,
+        groupId: oldLayer.groupId,
+      );
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  Future<void> _confirmAndDeleteSelectedLayers(AppData appData) async {
+    if (!mounted ||
+        appData.selectedSection != 'layers' ||
+        appData.selectedLevel < 0 ||
+        appData.selectedLevel >= appData.gameData.levels.length) {
+      return;
+    }
+
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    final List<int> selected = _validatedLayerSelection(
+      appData,
+      _selectedLayerIndices,
+    ).toList()
+      ..sort();
+    if (selected.isEmpty) {
+      final int selectedLayer = appData.selectedLayer;
+      if (selectedLayer < 0 || selectedLayer >= level.layers.length) {
+        return;
+      }
+      selected.add(selectedLayer);
+    }
+
+    final String message;
+    if (selected.length == 1) {
+      final String rawName = level.layers[selected.first].name.trim();
+      final String displayName =
+          rawName.isEmpty ? 'Layer ${selected.first + 1}' : rawName;
+      message = 'Delete "$displayName"? This cannot be undone.';
+    } else {
+      message =
+          'Delete ${selected.length} selected layers? This cannot be undone.';
+    }
+
+    final bool? confirmed = await CDKDialogsManager.showConfirm(
+      context: context,
+      title: selected.length == 1 ? 'Delete layer' : 'Delete layers',
+      message: message,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      isDestructive: true,
+      showBackgroundShade: true,
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    appData.pushUndo();
+    for (int i = selected.length - 1; i >= 0; i--) {
+      level.layers.removeAt(selected[i]);
+    }
+    _selectedLayerIndices.clear();
+    _layerDragOffsetsByIndex.clear();
+    _isMarqueeSelectingLayers = false;
+    _layersMarqueeStartLocal = null;
+    _layersMarqueeCurrentLocal = null;
+    _marqueeBaseLayerSelection = <int>{};
+    appData.selectedLayer = -1;
+    _publishLayerSelectionToAppData(appData);
+    appData.update();
+    await _autoSaveIfPossible(appData);
+  }
+
   void _queueInitialLayersViewportCenter(AppData appData, Size viewportSize) {
     if (appData.selectedSection != 'layers' &&
         appData.selectedSection != 'tilemap' &&
@@ -567,10 +928,44 @@ class _LayoutState extends State<Layout> {
     return SystemMouseCursors.basic;
   }
 
+  bool get _layersArrowToolActive =>
+      _layersCanvasTool == _LayersCanvasTool.arrow;
+  bool get _layersHandToolActive => _layersCanvasTool == _LayersCanvasTool.hand;
+
+  Widget _buildLayersToolPickerOverlay() {
+    return Align(
+      alignment: Alignment.topRight,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: SizedBox(
+          width: 80,
+          child: CDKPickerButtonsBar(
+            selectedStates: <bool>[
+              _layersArrowToolActive,
+              _layersHandToolActive
+            ],
+            options: const [
+              Icon(CupertinoIcons.cursor_rays),
+              Icon(CupertinoIcons.hand_raised),
+            ],
+            onChanged: (states) {
+              setState(() {
+                _layersCanvasTool = states.length > 1 && states[1] == true
+                    ? _LayersCanvasTool.hand
+                    : _LayersCanvasTool.arrow;
+              });
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    _syncLayerSelectionState(appData);
 
     if (appData.selectedSection != 'projects') {
       _drawCanvasImage(appData);
@@ -609,12 +1004,19 @@ class _LayoutState extends State<Layout> {
         autofocus: true,
         onKeyEvent: (node, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          final AppData appData = Provider.of<AppData>(context, listen: false);
+          final bool isDeleteKey =
+              event.logicalKey == LogicalKeyboardKey.backspace ||
+                  event.logicalKey == LogicalKeyboardKey.delete;
+          if (isDeleteKey && appData.selectedSection == 'layers') {
+            unawaited(_confirmAndDeleteSelectedLayers(appData));
+            return KeyEventResult.handled;
+          }
           final bool meta = HardwareKeyboard.instance.isMetaPressed;
           final bool ctrl = HardwareKeyboard.instance.isControlPressed;
           final bool shift = HardwareKeyboard.instance.isShiftPressed;
           final bool isZ = event.logicalKey == LogicalKeyboardKey.keyZ;
           if (!(meta || ctrl) || !isZ) return KeyEventResult.ignored;
-          final appData = Provider.of<AppData>(context, listen: false);
           if (shift) {
             appData.redo();
           } else {
@@ -648,619 +1050,894 @@ class _LayoutState extends State<Layout> {
                               );
                               return Container(
                                 color: cdkColors.backgroundSecondary1,
-                                child: Listener(
-                                  onPointerDown: (_) => _isPointerDown = true,
-                                  onPointerUp: (_) => _isPointerDown = false,
-                                  onPointerCancel: (_) =>
-                                      _isPointerDown = false,
-                                  // macOS trackpad: two-finger scroll → PointerScrollEvent
-                                  onPointerSignal: (event) {
-                                    if (event is! PointerScrollEvent) return;
-                                    if (appData.selectedSection != "levels" &&
-                                        appData.selectedSection != "layers" &&
-                                        appData.selectedSection != "tilemap" &&
-                                        appData.selectedSection != "zones" &&
-                                        appData.selectedSection != "sprites" &&
-                                        appData.selectedSection != "viewport") {
-                                      return;
-                                    }
-                                    _applyLayersZoom(
-                                        appData,
-                                        event.localPosition,
-                                        event.scrollDelta.dy);
-                                  },
-                                  // macOS trackpad: two-finger pan-zoom → PointerPanZoomUpdateEvent
-                                  onPointerPanZoomUpdate: (event) {
-                                    if (appData.selectedSection != "levels" &&
-                                        appData.selectedSection != "layers" &&
-                                        appData.selectedSection != "tilemap" &&
-                                        appData.selectedSection != "zones" &&
-                                        appData.selectedSection != "sprites" &&
-                                        appData.selectedSection != "viewport") {
-                                      return;
-                                    }
-                                    // pan delta from trackpad scroll
-                                    final double dy = -event.panDelta.dy;
-                                    if (dy == 0) return;
-                                    _applyLayersZoom(
-                                        appData, event.localPosition, dy);
-                                  },
-                                  child: MouseRegion(
-                                    cursor: _tilemapCursor(appData),
-                                    onHover: (event) {
-                                      final bool hoveringTilemapLayer =
-                                          appData.selectedSection ==
-                                                  'tilemap' &&
-                                              LayoutUtils.getTilemapCoords(
-                                                      appData,
-                                                      event.localPosition) !=
-                                                  null;
-                                      if (hoveringTilemapLayer !=
-                                          _isHoveringSelectedTilemapLayer) {
-                                        setState(() {
-                                          _isHoveringSelectedTilemapLayer =
-                                              hoveringTilemapLayer;
-                                        });
-                                      }
-                                    },
-                                    onExit: (_) {
-                                      if (_isHoveringSelectedTilemapLayer) {
-                                        setState(() {
-                                          _isHoveringSelectedTilemapLayer =
-                                              false;
-                                        });
-                                      }
-                                    },
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onPanStart: (details) async {
-                                        if (!_isPointerDown) {
-                                          return;
-                                        }
-                                        if (!_isDragGestureActive) {
-                                          setState(() {
-                                            _isDragGestureActive = true;
-                                          });
-                                        }
-                                        appData.dragging = true;
-                                        appData.dragStartDetails = details;
-                                        if (appData.selectedSection ==
-                                            "levels") {
-                                          // Levels section is preview-only: always pan.
-                                        } else if (appData.selectedSection ==
-                                            "viewport") {
-                                          _isDraggingViewport = false;
-                                          _isResizingViewport = false;
-                                          LayoutUtils
-                                              .ensureViewportPreviewInitialized(
-                                            appData,
-                                          );
-                                          if (LayoutUtils
-                                              .isPointInViewportResizeHandle(
-                                                  appData,
-                                                  details.localPosition)) {
-                                            _isResizingViewport = true;
-                                            LayoutUtils
-                                                .startResizeViewportFromPosition(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                          } else if (LayoutUtils
-                                              .isPointInViewportRect(appData,
-                                                  details.localPosition)) {
-                                            _isDraggingViewport = true;
-                                            LayoutUtils
-                                                .startDragViewportFromPosition(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "layers") {
-                                          // Layers section is preview-only: always pan, never drag a layer.
-                                          _isDraggingLayer = false;
-                                        } else if (appData.selectedSection ==
-                                            "tilemap") {
-                                          final bool useEraser =
-                                              appData.tilemapEraserEnabled;
-                                          final bool hasTileSelection =
-                                              LayoutUtils
-                                                  .hasTilePatternSelection(
-                                                      appData);
-                                          final bool startsInsideLayer =
-                                              LayoutUtils.getTilemapCoords(
-                                                      appData,
-                                                      details.localPosition) !=
-                                                  null;
-                                          _isPaintingTilemap =
-                                              startsInsideLayer &&
-                                                  (useEraser ||
-                                                      hasTileSelection);
-                                          _didModifyTilemapDuringGesture =
-                                              false;
-                                          if (_isPaintingTilemap) {
-                                            final bool changed = useEraser
-                                                ? LayoutUtils
-                                                    .eraseTileAtTilemap(
-                                                    appData,
-                                                    details.localPosition,
-                                                    pushUndo: true,
-                                                  )
-                                                : LayoutUtils
-                                                    .pasteSelectedTilePatternAtTilemap(
-                                                    appData,
-                                                    details.localPosition,
-                                                    pushUndo: true,
-                                                  );
-                                            if (changed) {
-                                              _didModifyTilemapDuringGesture =
-                                                  true;
-                                              appData.update();
-                                            }
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "zones") {
-                                          _didModifyZoneDuringGesture = false;
-                                          _isDraggingZone = false;
-                                          _isResizingZone = false;
-                                          final int selectedZone =
-                                              appData.selectedZone;
-                                          final bool startsOnResizeHandle =
-                                              selectedZone != -1 &&
-                                                  LayoutUtils
-                                                      .isPointInZoneResizeHandle(
-                                                    appData,
-                                                    selectedZone,
-                                                    details.localPosition,
-                                                  );
-                                          if (startsOnResizeHandle) {
-                                            _isResizingZone = true;
-                                            LayoutUtils
-                                                .startResizeZoneFromPosition(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                            layoutZonesKey.currentState
-                                                ?.updateForm(appData);
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: Listener(
+                                        onPointerDown: (_) =>
+                                            _isPointerDown = true,
+                                        onPointerUp: (_) =>
+                                            _isPointerDown = false,
+                                        onPointerCancel: (_) =>
+                                            _isPointerDown = false,
+                                        // macOS trackpad: two-finger scroll → PointerScrollEvent
+                                        onPointerSignal: (event) {
+                                          if (event is! PointerScrollEvent) {
                                             return;
                                           }
-                                          final int hitZone =
-                                              LayoutUtils.zoneIndexFromPosition(
-                                            appData,
-                                            details.localPosition,
-                                          );
-                                          if (hitZone != -1) {
-                                            if (appData.selectedZone !=
-                                                hitZone) {
-                                              appData.selectedZone = hitZone;
-                                              appData.update();
-                                            }
-                                            _isDraggingZone = true;
-                                            LayoutUtils
-                                                .startDragZoneFromPosition(
+                                          if (appData.selectedSection != "levels" &&
+                                              appData.selectedSection !=
+                                                  "layers" &&
+                                              appData.selectedSection !=
+                                                  "tilemap" &&
+                                              appData.selectedSection !=
+                                                  "zones" &&
+                                              appData.selectedSection !=
+                                                  "sprites" &&
+                                              appData.selectedSection !=
+                                                  "viewport") {
+                                            return;
+                                          }
+                                          _applyLayersZoom(
                                               appData,
-                                              details.localPosition,
-                                            );
-                                            layoutZonesKey.currentState
-                                                ?.updateForm(appData);
-                                          } else {
-                                            _isDraggingZone = false;
+                                              event.localPosition,
+                                              event.scrollDelta.dy);
+                                        },
+                                        // macOS trackpad: two-finger pan-zoom → PointerPanZoomUpdateEvent
+                                        onPointerPanZoomUpdate: (event) {
+                                          if (appData.selectedSection != "levels" &&
+                                              appData.selectedSection !=
+                                                  "layers" &&
+                                              appData.selectedSection !=
+                                                  "tilemap" &&
+                                              appData.selectedSection !=
+                                                  "zones" &&
+                                              appData.selectedSection !=
+                                                  "sprites" &&
+                                              appData.selectedSection !=
+                                                  "viewport") {
+                                            return;
                                           }
-                                        } else if (appData.selectedSection ==
-                                            "sprites") {
-                                          _didModifySpriteDuringGesture = false;
-                                          _isDraggingSprite = false;
-                                          final int hitSpriteIndex = LayoutUtils
-                                              .spriteIndexFromPosition(
-                                            appData,
-                                            details.localPosition,
-                                          );
-                                          if (hitSpriteIndex != -1) {
-                                            if (appData.selectedSprite !=
-                                                hitSpriteIndex) {
-                                              appData.selectedSprite =
-                                                  hitSpriteIndex;
-                                              appData.update();
+                                          // pan delta from trackpad scroll
+                                          final double dy = -event.panDelta.dy;
+                                          if (dy == 0) return;
+                                          _applyLayersZoom(
+                                              appData, event.localPosition, dy);
+                                        },
+                                        child: MouseRegion(
+                                          cursor: _tilemapCursor(appData),
+                                          onHover: (event) {
+                                            final bool hoveringTilemapLayer =
+                                                appData.selectedSection ==
+                                                        'tilemap' &&
+                                                    LayoutUtils.getTilemapCoords(
+                                                            appData,
+                                                            event
+                                                                .localPosition) !=
+                                                        null;
+                                            if (hoveringTilemapLayer !=
+                                                _isHoveringSelectedTilemapLayer) {
+                                              setState(() {
+                                                _isHoveringSelectedTilemapLayer =
+                                                    hoveringTilemapLayer;
+                                              });
                                             }
-                                            _isDraggingSprite = true;
-                                            LayoutUtils
-                                                .startDragSpriteFromPosition(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                            layoutSpritesKey.currentState
-                                                ?.updateForm(appData);
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "animations") {
-                                          _isSelectingAnimationFrames = false;
-                                          _didModifyAnimationDuringGesture =
-                                              false;
-                                          _animationDragStartFrame = null;
-                                          final int frame = await LayoutUtils
-                                              .animationFrameIndexFromCanvas(
-                                            appData,
-                                            details.localPosition,
-                                          );
-                                          if (frame != -1) {
-                                            _isSelectingAnimationFrames = true;
-                                            _animationDragStartFrame = frame;
-                                            final bool changed = await LayoutUtils
-                                                .setAnimationSelectionFromEndpoints(
-                                              appData: appData,
-                                              startFrame: frame,
-                                              endFrame: frame,
-                                            );
-                                            if (changed) {
-                                              _didModifyAnimationDuringGesture =
-                                                  true;
-                                              appData.update();
+                                          },
+                                          onExit: (_) {
+                                            if (_isHoveringSelectedTilemapLayer) {
+                                              setState(() {
+                                                _isHoveringSelectedTilemapLayer =
+                                                    false;
+                                              });
                                             }
-                                          }
-                                        }
-                                      },
-                                      onPanUpdate: (details) async {
-                                        if (appData.selectedSection ==
-                                            "levels") {
-                                          if (_isPointerDown) {
-                                            appData.layersViewOffset +=
-                                                details.delta;
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "viewport") {
-                                          if (!_isPointerDown) {
-                                            // scroll-triggered pan — ignore
-                                          } else if (_isResizingViewport) {
-                                            LayoutUtils
-                                                .resizeViewportFromCanvas(
-                                                    appData,
-                                                    details.localPosition);
-                                            appData.update();
-                                          } else if (_isDraggingViewport) {
-                                            LayoutUtils.dragViewportFromCanvas(
-                                                appData, details.localPosition);
-                                            appData.update();
-                                          } else {
-                                            appData.layersViewOffset +=
-                                                details.delta;
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "layers") {
-                                          if (!_isPointerDown) {
-                                            // scroll-triggered pan — ignore
-                                          } else if (_isDraggingLayer &&
-                                              appData.selectedLayer != -1) {
-                                            LayoutUtils.dragLayerFromCanvas(
-                                                appData, details.localPosition);
-                                            appData.update();
-                                          } else {
-                                            appData.layersViewOffset +=
-                                                details.delta;
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "tilemap") {
-                                          final bool useEraser =
-                                              appData.tilemapEraserEnabled;
-                                          if (!_isPointerDown) {
-                                            // scroll-triggered pan — ignore
-                                          } else if (_isPaintingTilemap) {
-                                            final bool isInsideLayer =
-                                                LayoutUtils.getTilemapCoords(
+                                          },
+                                          child: GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onPanStart: (details) async {
+                                              if (!_isPointerDown) {
+                                                return;
+                                              }
+                                              if (!_isDragGestureActive) {
+                                                setState(() {
+                                                  _isDragGestureActive = true;
+                                                });
+                                              }
+                                              appData.dragging = true;
+                                              appData.dragStartDetails =
+                                                  details;
+                                              if (appData.selectedSection ==
+                                                  "levels") {
+                                                // Levels section is preview-only: always pan.
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "viewport") {
+                                                _isDraggingViewport = false;
+                                                _isResizingViewport = false;
+                                                LayoutUtils
+                                                    .ensureViewportPreviewInitialized(
+                                                  appData,
+                                                );
+                                                if (LayoutUtils
+                                                    .isPointInViewportResizeHandle(
                                                         appData,
                                                         details
-                                                            .localPosition) !=
-                                                    null;
-                                            if (!isInsideLayer) {
-                                              _isPaintingTilemap = false;
-                                              appData.layersViewOffset +=
-                                                  details.delta;
-                                              appData.update();
-                                              return;
-                                            }
-                                            final bool changed = useEraser
-                                                ? LayoutUtils
-                                                    .eraseTileAtTilemap(
+                                                            .localPosition)) {
+                                                  _isResizingViewport = true;
+                                                  LayoutUtils
+                                                      .startResizeViewportFromPosition(
                                                     appData,
                                                     details.localPosition,
-                                                    pushUndo:
-                                                        !_didModifyTilemapDuringGesture,
-                                                  )
-                                                : LayoutUtils
-                                                    .pasteSelectedTilePatternAtTilemap(
-                                                    appData,
-                                                    details.localPosition,
-                                                    pushUndo:
-                                                        !_didModifyTilemapDuringGesture,
                                                   );
-                                            if (changed) {
-                                              _didModifyTilemapDuringGesture =
-                                                  true;
-                                              appData.update();
-                                            }
-                                          } else {
-                                            appData.layersViewOffset +=
-                                                details.delta;
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "zones") {
-                                          if (!_isPointerDown) {
-                                            // scroll-triggered pan — ignore
-                                          } else if (_isResizingZone &&
-                                              appData.selectedZone != -1) {
-                                            LayoutUtils.resizeZoneFromCanvas(
-                                                appData, details.localPosition);
-                                            _didModifyZoneDuringGesture = true;
-                                            appData.update();
-                                            layoutZonesKey.currentState
-                                                ?.updateForm(appData);
-                                          } else if (_isDraggingZone &&
-                                              appData.selectedZone != -1) {
-                                            LayoutUtils.dragZoneFromCanvas(
-                                                appData, details.localPosition);
-                                            _didModifyZoneDuringGesture = true;
-                                            appData.update();
-                                            layoutZonesKey.currentState
-                                                ?.updateForm(appData);
-                                          } else {
-                                            appData.layersViewOffset +=
-                                                details.delta;
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "sprites") {
-                                          if (!_isPointerDown) {
-                                            // scroll-triggered pan — ignore
-                                          } else if (_isDraggingSprite &&
-                                              appData.selectedSprite != -1) {
-                                            LayoutUtils.dragSpriteFromCanvas(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                            _didModifySpriteDuringGesture =
-                                                true;
-                                            appData.update();
-                                            layoutSpritesKey.currentState
-                                                ?.updateForm(appData);
-                                          } else {
-                                            appData.layersViewOffset +=
-                                                details.delta;
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "animations") {
-                                          if (!_isPointerDown) {
-                                            // scroll-triggered pan — ignore
-                                          } else if (_isSelectingAnimationFrames &&
-                                              _animationDragStartFrame !=
-                                                  null) {
-                                            final int frame = await LayoutUtils
-                                                .animationFrameIndexFromCanvas(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                            if (frame == -1) {
-                                              return;
-                                            }
-                                            final bool changed = await LayoutUtils
-                                                .setAnimationSelectionFromEndpoints(
-                                              appData: appData,
-                                              startFrame:
-                                                  _animationDragStartFrame!,
-                                              endFrame: frame,
-                                            );
-                                            if (changed) {
-                                              _didModifyAnimationDuringGesture =
-                                                  true;
-                                              appData.update();
-                                            }
-                                          }
-                                        }
-                                      },
-                                      onPanEnd: (details) async {
-                                        if (_isDragGestureActive) {
-                                          setState(() {
-                                            _isDragGestureActive = false;
-                                          });
-                                        }
-                                        if (appData.selectedSection ==
-                                            "viewport") {
-                                          if (_isDraggingViewport ||
-                                              _isResizingViewport) {
-                                            _isDraggingViewport = false;
-                                            _isResizingViewport = false;
-                                            LayoutUtils.endViewportDrag(
-                                                appData);
-                                            appData.update();
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "layers") {
-                                          if (_isDraggingLayer) {
-                                            _isDraggingLayer = false;
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "tilemap") {
-                                          _isPaintingTilemap = false;
-                                          if (_didModifyTilemapDuringGesture) {
-                                            _didModifyTilemapDuringGesture =
-                                                false;
-                                            unawaited(
-                                                _autoSaveIfPossible(appData));
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "zones") {
-                                          appData.zoneDragOffset = Offset.zero;
-                                          if (_isDraggingZone) {
-                                            _isDraggingZone = false;
-                                          }
-                                          if (_isResizingZone) {
-                                            _isResizingZone = false;
-                                          }
-                                          if (_didModifyZoneDuringGesture) {
-                                            _didModifyZoneDuringGesture = false;
-                                            unawaited(
-                                                _autoSaveIfPossible(appData));
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "sprites") {
-                                          appData.spriteDragOffset =
-                                              Offset.zero;
-                                          if (_isDraggingSprite) {
-                                            _isDraggingSprite = false;
-                                          }
-                                          if (_didModifySpriteDuringGesture) {
-                                            _didModifySpriteDuringGesture =
-                                                false;
-                                            unawaited(
-                                              _autoSaveIfPossible(appData),
-                                            );
-                                          }
-                                        } else if (appData.selectedSection ==
-                                            "animations") {
-                                          _isSelectingAnimationFrames = false;
-                                          _animationDragStartFrame = null;
-                                          if (_didModifyAnimationDuringGesture) {
-                                            final bool applied = await LayoutUtils
-                                                .applyAnimationFrameSelectionToCurrentAnimation(
-                                              appData,
-                                              pushUndo: true,
-                                            );
-                                            _didModifyAnimationDuringGesture =
-                                                false;
-                                            if (applied) {
-                                              appData.update();
-                                              unawaited(
-                                                _autoSaveIfPossible(appData),
-                                              );
-                                            }
-                                          }
-                                        }
-
-                                        appData.dragging = false;
-                                        appData.draggingTileIndex = -1;
-                                      },
-                                      onTapDown: (TapDownDetails details) {
-                                        if (appData.selectedSection ==
-                                            "layers") {
-                                          // Layers section is preview-only: no selection via canvas tap.
-                                        } else if (appData.selectedSection ==
-                                            "zones") {
-                                          if (appData.selectedZone != -1 &&
-                                              LayoutUtils
-                                                  .isPointInZoneResizeHandle(
-                                                appData,
-                                                appData.selectedZone,
-                                                details.localPosition,
-                                              )) {
-                                            return;
-                                          }
-                                          LayoutUtils.selectZoneFromPosition(
-                                            appData,
-                                            details.localPosition,
-                                            layoutZonesKey,
-                                          );
-                                        } else if (appData.selectedSection ==
-                                            "sprites") {
-                                          final int hitSpriteIndex = LayoutUtils
-                                              .spriteIndexFromPosition(
-                                            appData,
-                                            details.localPosition,
-                                          );
-                                          layoutSpritesKey.currentState
-                                              ?.selectSprite(
-                                            appData,
-                                            hitSpriteIndex,
-                                            false,
-                                          );
-                                        } else if (appData.selectedSection ==
-                                            "animations") {
-                                          unawaited(() async {
-                                            final int frame = await LayoutUtils
-                                                .animationFrameIndexFromCanvas(
-                                              appData,
-                                              details.localPosition,
-                                            );
-                                            if (frame == -1) {
-                                              if (LayoutUtils
-                                                  .hasAnimationFrameSelection(
-                                                      appData)) {
-                                                LayoutUtils
-                                                    .clearAnimationFrameSelection(
-                                                        appData);
-                                                appData.update();
-                                              }
-                                              return;
-                                            }
-                                            final bool
-                                                singleFrameAlreadySelected =
-                                                appData.animationSelectionStartFrame ==
-                                                        frame &&
-                                                    appData.animationSelectionEndFrame ==
-                                                        frame;
-                                            if (singleFrameAlreadySelected) {
-                                              LayoutUtils
-                                                  .clearAnimationFrameSelection(
-                                                      appData);
-                                              appData.update();
-                                              return;
-                                            }
-                                            final bool changed = await LayoutUtils
-                                                .setAnimationSelectionFromEndpoints(
-                                              appData: appData,
-                                              startFrame: frame,
-                                              endFrame: frame,
-                                            );
-                                            if (!changed) {
-                                              return;
-                                            }
-                                            final bool applied = await LayoutUtils
-                                                .applyAnimationFrameSelectionToCurrentAnimation(
-                                              appData,
-                                              pushUndo: true,
-                                            );
-                                            appData.update();
-                                            if (applied) {
-                                              await _autoSaveIfPossible(
-                                                  appData);
-                                            }
-                                          }());
-                                        }
-                                      },
-                                      onTapUp: (TapUpDetails details) {
-                                        if (appData.selectedSection ==
-                                            "tilemap") {
-                                          final bool changed = appData
-                                                  .tilemapEraserEnabled
-                                              ? LayoutUtils.eraseTileAtTilemap(
+                                                } else if (LayoutUtils
+                                                    .isPointInViewportRect(
+                                                        appData,
+                                                        details
+                                                            .localPosition)) {
+                                                  _isDraggingViewport = true;
+                                                  LayoutUtils
+                                                      .startDragViewportFromPosition(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "layers") {
+                                                _isDraggingLayer = false;
+                                                _didModifyLayerDuringGesture =
+                                                    false;
+                                                _layerDragOffsetsByIndex
+                                                    .clear();
+                                                if (_layersHandToolActive) {
+                                                  return;
+                                                }
+                                                final int hitLayerIndex =
+                                                    LayoutUtils
+                                                        .selectLayerFromPosition(
                                                   appData,
                                                   details.localPosition,
-                                                  pushUndo: true,
-                                                )
-                                              : LayoutUtils
-                                                  .pasteSelectedTilePatternAtTilemap(
-                                                  appData,
-                                                  details.localPosition,
-                                                  pushUndo: true,
                                                 );
-                                          if (changed) {
-                                            appData.update();
-                                            unawaited(
-                                                _autoSaveIfPossible(appData));
-                                          }
-                                        }
-                                      },
-                                      child: CustomPaint(
-                                        painter: _layerImage != null
-                                            ? CanvasPainter(
-                                                _layerImage!, appData)
-                                            : null,
-                                        child: Container(),
+                                                final bool additiveSelection =
+                                                    _isLayerSelectionModifierPressed();
+                                                if (hitLayerIndex == -1) {
+                                                  _isMarqueeSelectingLayers =
+                                                      true;
+                                                  _marqueeSelectionAdditive =
+                                                      additiveSelection;
+                                                  _layersMarqueeStartLocal =
+                                                      details.localPosition;
+                                                  _layersMarqueeCurrentLocal =
+                                                      details.localPosition;
+                                                  _marqueeBaseLayerSelection =
+                                                      additiveSelection
+                                                          ? <int>{
+                                                              ..._selectedLayerIndices,
+                                                            }
+                                                          : <int>{};
+                                                  final bool selectionChanged =
+                                                      _applyMarqueeSelection(
+                                                          appData);
+                                                  setState(() {});
+                                                  if (selectionChanged) {
+                                                    appData.update();
+                                                  }
+                                                  return;
+                                                }
+                                                if (additiveSelection) {
+                                                  return;
+                                                }
+                                                bool selectionChanged = false;
+                                                if (!_selectedLayerIndices
+                                                    .contains(hitLayerIndex)) {
+                                                  selectionChanged =
+                                                      _setLayerSelection(
+                                                    appData,
+                                                    <int>{hitLayerIndex},
+                                                    preferredPrimary:
+                                                        hitLayerIndex,
+                                                  );
+                                                }
+                                                if (_startDraggingSelectedLayers(
+                                                  appData,
+                                                  details.localPosition,
+                                                )) {
+                                                  _isDraggingLayer = true;
+                                                }
+                                                if (selectionChanged) {
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "tilemap") {
+                                                if (_hasMultipleLayersSelected(
+                                                  appData,
+                                                )) {
+                                                  _isPaintingTilemap = false;
+                                                  _didModifyTilemapDuringGesture =
+                                                      false;
+                                                  return;
+                                                }
+                                                final bool useEraser = appData
+                                                    .tilemapEraserEnabled;
+                                                final bool hasTileSelection =
+                                                    LayoutUtils
+                                                        .hasTilePatternSelection(
+                                                            appData);
+                                                final bool startsInsideLayer =
+                                                    LayoutUtils.getTilemapCoords(
+                                                            appData,
+                                                            details
+                                                                .localPosition) !=
+                                                        null;
+                                                _isPaintingTilemap =
+                                                    startsInsideLayer &&
+                                                        (useEraser ||
+                                                            hasTileSelection);
+                                                _didModifyTilemapDuringGesture =
+                                                    false;
+                                                if (_isPaintingTilemap) {
+                                                  final bool changed = useEraser
+                                                      ? LayoutUtils
+                                                          .eraseTileAtTilemap(
+                                                          appData,
+                                                          details.localPosition,
+                                                          pushUndo: true,
+                                                        )
+                                                      : LayoutUtils
+                                                          .pasteSelectedTilePatternAtTilemap(
+                                                          appData,
+                                                          details.localPosition,
+                                                          pushUndo: true,
+                                                        );
+                                                  if (changed) {
+                                                    _didModifyTilemapDuringGesture =
+                                                        true;
+                                                    appData.update();
+                                                  }
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "zones") {
+                                                _didModifyZoneDuringGesture =
+                                                    false;
+                                                _isDraggingZone = false;
+                                                _isResizingZone = false;
+                                                final int selectedZone =
+                                                    appData.selectedZone;
+                                                final bool
+                                                    startsOnResizeHandle =
+                                                    selectedZone != -1 &&
+                                                        LayoutUtils
+                                                            .isPointInZoneResizeHandle(
+                                                          appData,
+                                                          selectedZone,
+                                                          details.localPosition,
+                                                        );
+                                                if (startsOnResizeHandle) {
+                                                  _isResizingZone = true;
+                                                  LayoutUtils
+                                                      .startResizeZoneFromPosition(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  layoutZonesKey.currentState
+                                                      ?.updateForm(appData);
+                                                  return;
+                                                }
+                                                final int hitZone = LayoutUtils
+                                                    .zoneIndexFromPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (hitZone != -1) {
+                                                  if (appData.selectedZone !=
+                                                      hitZone) {
+                                                    appData.selectedZone =
+                                                        hitZone;
+                                                    appData.update();
+                                                  }
+                                                  _isDraggingZone = true;
+                                                  LayoutUtils
+                                                      .startDragZoneFromPosition(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  layoutZonesKey.currentState
+                                                      ?.updateForm(appData);
+                                                } else {
+                                                  _isDraggingZone = false;
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "sprites") {
+                                                _didModifySpriteDuringGesture =
+                                                    false;
+                                                _isDraggingSprite = false;
+                                                final int hitSpriteIndex =
+                                                    LayoutUtils
+                                                        .spriteIndexFromPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (hitSpriteIndex != -1) {
+                                                  if (appData.selectedSprite !=
+                                                      hitSpriteIndex) {
+                                                    appData.selectedSprite =
+                                                        hitSpriteIndex;
+                                                    appData.update();
+                                                  }
+                                                  _isDraggingSprite = true;
+                                                  LayoutUtils
+                                                      .startDragSpriteFromPosition(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  layoutSpritesKey.currentState
+                                                      ?.updateForm(appData);
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animations") {
+                                                _isSelectingAnimationFrames =
+                                                    false;
+                                                _didModifyAnimationDuringGesture =
+                                                    false;
+                                                _animationDragStartFrame = null;
+                                                final int frame = await LayoutUtils
+                                                    .animationFrameIndexFromCanvas(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (frame != -1) {
+                                                  _isSelectingAnimationFrames =
+                                                      true;
+                                                  _animationDragStartFrame =
+                                                      frame;
+                                                  final bool changed =
+                                                      await LayoutUtils
+                                                          .setAnimationSelectionFromEndpoints(
+                                                    appData: appData,
+                                                    startFrame: frame,
+                                                    endFrame: frame,
+                                                  );
+                                                  if (changed) {
+                                                    _didModifyAnimationDuringGesture =
+                                                        true;
+                                                    appData.update();
+                                                  }
+                                                }
+                                              }
+                                            },
+                                            onPanUpdate: (details) async {
+                                              if (appData.selectedSection ==
+                                                  "levels") {
+                                                if (_isPointerDown) {
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "viewport") {
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else if (_isResizingViewport) {
+                                                  LayoutUtils
+                                                      .resizeViewportFromCanvas(
+                                                          appData,
+                                                          details
+                                                              .localPosition);
+                                                  appData.update();
+                                                } else if (_isDraggingViewport) {
+                                                  LayoutUtils
+                                                      .dragViewportFromCanvas(
+                                                          appData,
+                                                          details
+                                                              .localPosition);
+                                                  appData.update();
+                                                } else {
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "layers") {
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else if (_isMarqueeSelectingLayers) {
+                                                  _layersMarqueeCurrentLocal =
+                                                      details.localPosition;
+                                                  final bool selectionChanged =
+                                                      _applyMarqueeSelection(
+                                                    appData,
+                                                  );
+                                                  setState(() {});
+                                                  if (selectionChanged) {
+                                                    appData.update();
+                                                  }
+                                                } else if (_isDraggingLayer) {
+                                                  final bool changed =
+                                                      _dragSelectedLayers(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  if (changed) {
+                                                    _didModifyLayerDuringGesture =
+                                                        true;
+                                                    appData.update();
+                                                  }
+                                                } else if (_layersHandToolActive) {
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                } else {
+                                                  // Arrow tool: no world navigation.
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "tilemap") {
+                                                if (_hasMultipleLayersSelected(
+                                                  appData,
+                                                )) {
+                                                  _isPaintingTilemap = false;
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                  return;
+                                                }
+                                                final bool useEraser = appData
+                                                    .tilemapEraserEnabled;
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else if (_isPaintingTilemap) {
+                                                  final bool isInsideLayer =
+                                                      LayoutUtils.getTilemapCoords(
+                                                              appData,
+                                                              details
+                                                                  .localPosition) !=
+                                                          null;
+                                                  if (!isInsideLayer) {
+                                                    _isPaintingTilemap = false;
+                                                    appData.layersViewOffset +=
+                                                        details.delta;
+                                                    appData.update();
+                                                    return;
+                                                  }
+                                                  final bool changed = useEraser
+                                                      ? LayoutUtils
+                                                          .eraseTileAtTilemap(
+                                                          appData,
+                                                          details.localPosition,
+                                                          pushUndo:
+                                                              !_didModifyTilemapDuringGesture,
+                                                        )
+                                                      : LayoutUtils
+                                                          .pasteSelectedTilePatternAtTilemap(
+                                                          appData,
+                                                          details.localPosition,
+                                                          pushUndo:
+                                                              !_didModifyTilemapDuringGesture,
+                                                        );
+                                                  if (changed) {
+                                                    _didModifyTilemapDuringGesture =
+                                                        true;
+                                                    appData.update();
+                                                  }
+                                                } else {
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "zones") {
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else if (_isResizingZone &&
+                                                    appData.selectedZone !=
+                                                        -1) {
+                                                  LayoutUtils
+                                                      .resizeZoneFromCanvas(
+                                                          appData,
+                                                          details
+                                                              .localPosition);
+                                                  _didModifyZoneDuringGesture =
+                                                      true;
+                                                  appData.update();
+                                                  layoutZonesKey.currentState
+                                                      ?.updateForm(appData);
+                                                } else if (_isDraggingZone &&
+                                                    appData.selectedZone !=
+                                                        -1) {
+                                                  LayoutUtils
+                                                      .dragZoneFromCanvas(
+                                                          appData,
+                                                          details
+                                                              .localPosition);
+                                                  _didModifyZoneDuringGesture =
+                                                      true;
+                                                  appData.update();
+                                                  layoutZonesKey.currentState
+                                                      ?.updateForm(appData);
+                                                } else {
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "sprites") {
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else if (_isDraggingSprite &&
+                                                    appData.selectedSprite !=
+                                                        -1) {
+                                                  LayoutUtils
+                                                      .dragSpriteFromCanvas(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  _didModifySpriteDuringGesture =
+                                                      true;
+                                                  appData.update();
+                                                  layoutSpritesKey.currentState
+                                                      ?.updateForm(appData);
+                                                } else {
+                                                  appData.layersViewOffset +=
+                                                      details.delta;
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animations") {
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else if (_isSelectingAnimationFrames &&
+                                                    _animationDragStartFrame !=
+                                                        null) {
+                                                  final int frame =
+                                                      await LayoutUtils
+                                                          .animationFrameIndexFromCanvas(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  if (frame == -1) {
+                                                    return;
+                                                  }
+                                                  final bool changed =
+                                                      await LayoutUtils
+                                                          .setAnimationSelectionFromEndpoints(
+                                                    appData: appData,
+                                                    startFrame:
+                                                        _animationDragStartFrame!,
+                                                    endFrame: frame,
+                                                  );
+                                                  if (changed) {
+                                                    _didModifyAnimationDuringGesture =
+                                                        true;
+                                                    appData.update();
+                                                  }
+                                                }
+                                              }
+                                            },
+                                            onPanEnd: (details) async {
+                                              if (_isDragGestureActive) {
+                                                setState(() {
+                                                  _isDragGestureActive = false;
+                                                });
+                                              }
+                                              if (appData.selectedSection ==
+                                                  "viewport") {
+                                                if (_isDraggingViewport ||
+                                                    _isResizingViewport) {
+                                                  _isDraggingViewport = false;
+                                                  _isResizingViewport = false;
+                                                  LayoutUtils.endViewportDrag(
+                                                      appData);
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "layers") {
+                                                if (_isMarqueeSelectingLayers) {
+                                                  _isMarqueeSelectingLayers =
+                                                      false;
+                                                  _marqueeSelectionAdditive =
+                                                      false;
+                                                  _layersMarqueeStartLocal =
+                                                      null;
+                                                  _layersMarqueeCurrentLocal =
+                                                      null;
+                                                  _marqueeBaseLayerSelection =
+                                                      <int>{};
+                                                  setState(() {});
+                                                }
+                                                if (_isDraggingLayer) {
+                                                  _isDraggingLayer = false;
+                                                }
+                                                _layerDragOffsetsByIndex
+                                                    .clear();
+                                                if (_didModifyLayerDuringGesture) {
+                                                  _didModifyLayerDuringGesture =
+                                                      false;
+                                                  unawaited(_autoSaveIfPossible(
+                                                      appData));
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "tilemap") {
+                                                _isPaintingTilemap = false;
+                                                if (_didModifyTilemapDuringGesture) {
+                                                  _didModifyTilemapDuringGesture =
+                                                      false;
+                                                  unawaited(_autoSaveIfPossible(
+                                                      appData));
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "zones") {
+                                                appData.zoneDragOffset =
+                                                    Offset.zero;
+                                                if (_isDraggingZone) {
+                                                  _isDraggingZone = false;
+                                                }
+                                                if (_isResizingZone) {
+                                                  _isResizingZone = false;
+                                                }
+                                                if (_didModifyZoneDuringGesture) {
+                                                  _didModifyZoneDuringGesture =
+                                                      false;
+                                                  unawaited(_autoSaveIfPossible(
+                                                      appData));
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "sprites") {
+                                                appData.spriteDragOffset =
+                                                    Offset.zero;
+                                                if (_isDraggingSprite) {
+                                                  _isDraggingSprite = false;
+                                                }
+                                                if (_didModifySpriteDuringGesture) {
+                                                  _didModifySpriteDuringGesture =
+                                                      false;
+                                                  unawaited(
+                                                    _autoSaveIfPossible(
+                                                        appData),
+                                                  );
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animations") {
+                                                _isSelectingAnimationFrames =
+                                                    false;
+                                                _animationDragStartFrame = null;
+                                                if (_didModifyAnimationDuringGesture) {
+                                                  final bool applied =
+                                                      await LayoutUtils
+                                                          .applyAnimationFrameSelectionToCurrentAnimation(
+                                                    appData,
+                                                    pushUndo: true,
+                                                  );
+                                                  _didModifyAnimationDuringGesture =
+                                                      false;
+                                                  if (applied) {
+                                                    appData.update();
+                                                    unawaited(
+                                                      _autoSaveIfPossible(
+                                                          appData),
+                                                    );
+                                                  }
+                                                }
+                                              }
+
+                                              appData.dragging = false;
+                                              appData.draggingTileIndex = -1;
+                                            },
+                                            onTapDown:
+                                                (TapDownDetails details) {
+                                              if (appData.selectedSection ==
+                                                  "layers") {
+                                                if (_layersHandToolActive) {
+                                                  return;
+                                                }
+                                                final int hitLayerIndex =
+                                                    LayoutUtils
+                                                        .selectLayerFromPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                final bool additiveSelection =
+                                                    _isLayerSelectionModifierPressed();
+                                                bool selectionChanged = false;
+                                                if (additiveSelection) {
+                                                  if (hitLayerIndex != -1) {
+                                                    final Set<int>
+                                                        nextSelection = <int>{
+                                                      ..._selectedLayerIndices,
+                                                    };
+                                                    if (!nextSelection.remove(
+                                                        hitLayerIndex)) {
+                                                      nextSelection
+                                                          .add(hitLayerIndex);
+                                                    }
+                                                    selectionChanged =
+                                                        _setLayerSelection(
+                                                      appData,
+                                                      nextSelection,
+                                                      preferredPrimary:
+                                                          hitLayerIndex,
+                                                    );
+                                                  }
+                                                } else if (hitLayerIndex ==
+                                                    -1) {
+                                                  selectionChanged =
+                                                      _setLayerSelection(
+                                                    appData,
+                                                    <int>{},
+                                                  );
+                                                } else {
+                                                  selectionChanged =
+                                                      _setLayerSelection(
+                                                    appData,
+                                                    <int>{hitLayerIndex},
+                                                    preferredPrimary:
+                                                        hitLayerIndex,
+                                                  );
+                                                }
+                                                if (selectionChanged) {
+                                                  appData.update();
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "zones") {
+                                                if (appData.selectedZone !=
+                                                        -1 &&
+                                                    LayoutUtils
+                                                        .isPointInZoneResizeHandle(
+                                                      appData,
+                                                      appData.selectedZone,
+                                                      details.localPosition,
+                                                    )) {
+                                                  return;
+                                                }
+                                                LayoutUtils
+                                                    .selectZoneFromPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                  layoutZonesKey,
+                                                );
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "sprites") {
+                                                final int hitSpriteIndex =
+                                                    LayoutUtils
+                                                        .spriteIndexFromPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                layoutSpritesKey.currentState
+                                                    ?.selectSprite(
+                                                  appData,
+                                                  hitSpriteIndex,
+                                                  false,
+                                                );
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animations") {
+                                                unawaited(() async {
+                                                  final int frame =
+                                                      await LayoutUtils
+                                                          .animationFrameIndexFromCanvas(
+                                                    appData,
+                                                    details.localPosition,
+                                                  );
+                                                  if (frame == -1) {
+                                                    if (LayoutUtils
+                                                        .hasAnimationFrameSelection(
+                                                            appData)) {
+                                                      LayoutUtils
+                                                          .clearAnimationFrameSelection(
+                                                              appData);
+                                                      appData.update();
+                                                    }
+                                                    return;
+                                                  }
+                                                  final bool
+                                                      singleFrameAlreadySelected =
+                                                      appData.animationSelectionStartFrame ==
+                                                              frame &&
+                                                          appData.animationSelectionEndFrame ==
+                                                              frame;
+                                                  if (singleFrameAlreadySelected) {
+                                                    LayoutUtils
+                                                        .clearAnimationFrameSelection(
+                                                            appData);
+                                                    appData.update();
+                                                    return;
+                                                  }
+                                                  final bool changed =
+                                                      await LayoutUtils
+                                                          .setAnimationSelectionFromEndpoints(
+                                                    appData: appData,
+                                                    startFrame: frame,
+                                                    endFrame: frame,
+                                                  );
+                                                  if (!changed) {
+                                                    return;
+                                                  }
+                                                  final bool applied =
+                                                      await LayoutUtils
+                                                          .applyAnimationFrameSelectionToCurrentAnimation(
+                                                    appData,
+                                                    pushUndo: true,
+                                                  );
+                                                  appData.update();
+                                                  if (applied) {
+                                                    await _autoSaveIfPossible(
+                                                        appData);
+                                                  }
+                                                }());
+                                              }
+                                            },
+                                            onTapUp: (TapUpDetails details) {
+                                              if (appData.selectedSection ==
+                                                  "tilemap") {
+                                                if (_hasMultipleLayersSelected(
+                                                  appData,
+                                                )) {
+                                                  return;
+                                                }
+                                                final bool changed = appData
+                                                        .tilemapEraserEnabled
+                                                    ? LayoutUtils
+                                                        .eraseTileAtTilemap(
+                                                        appData,
+                                                        details.localPosition,
+                                                        pushUndo: true,
+                                                      )
+                                                    : LayoutUtils
+                                                        .pasteSelectedTilePatternAtTilemap(
+                                                        appData,
+                                                        details.localPosition,
+                                                        pushUndo: true,
+                                                      );
+                                                if (changed) {
+                                                  appData.update();
+                                                  unawaited(_autoSaveIfPossible(
+                                                      appData));
+                                                }
+                                              }
+                                            },
+                                            child: CustomPaint(
+                                              painter: _layerImage != null
+                                                  ? CanvasPainter(
+                                                      _layerImage!,
+                                                      appData,
+                                                      selectedLayerIndices:
+                                                          _selectedLayerIndices,
+                                                    )
+                                                  : null,
+                                              child: Container(),
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                    if (appData.selectedSection == "layers")
+                                      Positioned.fill(
+                                        child: IgnorePointer(
+                                          child: CustomPaint(
+                                            painter: _LayersMarqueePainter(
+                                              rect: _layersMarqueeRect,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    if (appData.selectedSection == "layers")
+                                      _buildLayersToolPickerOverlay(),
+                                  ],
                                 ),
                               );
                             },
@@ -1292,5 +1969,87 @@ class _LayoutState extends State<Layout> {
         ),
       ),
     );
+  }
+}
+
+class _LayersMarqueePainter extends CustomPainter {
+  const _LayersMarqueePainter({required this.rect});
+
+  final Rect? rect;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Rect? selectionRect = rect;
+    if (selectionRect == null ||
+        selectionRect.width <= 0 ||
+        selectionRect.height <= 0) {
+      return;
+    }
+
+    final Paint fillPaint = Paint()
+      ..color = const Color(0x552196F3)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(selectionRect, fillPaint);
+
+    final Paint borderPaint = Paint()
+      ..color = const Color(0xFF2196F3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3;
+
+    _drawDashedLine(
+      canvas,
+      selectionRect.topLeft,
+      selectionRect.topRight,
+      borderPaint,
+    );
+    _drawDashedLine(
+      canvas,
+      selectionRect.topRight,
+      selectionRect.bottomRight,
+      borderPaint,
+    );
+    _drawDashedLine(
+      canvas,
+      selectionRect.bottomRight,
+      selectionRect.bottomLeft,
+      borderPaint,
+    );
+    _drawDashedLine(
+      canvas,
+      selectionRect.bottomLeft,
+      selectionRect.topLeft,
+      borderPaint,
+    );
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Paint paint,
+  ) {
+    const double dashLength = 6;
+    const double gapLength = 4;
+    final Offset delta = end - start;
+    final double totalLength = delta.distance;
+    if (totalLength == 0) {
+      return;
+    }
+    final Offset direction = delta / totalLength;
+    double distance = 0;
+    while (distance < totalLength) {
+      final double nextDistance = (distance + dashLength).clamp(0, totalLength);
+      canvas.drawLine(
+        start + direction * distance,
+        start + direction * nextDistance,
+        paint,
+      );
+      distance += dashLength + gapLength;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LayersMarqueePainter oldDelegate) {
+    return oldDelegate.rect != rect;
   }
 }

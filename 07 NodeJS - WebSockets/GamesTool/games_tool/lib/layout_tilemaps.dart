@@ -340,7 +340,18 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
 
     final bool hasLevel = appData.selectedLevel >= 0 &&
         appData.selectedLevel < appData.gameData.levels.length;
+    final Set<int> selectedLayerIndices = hasLevel
+        ? appData.selectedLayerIndices
+            .where((index) =>
+                index >= 0 &&
+                index <
+                    appData
+                        .gameData.levels[appData.selectedLevel].layers.length)
+            .toSet()
+        : <int>{};
+    final bool hasMultipleSelectedLayers = selectedLayerIndices.length > 1;
     final bool hasLayer = hasLevel &&
+        !hasMultipleSelectedLayers &&
         appData.selectedLayer >= 0 &&
         appData.selectedLayer <
             appData.gameData.levels[appData.selectedLevel].layers.length;
@@ -348,6 +359,8 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
       final String message;
       if (!hasLevel) {
         message = 'Select a Level to edit the tilemap.';
+      } else if (hasMultipleSelectedLayers) {
+        message = 'Select only one layer to edit its tilemap.';
       } else if (appData
           .gameData.levels[appData.selectedLevel].layers.isEmpty) {
         message = 'This level has no layers yet. Add a Layer first.';

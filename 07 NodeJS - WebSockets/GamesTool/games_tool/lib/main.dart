@@ -47,14 +47,17 @@ class _BootstrapAppState extends State<_BootstrapApp> {
   @override
   Widget build(BuildContext context) {
     final AppData? appData = _appData;
+    final Widget child;
     if (appData != null) {
-      return ChangeNotifierProvider.value(
+      child = ChangeNotifierProvider.value(
         value: appData,
         child: const App(),
       );
+    } else {
+      child = const _LoadingScreen();
     }
 
-    return const SystemAwareCDKApp(child: _LoadingScreen());
+    return SystemAwareCDKApp(child: child);
   }
 }
 

@@ -28,10 +28,21 @@ class _SystemAwareCDKAppState extends State<SystemAwareCDKApp>
     WidgetsBinding.instance.addObserver(this);
     _platformBrightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshBrightnessFromPlatform();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 150), () {
+      _refreshBrightnessFromPlatform();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 500), () {
+      _refreshBrightnessFromPlatform();
+    });
   }
 
-  @override
-  void didChangePlatformBrightness() {
+  void _refreshBrightnessFromPlatform() {
+    if (!mounted) {
+      return;
+    }
     final Brightness nextBrightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
     if (nextBrightness == _platformBrightness) {
@@ -40,6 +51,11 @@ class _SystemAwareCDKAppState extends State<SystemAwareCDKApp>
     setState(() {
       _platformBrightness = nextBrightness;
     });
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    _refreshBrightnessFromPlatform();
   }
 
   @override
@@ -63,8 +79,6 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SystemAwareCDKApp(
-      child: Layout(title: "Level builder"),
-    );
+    return const Layout(title: "Level builder");
   }
 }

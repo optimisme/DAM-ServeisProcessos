@@ -201,10 +201,13 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                       ),
                     ),
                     SizedBox(height: spacing.xs),
-                    CDKText(
-                      'Frame $frameIndex (${animation.startFrame}-${animation.endFrame}) @ ${animation.fps.toStringAsFixed(1)} fps',
-                      role: CDKTextRole.caption,
-                      color: cdkColors.colorText,
+                    Align(
+                      alignment: Alignment.center,
+                      child: CDKText(
+                        'Frame $frameIndex (${animation.startFrame}-${animation.endFrame}) @ ${animation.fps.toStringAsFixed(1)} fps',
+                        role: CDKTextRole.caption,
+                        color: cdkColors.colorText,
+                      ),
                     ),
                   ],
                 );

@@ -608,7 +608,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                           child: CDKText(
                             'Preview: X $previewX, Y $previewY, ${previewWidth}x$previewHeight',
                             role: CDKTextRole.caption,
-                            secondary: true,
+                            color: cdkColors.colorTextSecondary,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -633,7 +633,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                     CDKText(
                       _adaptationDescription(adaptationIndex),
                       role: CDKTextRole.caption,
-                      secondary: true,
+                      color: cdkColors.colorTextSecondary,
                     ),
 
                     const SizedBox(height: 14),
@@ -643,7 +643,7 @@ class LayoutViewportState extends State<LayoutViewport> {
                       'Initial rectangle = initial position. Preview rectangle = preview position. '
                       'Drag the preview rectangle on the canvas to move it, drag its bottom-right triangle to resize it, then use "Use preview values".',
                       role: CDKTextRole.caption,
-                      secondary: true,
+                      color: cdkColors.colorTextSecondary,
                     ),
                   ],
                 ),

@@ -23,19 +23,18 @@ class CanvasPainter extends CustomPainter {
     if (gameState.isNotEmpty && gameData.isNotEmpty) {
       // Get level data
       if (gameState["level"] != null) {
-        final String levelName = gameState["level"];
-        final List<dynamic> levels = appData.gameData["levels"];
-        final level = levels.firstWhere(
-          (lvl) => lvl["name"] == levelName,
-          orElse: () => null,
+        final String levelName = gameState["level"] as String;
+        final Map<String, dynamic>? level = appData.gamesTool.findLevelByName(
+          appData.gameData,
+          levelName,
         );
-        
+
         // Update camera position based on player data
         if (appData.playerData != null) {
           appData.camera.x = appData.playerData["x"].toDouble();
           appData.camera.y = appData.playerData["y"].toDouble();
         }
-        
+
         // Draw the level
         if (level != null) {
           drawLevel(canvas, painterSize, level);
@@ -44,7 +43,7 @@ class CanvasPainter extends CustomPainter {
 
       // Draw the flag
       drawFlag(canvas, painterSize);
-      
+
       // Draw players
       if (gameState["players"] != null) {
         for (var player in gameState["players"]) {
@@ -69,15 +68,16 @@ class CanvasPainter extends CustomPainter {
   }
 
   // Helper method to convert world coordinates to screen coordinates
-  Offset worldToScreen(double worldX, double worldY, Size painterSize, {double depth = 0}) {
+  Offset worldToScreen(double worldX, double worldY, Size painterSize,
+      {double depth = 0}) {
     final camData = _getCameraAndScale(painterSize);
     final cam = camData['cam'];
     final scale = camData['scale'];
-    
+
     final double parallax = depth >= 0 ? 1.0 : 1.0 / (1.0 - depth);
     final double camX = cam.x * parallax;
     final double camY = cam.y * parallax;
-    
+
     return Offset(
       (worldX - camX) * scale + painterSize.width / 2,
       (worldY - camY) * scale + painterSize.height / 2,
@@ -86,10 +86,10 @@ class CanvasPainter extends CustomPainter {
 
   // Helper method to draw any image from spritesheet
   void drawSpriteFromSheet(
-    Canvas canvas, 
-    ui.Image spriteSheet, 
-    Rect srcRect, 
-    Offset destPos, 
+    Canvas canvas,
+    ui.Image spriteSheet,
+    Rect srcRect,
+    Offset destPos,
     Size destSize,
   ) {
     canvas.drawImageRect(
@@ -152,7 +152,7 @@ class CanvasPainter extends CustomPainter {
   }
 
   void drawLevel(Canvas canvas, Size painterSize, Map<String, dynamic> level) {
-    final layers = level["layers"] as List<dynamic>;
+    final List<dynamic> layers = level["layers"] as List<dynamic>;
     final camData = _getCameraAndScale(painterSize);
     final cam = camData['cam'];
     final scale = camData['scale'];
@@ -167,10 +167,16 @@ class CanvasPainter extends CustomPainter {
       final double layerX = (layer["x"] as num?)?.toDouble() ?? 0;
       final double layerY = (layer["y"] as num?)?.toDouble() ?? 0;
 
-      final tileMap = layer["tileMap"] as List<dynamic>;
+      final Object? tileMapObject = layer["tileMap"];
+      if (tileMapObject is! List<dynamic>) continue;
+      final List<dynamic> tileMap = tileMapObject;
       final tileW = (layer["tilesWidth"] as num).toDouble();
       final tileH = (layer["tilesHeight"] as num).toDouble();
-      final tileSheetPath = "flag_game/${layer["tilesSheetFile"]}";
+      final Object? tilesSheetFile = layer["tilesSheetFile"];
+      if (tilesSheetFile is! String || tilesSheetFile.isEmpty) continue;
+      final String tileSheetPath = appData.gamesTool.toRelativeAssetKey(
+        tilesSheetFile,
+      );
 
       if (!appData.imagesCache.containsKey(tileSheetPath)) continue;
       final ui.Image tileSheet = appData.imagesCache[tileSheetPath]!;
@@ -184,8 +190,10 @@ class CanvasPainter extends CustomPainter {
 
           final double worldX = layerX + col * tileW;
           final double worldY = layerY + row * tileH;
-          final double screenX = (worldX - camX) * scale + painterSize.width / 2;
-          final double screenY = (worldY - camY) * scale + painterSize.height / 2;
+          final double screenX =
+              (worldX - camX) * scale + painterSize.width / 2;
+          final double screenY =
+              (worldY - camY) * scale + painterSize.height / 2;
           final double destWidth = tileW * scale;
           final double destHeight = tileH * scale;
           final int srcCol = tileIndex % tileSheetCols;
@@ -196,7 +204,8 @@ class CanvasPainter extends CustomPainter {
           canvas.drawImageRect(
             tileSheet,
             Rect.fromLTWH(srcX, srcY, tileW, tileH),
-            Rect.fromLTWH(screenX - 1, screenY - 1, destWidth + 1, destHeight + 1),
+            Rect.fromLTWH(
+                screenX - 1, screenY - 1, destWidth + 1, destHeight + 1),
             Paint(),
           );
         }
@@ -205,16 +214,17 @@ class CanvasPainter extends CustomPainter {
   }
 
   void drawFlag(Canvas canvas, Size painterSize) {
-    final level = appData.gameData["levels"].firstWhere(
-      (lvl) => lvl["name"] == appData.gameState["level"],
-      orElse: () => null,
+    final String? levelName = appData.gameState["level"] as String?;
+    if (levelName == null) return;
+    final Map<String, dynamic>? level = appData.gamesTool.findLevelByName(
+      appData.gameData,
+      levelName,
     );
     if (level == null) return;
 
-    final sprites = level["sprites"] as List<dynamic>;
-    final flagSprite = sprites.firstWhere(
-      (sprite) => sprite["type"] == "flag",
-      orElse: () => null,
+    final Map<String, dynamic>? flagSprite = appData.gamesTool.findSpriteByType(
+      level,
+      "flag",
     );
     if (flagSprite == null) return;
 
@@ -223,29 +233,32 @@ class CanvasPainter extends CustomPainter {
 
     if (!flagHasOwner) {
       // Draw flag at its position if it doesn't have an owner
-      final String spritePath = "flag_game/${flagSprite["imageFile"]}";
+      final Object? imageFile = flagSprite["imageFile"];
+      if (imageFile is! String || imageFile.isEmpty) return;
+      final String spritePath = appData.gamesTool.toRelativeAssetKey(imageFile);
       if (!appData.imagesCache.containsKey(spritePath)) return;
-      
+
       final ui.Image spriteImg = appData.imagesCache[spritePath]!;
       final int frameCount = (spriteImg.width / flagSprite["width"]).floor();
       final int tickCounter = appData.gameState["tickCounter"] ?? 0;
       final double frameIndex = (tickCounter % frameCount).toDouble();
       final double srcX = frameIndex * flagSprite["width"];
-      
+
       final Offset screenPos = worldToScreen(
         flagSprite["x"].toDouble(),
         flagSprite["y"].toDouble(),
         painterSize,
       );
-      
+
       final camData = _getCameraAndScale(painterSize);
       final scale = camData['scale'];
       final destWidth = flagSprite["width"] * scale;
       final destHeight = flagSprite["height"] * scale;
-      
+
       canvas.drawImageRect(
         spriteImg,
-        Rect.fromLTWH(srcX, 0, flagSprite["width"].toDouble(), flagSprite["height"].toDouble()),
+        Rect.fromLTWH(srcX, 0, flagSprite["width"].toDouble(),
+            flagSprite["height"].toDouble()),
         Rect.fromLTWH(
           screenPos.dx - destWidth / 2,
           screenPos.dy - destHeight / 2,
@@ -272,7 +285,8 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
-  void drawPlayer(Canvas canvas, Size painterSize, Map<String, dynamic> player) {
+  void drawPlayer(
+      Canvas canvas, Size painterSize, Map<String, dynamic> player) {
     final camData = _getCameraAndScale(painterSize);
     final scale = camData['scale'];
 
@@ -290,7 +304,8 @@ class CanvasPainter extends CustomPainter {
 
     // Draw player rectangle
     final Paint paint = Paint()..color = _getColorFromString(color);
-    final rect = Rect.fromLTWH(screenPos.dx, screenPos.dy, playerWidth * scale, playerHeight * scale);
+    final rect = Rect.fromLTWH(
+        screenPos.dx, screenPos.dy, playerWidth * scale, playerHeight * scale);
     canvas.drawRect(rect, paint);
 
     // Draw direction arrow
@@ -314,42 +329,47 @@ class CanvasPainter extends CustomPainter {
     final flagOwnerId = appData.gameState["flagOwnerId"];
     if (flagOwnerId == player["id"]) {
       // Find flag sprite
-      final level = appData.gameData["levels"].firstWhere(
-        (lvl) => lvl["name"] == appData.gameState["level"],
-        orElse: () => null,
+      final String? levelName = appData.gameState["level"] as String?;
+      if (levelName == null) return;
+      final Map<String, dynamic>? level = appData.gamesTool.findLevelByName(
+        appData.gameData,
+        levelName,
       );
       if (level == null) return;
 
-      final sprites = level["sprites"] as List<dynamic>;
-      final flagSprite = sprites.firstWhere(
-        (sprite) => sprite["type"] == "flag",
-        orElse: () => null,
+      final Map<String, dynamic>? flagSprite =
+          appData.gamesTool.findSpriteByType(
+        level,
+        "flag",
       );
       if (flagSprite == null) return;
 
-      final String spritePath = "flag_game/${flagSprite["imageFile"]}";
+      final Object? imageFile = flagSprite["imageFile"];
+      if (imageFile is! String || imageFile.isEmpty) return;
+      final String spritePath = appData.gamesTool.toRelativeAssetKey(imageFile);
       if (!appData.imagesCache.containsKey(spritePath)) return;
-      
+
       final ui.Image spriteImg = appData.imagesCache[spritePath]!;
       final int frameCount = (spriteImg.width / flagSprite["width"]).floor();
       final int tickCounter = appData.gameState["tickCounter"] ?? 0;
       final double frameIndex = (tickCounter % frameCount).toDouble();
       final double srcX = frameIndex * flagSprite["width"];
-      
+
       // Draw small flag on top of player
       final double flagScale = 0.5; // Make flag smaller than player
       final double flagWidth = flagSprite["width"] * scale * flagScale;
       final double flagHeight = flagSprite["height"] * scale * flagScale;
-      
+
       // Position flag above player
       final Offset flagPos = Offset(
         screenPos.dx,
         screenPos.dy,
       );
-      
+
       canvas.drawImageRect(
         spriteImg,
-        Rect.fromLTWH(srcX, 0, flagSprite["width"].toDouble(), flagSprite["height"].toDouble()),
+        Rect.fromLTWH(srcX, 0, flagSprite["width"].toDouble(),
+            flagSprite["height"].toDouble()),
         Rect.fromLTWH(
           flagPos.dx + playerWidth / 2,
           flagPos.dy - flagHeight,

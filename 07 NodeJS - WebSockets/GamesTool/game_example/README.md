@@ -45,7 +45,7 @@ import 'package:game_example/utils_flame/utils_flame.dart';
 final flameLoader = GamesToolFlameLoader();
 await flameLoader.mountLevel(
   game: game,
-  projectRoot: 'assets/exemple_0',
+  projectRoot: 'assets/example_0',
   levelIndex: 0,
 );
 ```

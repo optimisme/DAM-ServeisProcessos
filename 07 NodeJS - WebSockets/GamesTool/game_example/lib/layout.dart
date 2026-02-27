@@ -16,16 +16,6 @@ class Layout extends StatefulWidget {
 class _LayoutState extends State<Layout> {
   final Set<String> _pressedKeys = {};
 
-  @override
-  void initState() {
-    super.initState();
-    // Preload image assets into cache
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final appData = Provider.of<AppData>(context, listen: false);
-      await appData.getImage("images/arrows.png");
-    });
-  }
-
   // Tractar què passa quan el jugador apreta una tecla
   void _onKeyEvent(KeyEvent event, AppData appData) {
     String key = event.logicalKey.keyLabel.toLowerCase();
@@ -70,19 +60,18 @@ class _LayoutState extends State<Layout> {
     return CupertinoPageScaffold(
       child: SafeArea(
         child: Container(
-          color: CupertinoColors.systemGrey5,
-          child: Focus(
-            autofocus: true,
-            onKeyEvent: (node, event) {
-              _onKeyEvent(event, appData);
-              return KeyEventResult.handled;
-            },
-            child: CustomPaint(
-              painter: CanvasPainter(appData),
-              child: Container(),
-            ),
-          )
-        ),
+            color: CupertinoColors.systemGrey5,
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (node, event) {
+                _onKeyEvent(event, appData);
+                return KeyEventResult.handled;
+              },
+              child: CustomPaint(
+                painter: CanvasPainter(appData),
+                child: Container(),
+              ),
+            )),
       ),
     );
   }

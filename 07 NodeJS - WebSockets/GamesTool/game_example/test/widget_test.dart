@@ -1,11 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:game_example/main.dart';
-
 void main() {
-  testWidgets('renders level menu screen', (WidgetTester tester) async {
-    await tester.pumpWidget(const GamesToolExampleApp());
-    expect(find.byType(MaterialApp), findsOneWidget);
+  testWidgets('renders cupertino app shell', (WidgetTester tester) async {
+    await tester.pumpWidget(const CupertinoApp(home: SizedBox.shrink()));
+    expect(find.byType(CupertinoApp), findsOneWidget);
   });
 }

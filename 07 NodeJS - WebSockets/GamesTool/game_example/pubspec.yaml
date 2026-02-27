@@ -39,7 +39,6 @@ dependencies:
   http: any
   desktop_window: any
   file_picker: any
-  web_socket_channel: any
 
 dev_dependencies:
   flutter_test:
@@ -64,7 +63,7 @@ dependency_overrides:
   string_scanner: any
   term_glyph: any
   web: any
-  win32: any
+  win32: ^5.5.4
   matcher: any
   test_api: any
 
@@ -85,9 +84,10 @@ flutter:
   #   - images/a_dot_ham.jpeg
   assets:
     - assets/
-    - assets/data/
-    - assets/images/
-    - assets/flag_game/
+    - assets/example_0/
+    - assets/example_0/media/
+    - assets/example_0/tilemaps/
+    - assets/example_0/zones/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

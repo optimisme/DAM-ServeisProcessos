@@ -65,11 +65,11 @@ class _LayoutState extends State<Layout> {
   List<String> sections = [
     'projects',
     'media',
+    'animations',
     'levels',
     'layers',
     'tilemap',
     'zones',
-    'animations',
     'sprites',
     'viewport',
   ];

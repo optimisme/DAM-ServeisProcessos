@@ -93,7 +93,7 @@ class _LayoutState extends State<Layout> {
   Offset? _spritesMarqueeCurrentLocal;
   Set<int> _marqueeBaseSpriteSelection = <int>{};
   final FocusNode _focusNode = FocusNode();
-  _LayersCanvasTool _layersCanvasTool = _LayersCanvasTool.arrow;
+  _LayersCanvasTool _layersCanvasTool = _LayersCanvasTool.hand;
   List<String> sections = [
     'projects',
     'media',
@@ -1419,6 +1419,9 @@ class _LayoutState extends State<Layout> {
     if (appData.selectedSection != 'tilemap') {
       return SystemMouseCursors.basic;
     }
+    if (_layersHandToolActive) {
+      return SystemMouseCursors.basic;
+    }
     if (_isDragGestureActive) {
       return SystemMouseCursors.basic;
     }
@@ -1755,6 +1758,12 @@ class _LayoutState extends State<Layout> {
                                               } else if (appData
                                                       .selectedSection ==
                                                   "tilemap") {
+                                                if (_layersHandToolActive) {
+                                                  _isPaintingTilemap = false;
+                                                  _didModifyTilemapDuringGesture =
+                                                      false;
+                                                  return;
+                                                }
                                                 if (_hasMultipleLayersSelected(
                                                   appData,
                                                 )) {
@@ -2069,20 +2078,23 @@ class _LayoutState extends State<Layout> {
                                               } else if (appData
                                                       .selectedSection ==
                                                   "tilemap") {
-                                                if (_hasMultipleLayersSelected(
-                                                  appData,
-                                                )) {
-                                                  _isPaintingTilemap = false;
+                                                if (_layersHandToolActive) {
                                                   appData.layersViewOffset +=
                                                       details.delta;
                                                   appData.update();
                                                   return;
                                                 }
-                                                final bool useEraser = appData
-                                                    .tilemapEraserEnabled;
+                                                if (_hasMultipleLayersSelected(
+                                                  appData,
+                                                )) {
+                                                  _isPaintingTilemap = false;
+                                                  return;
+                                                }
                                                 if (!_isPointerDown) {
                                                   // scroll-triggered pan — ignore
                                                 } else if (_isPaintingTilemap) {
+                                                  final bool useEraser = appData
+                                                      .tilemapEraserEnabled;
                                                   final bool isInsideLayer =
                                                       LayoutUtils.getTilemapCoords(
                                                               appData,
@@ -2091,9 +2103,6 @@ class _LayoutState extends State<Layout> {
                                                           null;
                                                   if (!isInsideLayer) {
                                                     _isPaintingTilemap = false;
-                                                    appData.layersViewOffset +=
-                                                        details.delta;
-                                                    appData.update();
                                                     return;
                                                   }
                                                   final bool changed = useEraser
@@ -2117,9 +2126,7 @@ class _LayoutState extends State<Layout> {
                                                     appData.update();
                                                   }
                                                 } else {
-                                                  appData.layersViewOffset +=
-                                                      details.delta;
-                                                  appData.update();
+                                                  // Arrow tool: no world navigation.
                                                 }
                                               } else if (appData
                                                       .selectedSection ==
@@ -2626,6 +2633,9 @@ class _LayoutState extends State<Layout> {
                                             onTapUp: (TapUpDetails details) {
                                               if (appData.selectedSection ==
                                                   "tilemap") {
+                                                if (_layersHandToolActive) {
+                                                  return;
+                                                }
                                                 if (_hasMultipleLayersSelected(
                                                   appData,
                                                 )) {
@@ -2699,6 +2709,7 @@ class _LayoutState extends State<Layout> {
                                       ),
                                     if (appData.selectedSection == "layers" ||
                                         appData.selectedSection == "zones" ||
+                                        appData.selectedSection == "tilemap" ||
                                         appData.selectedSection == "sprites")
                                       _buildLayersToolPickerOverlay(),
                                   ],

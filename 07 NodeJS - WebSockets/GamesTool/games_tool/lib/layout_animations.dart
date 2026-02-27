@@ -204,7 +204,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                     CDKText(
                       'Frame $frameIndex (${animation.startFrame}-${animation.endFrame}) @ ${animation.fps.toStringAsFixed(1)} fps',
                       role: CDKTextRole.caption,
-                      color: cdkColors.colorTextSecondary,
+                      color: cdkColors.colorText,
                     ),
                   ],
                 );
@@ -215,7 +215,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
             CDKText(
               'Frame -',
               role: CDKTextRole.caption,
-              color: cdkColors.colorTextSecondary,
+              color: cdkColors.colorText,
             ),
           ],
         ],

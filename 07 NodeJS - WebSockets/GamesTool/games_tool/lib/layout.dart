@@ -1468,6 +1468,46 @@ class _LayoutState extends State<Layout> {
     );
   }
 
+  bool _usesWorldViewportSection(String section) {
+    return section == 'levels' ||
+        section == 'layers' ||
+        section == 'tilemap' ||
+        section == 'zones' ||
+        section == 'sprites' ||
+        section == 'viewport';
+  }
+
+  void _resetWorldViewport(AppData appData, Size viewportSize) {
+    if (!_usesWorldViewportSection(appData.selectedSection)) {
+      return;
+    }
+    final int levelIndex = appData.selectedLevel;
+    if (levelIndex < 0 || levelIndex >= appData.gameData.levels.length) {
+      return;
+    }
+    _fitLevelLayersToViewport(appData, levelIndex, viewportSize);
+    _lastAutoFramedLevelIndex = levelIndex;
+  }
+
+  Widget _buildWorldResetOverlay(AppData appData, Size viewportSize) {
+    final bool canReset = _usesWorldViewportSection(appData.selectedSection) &&
+        appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: CDKButton(
+          style: CDKButtonStyle.normal,
+          onPressed: canReset
+              ? () => _resetWorldViewport(appData, viewportSize)
+              : null,
+          child: const Icon(CupertinoIcons.arrow_counterclockwise),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
@@ -1547,15 +1587,17 @@ class _LayoutState extends State<Layout> {
                           )
                         : LayoutBuilder(
                             builder: (context, constraints) {
+                              final Size viewportSize = Size(
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              );
                               _queueSelectedLevelViewportFit(
                                 appData,
-                                Size(constraints.maxWidth,
-                                    constraints.maxHeight),
+                                viewportSize,
                               );
                               _queueInitialLayersViewportCenter(
                                 appData,
-                                Size(constraints.maxWidth,
-                                    constraints.maxHeight),
+                                viewportSize,
                               );
                               return Container(
                                 color: cdkColors.backgroundSecondary1,
@@ -2712,6 +2754,13 @@ class _LayoutState extends State<Layout> {
                                         appData.selectedSection == "tilemap" ||
                                         appData.selectedSection == "sprites")
                                       _buildLayersToolPickerOverlay(),
+                                    if (_usesWorldViewportSection(
+                                      appData.selectedSection,
+                                    ))
+                                      _buildWorldResetOverlay(
+                                        appData,
+                                        viewportSize,
+                                      ),
                                   ],
                                 ),
                               );

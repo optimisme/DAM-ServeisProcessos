@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
@@ -441,165 +443,72 @@ class GroupedListGroupDraft {
   }
 }
 
-class GroupedListGroupsPopover extends StatefulWidget {
-  const GroupedListGroupsPopover({
+class GroupedListAddGroupPopover extends StatefulWidget {
+  const GroupedListAddGroupPopover({
     super.key,
-    required this.title,
-    required this.itemCaption,
-    required this.initialGroups,
-    required this.itemCountsByGroup,
-    required this.mainGroupId,
-    required this.onCreateGroup,
-    required this.onRenameGroup,
-    required this.onDeleteGroup,
+    required this.existingNames,
+    required this.onAdd,
+    required this.onCancel,
+    this.title = 'Add Group',
+    this.placeholder = 'Group name',
+    this.actionLabel = 'Add group',
   });
 
+  final Iterable<String> existingNames;
+  final Future<bool> Function(String name) onAdd;
+  final VoidCallback onCancel;
   final String title;
-  final String itemCaption;
-  final List<GroupedListGroupDraft> initialGroups;
-  final Map<String, int> itemCountsByGroup;
-  final String mainGroupId;
-  final Future<GroupedListGroupDraft?> Function(String name) onCreateGroup;
-  final Future<bool> Function(String groupId, String name) onRenameGroup;
-  final Future<bool> Function(String groupId) onDeleteGroup;
+  final String placeholder;
+  final String actionLabel;
 
   @override
-  State<GroupedListGroupsPopover> createState() =>
-      _GroupedListGroupsPopoverState();
+  State<GroupedListAddGroupPopover> createState() =>
+      _GroupedListAddGroupPopoverState();
 }
 
-class _GroupedListGroupsPopoverState extends State<GroupedListGroupsPopover> {
-  late final List<GroupedListGroupDraft> _groups = widget.initialGroups
-      .map((group) => group.copyWith())
-      .toList(growable: true);
+class _GroupedListAddGroupPopoverState extends State<GroupedListAddGroupPopover> {
   final TextEditingController _nameController = TextEditingController();
-  String? _selectedGroupId;
-  String? _nameError;
+  String? _error;
   bool _busy = false;
 
-  GroupedListGroupDraft? get _selectedGroup {
-    if (_selectedGroupId == null) {
-      return null;
-    }
-    for (final group in _groups) {
-      if (group.id == _selectedGroupId) {
-        return group;
-      }
-    }
-    return null;
-  }
-
-  bool _isDuplicatedName(String name, {String? excludingId}) {
-    final String normalized = name.trim().toLowerCase();
-    for (final group in _groups) {
-      if (group.id == excludingId) {
-        continue;
-      }
-      if (group.name.trim().toLowerCase() == normalized) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void _selectGroup(GroupedListGroupDraft group) {
-    setState(() {
-      if (_selectedGroupId == group.id) {
-        _selectedGroupId = null;
-        _nameController.clear();
-      } else {
-        _selectedGroupId = group.id;
-        _nameController.text = group.name;
-      }
-      _nameError = null;
-    });
+  Set<String> get _normalizedExistingNames {
+    return widget.existingNames
+        .map((name) => name.trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
   }
 
   Future<void> _submit() async {
     if (_busy) {
       return;
     }
-
     final String nextName = _nameController.text.trim();
     if (nextName.isEmpty) {
       setState(() {
-        _nameError = 'Group name is required.';
+        _error = 'Group name is required.';
       });
       return;
     }
-
-    final GroupedListGroupDraft? selected = _selectedGroup;
-    if (_isDuplicatedName(nextName, excludingId: selected?.id)) {
+    if (_normalizedExistingNames.contains(nextName.toLowerCase())) {
       setState(() {
-        _nameError = 'A group with this name already exists.';
+        _error = 'A group with this name already exists.';
       });
       return;
     }
 
     setState(() {
       _busy = true;
-      _nameError = null;
+      _error = null;
     });
-
-    if (selected == null) {
-      final GroupedListGroupDraft? created =
-          await widget.onCreateGroup(nextName);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _busy = false;
-        if (created == null) {
-          _nameError = 'Could not add group.';
-          return;
-        }
-        _groups.add(created);
-        _selectedGroupId = null;
-        _nameController.clear();
-      });
-      return;
-    }
-
-    final bool renamed = await widget.onRenameGroup(selected.id, nextName);
+    final bool added = await widget.onAdd(nextName);
     if (!mounted) {
       return;
     }
     setState(() {
       _busy = false;
-      if (!renamed) {
-        _nameError = 'Could not update group.';
-        return;
+      if (!added) {
+        _error = 'Could not add group.';
       }
-      final int index = _groups.indexWhere((group) => group.id == selected.id);
-      if (index != -1) {
-        _groups[index] = _groups[index].copyWith(name: nextName);
-      }
-    });
-  }
-
-  Future<void> _deleteSelected() async {
-    final GroupedListGroupDraft? selected = _selectedGroup;
-    if (_busy || selected == null || selected.id == widget.mainGroupId) {
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-      _nameError = null;
-    });
-    final bool deleted = await widget.onDeleteGroup(selected.id);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _busy = false;
-      if (!deleted) {
-        _nameError = 'Could not delete group.';
-        return;
-      }
-      _groups.removeWhere((group) => group.id == selected.id);
-      _selectedGroupId = null;
-      _nameController.clear();
     });
   }
 
@@ -613,12 +522,8 @@ class _GroupedListGroupsPopoverState extends State<GroupedListGroupsPopover> {
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    final GroupedListGroupDraft? selected = _selectedGroup;
-    final bool selectedIsMain = selected?.id == widget.mainGroupId;
-    final bool isUpdateMode = selected != null;
-
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 420, maxWidth: 480),
+      constraints: const BoxConstraints(minWidth: 340, maxWidth: 420),
       child: Padding(
         padding: EdgeInsets.all(spacing.md),
         child: Column(
@@ -627,74 +532,6 @@ class _GroupedListGroupsPopoverState extends State<GroupedListGroupsPopover> {
           children: [
             CDKText(widget.title, role: CDKTextRole.title),
             SizedBox(height: spacing.sm),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 190),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _groups.length,
-                itemBuilder: (context, index) {
-                  final GroupedListGroupDraft group = _groups[index];
-                  final bool isSelected = group.id == _selectedGroupId;
-                  final int count = widget.itemCountsByGroup[group.id] ?? 0;
-                  return GestureDetector(
-                    onTap: () => _selectGroup(group),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
-                      ),
-                      color: isSelected
-                          ? CupertinoColors.systemBlue.withValues(alpha: 0.18)
-                          : Colors.transparent,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    CDKText(
-                                      group.name,
-                                      role: isSelected
-                                          ? CDKTextRole.bodyStrong
-                                          : CDKTextRole.body,
-                                      color: cdkColors.colorText,
-                                    ),
-                                    if (group.id == widget.mainGroupId) ...[
-                                      const SizedBox(width: 6),
-                                      Icon(
-                                        CupertinoIcons.lock_fill,
-                                        size: 12,
-                                        color: cdkColors.colorText
-                                            .withValues(alpha: 0.7),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      const CDKText(
-                                        '(non-deletable)',
-                                        role: CDKTextRole.caption,
-                                        secondary: true,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                CDKText(
-                                  '$count ${widget.itemCaption}',
-                                  role: CDKTextRole.caption,
-                                  secondary: true,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            SizedBox(height: spacing.md),
             CDKText(
               'Name',
               role: CDKTextRole.caption,
@@ -702,62 +539,222 @@ class _GroupedListGroupsPopoverState extends State<GroupedListGroupsPopover> {
             ),
             const SizedBox(height: 4),
             CDKFieldText(
-              placeholder: 'Group name',
+              placeholder: widget.placeholder,
               controller: _nameController,
               onChanged: (_) {
-                if (_nameError != null) {
+                if (_error != null) {
                   setState(() {
-                    _nameError = null;
+                    _error = null;
                   });
                 }
               },
-              onSubmitted: (_) => _submit(),
+              onSubmitted: (_) {
+                unawaited(_submit());
+              },
             ),
             const SizedBox(height: 4),
             SizedBox(
               height: 18,
-              child: _nameError == null
+              child: _error == null
                   ? const SizedBox.shrink()
                   : CDKText(
-                      _nameError!,
+                      _error!,
                       role: CDKTextRole.caption,
                       color: CDKTheme.red,
                     ),
             ),
-            SizedBox(
-              height: 18,
-              child: selectedIsMain
-                  ? Row(
-                      children: const [
-                        Icon(
-                          CupertinoIcons.lock_fill,
-                          size: 11,
-                        ),
-                        SizedBox(width: 4),
-                        CDKText(
-                          'Main group is non-deletable.',
-                          role: CDKTextRole.caption,
-                          secondary: true,
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            SizedBox(height: spacing.md),
+            SizedBox(height: spacing.sm),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 CDKButton(
                   style: CDKButtonStyle.normal,
-                  enabled: selected != null && !selectedIsMain && !_busy,
-                  onPressed: _deleteSelected,
-                  child: const Text('Delete group'),
+                  enabled: !_busy,
+                  onPressed: widget.onCancel,
+                  child: const Text('Cancel'),
                 ),
+                SizedBox(width: spacing.sm),
                 CDKButton(
                   style: CDKButtonStyle.action,
                   enabled: !_busy,
                   onPressed: _submit,
-                  child: Text(isUpdateMode ? 'Update group' : 'Add group'),
+                  child: Text(widget.actionLabel),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class GroupedListEditGroupPopover extends StatefulWidget {
+  const GroupedListEditGroupPopover({
+    super.key,
+    required this.initialName,
+    required this.existingNames,
+    required this.onRename,
+    required this.onCancel,
+    this.onDelete,
+    this.title = 'Edit Group',
+    this.placeholder = 'Group name',
+  });
+
+  final String initialName;
+  final Iterable<String> existingNames;
+  final Future<bool> Function(String name) onRename;
+  final Future<bool> Function()? onDelete;
+  final VoidCallback onCancel;
+  final String title;
+  final String placeholder;
+
+  @override
+  State<GroupedListEditGroupPopover> createState() =>
+      _GroupedListEditGroupPopoverState();
+}
+
+class _GroupedListEditGroupPopoverState
+    extends State<GroupedListEditGroupPopover> {
+  late final TextEditingController _nameController =
+      TextEditingController(text: widget.initialName);
+  String? _error;
+  bool _busy = false;
+
+  Set<String> get _normalizedExistingNames {
+    return widget.existingNames
+        .map((name) => name.trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
+  }
+
+  bool get _canSave {
+    final String nextName = _nameController.text.trim();
+    final String initialName = widget.initialName.trim();
+    return !_busy && nextName.isNotEmpty && nextName != initialName;
+  }
+
+  Future<void> _rename() async {
+    if (!_canSave) {
+      return;
+    }
+    final String nextName = _nameController.text.trim();
+    if (_normalizedExistingNames.contains(nextName.toLowerCase())) {
+      setState(() {
+        _error = 'A group with this name already exists.';
+      });
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final bool renamed = await widget.onRename(nextName);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _busy = false;
+      if (!renamed) {
+        _error = 'Could not update group.';
+      }
+    });
+  }
+
+  Future<void> _delete() async {
+    if (_busy || widget.onDelete == null) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final bool deleted = await widget.onDelete!();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _busy = false;
+      if (!deleted) {
+        _error = 'Could not delete group.';
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 360, maxWidth: 440),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CDKText(widget.title, role: CDKTextRole.title),
+            SizedBox(height: spacing.sm),
+            CDKText(
+              'Name',
+              role: CDKTextRole.caption,
+              color: cdkColors.colorText,
+            ),
+            const SizedBox(height: 4),
+            CDKFieldText(
+              placeholder: widget.placeholder,
+              controller: _nameController,
+              onChanged: (_) {
+                if (_error != null) {
+                  setState(() {
+                    _error = null;
+                  });
+                }
+              },
+              onSubmitted: (_) {
+                unawaited(_rename());
+              },
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 18,
+              child: _error == null
+                  ? const SizedBox.shrink()
+                  : CDKText(
+                      _error!,
+                      role: CDKTextRole.caption,
+                      color: CDKTheme.red,
+                    ),
+            ),
+            SizedBox(height: spacing.sm),
+            Row(
+              children: [
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  enabled: !_busy && widget.onDelete != null,
+                  onPressed: _delete,
+                  child: const Text('Delete group'),
+                ),
+                const Spacer(),
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  enabled: !_busy,
+                  onPressed: widget.onCancel,
+                  child: const Text('Cancel'),
+                ),
+                SizedBox(width: spacing.sm),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  enabled: _canSave,
+                  onPressed: _rename,
+                  child: const Text('Save'),
                 ),
               ],
             ),

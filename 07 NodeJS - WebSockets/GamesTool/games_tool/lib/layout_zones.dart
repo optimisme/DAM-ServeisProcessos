@@ -51,8 +51,10 @@ class LayoutZonesState extends State<LayoutZones> {
   final ScrollController scrollController = ScrollController();
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
   final GlobalKey _zoneTypesAnchorKey = GlobalKey();
-  final GlobalKey _zoneGroupsAnchorKey = GlobalKey();
+  final GlobalKey _addGroupAnchorKey = GlobalKey();
+  final Map<String, GlobalKey> _groupActionsAnchorKeys = <String, GlobalKey>{};
   int _newGroupCounter = 0;
+  String? _hoveredGroupId;
 
   void updateForm(AppData appData) {
     if (mounted) {
@@ -104,17 +106,6 @@ class LayoutZonesState extends State<LayoutZones> {
     return GameZoneGroup.mainId;
   }
 
-  Map<String, int> _zoneCountByGroup(GameLevel level) {
-    final Map<String, int> counts = {
-      for (final group in _zoneGroups(level)) group.id: 0,
-    };
-    for (final zone in level.zones) {
-      final String groupId = _effectiveZoneGroupId(level, zone);
-      counts[groupId] = (counts[groupId] ?? 0) + 1;
-    }
-    return counts;
-  }
-
   GameZoneGroup? _findGroupById(GameLevel level, String groupId) {
     for (final group in _zoneGroups(level)) {
       if (group.id == groupId) {
@@ -151,6 +142,30 @@ class LayoutZonesState extends State<LayoutZones> {
       }
     }
     return rows;
+  }
+
+  GlobalKey _groupActionsAnchorKey(String groupId) {
+    return _groupActionsAnchorKeys.putIfAbsent(groupId, GlobalKey.new);
+  }
+
+  void _setHoveredGroupId(String? groupId) {
+    if (_hoveredGroupId == groupId || !mounted) {
+      return;
+    }
+    setState(() {
+      _hoveredGroupId = groupId;
+    });
+  }
+
+  Set<String> _zoneGroupNames(
+    GameLevel level, {
+    String? excludingId,
+  }) {
+    return _zoneGroups(level)
+        .where((group) => group.id != excludingId)
+        .map((group) => group.name.trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
   }
 
   int _firstZoneIndexForGroup(List<GameZone> zones, String groupId) {
@@ -375,6 +390,11 @@ class LayoutZonesState extends State<LayoutZones> {
     if (nextName.isEmpty) {
       return false;
     }
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    if (_zoneGroupNames(level, excludingId: draft.id)
+        .contains(nextName.toLowerCase())) {
+      return false;
+    }
 
     await appData.runProjectMutation(
       debugLabel: 'zone-group-upsert',
@@ -465,69 +485,93 @@ class LayoutZonesState extends State<LayoutZones> {
     return true;
   }
 
-  Future<void> _showZoneGroupsPopover(AppData appData) async {
+  Future<void> _showAddGroupPopover(AppData appData) async {
     if (appData.selectedLevel == -1 ||
         appData.selectedLevel >= appData.gameData.levels.length ||
         Overlay.maybeOf(context) == null) {
       return;
     }
     final GameLevel level = appData.gameData.levels[appData.selectedLevel];
-    final List<GroupedListGroupDraft> initialGroups = _zoneGroups(level)
-        .map(
-          (group) => GroupedListGroupDraft(
-            id: group.id,
-            name: group.name,
-            collapsed: group.collapsed,
-          ),
-        )
-        .toList(growable: false);
-    final Map<String, int> zoneCountsByGroup = _zoneCountByGroup(level);
     final CDKDialogController controller = CDKDialogController();
-
     CDKDialogsManager.showPopoverArrowed(
       context: context,
-      anchorKey: _zoneGroupsAnchorKey,
+      anchorKey: _addGroupAnchorKey,
       isAnimated: true,
       animateContentResize: false,
       dismissOnEscape: true,
       dismissOnOutsideTap: true,
       showBackgroundShade: false,
       controller: controller,
-      child: GroupedListGroupsPopover(
-        title: 'Zone Groups',
-        itemCaption: 'zone(s)',
-        initialGroups: initialGroups,
-        itemCountsByGroup: zoneCountsByGroup,
-        mainGroupId: GameZoneGroup.mainId,
-        onCreateGroup: (name) async {
-          final String trimmed = name.trim();
-          if (trimmed.isEmpty) {
-            return null;
-          }
-          final GroupedListGroupDraft draft = GroupedListGroupDraft(
-            id: _newGroupId(),
-            name: trimmed,
-            collapsed: false,
-          );
-          final bool success = await _upsertZoneGroup(appData, draft);
-          return success ? draft : null;
-        },
-        onRenameGroup: (groupId, name) async {
-          final String trimmed = name.trim();
-          if (trimmed.isEmpty) {
-            return false;
-          }
-          return _upsertZoneGroup(
+      child: GroupedListAddGroupPopover(
+        existingNames: _zoneGroups(level).map((group) => group.name),
+        onCancel: controller.close,
+        onAdd: (name) async {
+          final bool added = await _upsertZoneGroup(
             appData,
             GroupedListGroupDraft(
-              id: groupId,
-              name: trimmed,
+              id: _newGroupId(),
+              name: name,
               collapsed: false,
             ),
           );
+          if (added) {
+            controller.close();
+          }
+          return added;
         },
-        onDeleteGroup: (groupId) =>
-            _confirmAndDeleteZoneGroup(appData, groupId),
+      ),
+    );
+  }
+
+  Future<void> _showGroupActionsPopover(
+    AppData appData,
+    GameLevel level,
+    GameZoneGroup group,
+    GlobalKey anchorKey,
+  ) async {
+    if (Overlay.maybeOf(context) == null) {
+      return;
+    }
+    final CDKDialogController controller = CDKDialogController();
+    CDKDialogsManager.showPopoverArrowed(
+      context: context,
+      anchorKey: anchorKey,
+      isAnimated: true,
+      animateContentResize: false,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
+      showBackgroundShade: false,
+      controller: controller,
+      child: GroupedListEditGroupPopover(
+        initialName: group.name,
+        existingNames: _zoneGroups(level)
+            .where((candidate) => candidate.id != group.id)
+            .map((candidate) => candidate.name),
+        onCancel: controller.close,
+        onRename: (name) async {
+          final bool renamed = await _upsertZoneGroup(
+            appData,
+            GroupedListGroupDraft(
+              id: group.id,
+              name: name,
+              collapsed: group.collapsed,
+            ),
+          );
+          if (renamed) {
+            controller.close();
+          }
+          return renamed;
+        },
+        onDelete: group.id == GameZoneGroup.mainId
+            ? null
+            : () async {
+                final bool deleted =
+                    await _confirmAndDeleteZoneGroup(appData, group.id);
+                if (deleted) {
+                  controller.close();
+                }
+                return deleted;
+              },
       ),
     );
   }
@@ -1063,7 +1107,7 @@ class LayoutZonesState extends State<LayoutZones> {
             child: Row(
               children: [
                 CDKText(
-                  'Zones',
+                  'Level Zones',
                   role: CDKTextRole.title,
                   style: sectionTitleStyle,
                 ),
@@ -1104,7 +1148,7 @@ class LayoutZonesState extends State<LayoutZones> {
           child: Row(
             children: [
               CDKText(
-                'Zones',
+                'Level Zones',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
               ),
@@ -1115,21 +1159,12 @@ class LayoutZonesState extends State<LayoutZones> {
               ),
               const Spacer(),
               CDKButton(
-                key: _zoneGroupsAnchorKey,
-                style: CDKButtonStyle.normal,
-                onPressed: () async {
-                  await _showZoneGroupsPopover(appData);
-                },
-                child: const Text('Groups'),
-              ),
-              const SizedBox(width: 8),
-              CDKButton(
                 key: _zoneTypesAnchorKey,
                 style: CDKButtonStyle.normal,
                 onPressed: () async {
                   await _showZoneTypesPopover(appData);
                 },
-                child: const Text('Categories'),
+                child: const Text('Zone Categories'),
               ),
               const SizedBox(width: 8),
               CDKButton(
@@ -1155,78 +1190,131 @@ class LayoutZonesState extends State<LayoutZones> {
               ],
               child: ReorderableListView.builder(
                 buildDefaultDragHandles: false,
-                itemCount: zoneRows.length,
+                itemCount: zoneRows.length + 1,
                 onReorder: (oldIndex, newIndex) =>
                     _onReorder(appData, zoneRows, oldIndex, newIndex),
                 itemBuilder: (context, index) {
-                  final _ZoneListRow row = zoneRows[index];
-                  if (row.isGroup) {
-                    final GameZoneGroup group = row.group!;
+                  if (index == zoneRows.length) {
                     return Container(
-                      key: ValueKey('zone-group-${group.id}'),
+                      key: const ValueKey('zone-add-group-row'),
                       padding: const EdgeInsets.symmetric(
                         vertical: 6,
                         horizontal: 8,
                       ),
-                      color: CupertinoColors.systemBlue.withValues(alpha: 0.08),
-                      child: Row(
-                        children: [
-                          CupertinoButton(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            minimumSize: const Size(20, 20),
-                            onPressed: () async {
-                              await _toggleGroupCollapsed(appData, group.id);
-                            },
-                            child: AnimatedRotation(
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeInOutCubic,
-                              turns: group.collapsed ? 0.0 : 0.25,
-                              child: Icon(
-                                CupertinoIcons.chevron_right,
-                                size: 14,
-                                color: cdkColors.colorText,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    CDKText(
-                                      group.name,
-                                      role: CDKTextRole.body,
-                                      style: listItemTitleStyle,
-                                    ),
-                                    if (group.id == GameZoneGroup.mainId) ...[
-                                      const SizedBox(width: 6),
-                                      Icon(
-                                        CupertinoIcons.lock_fill,
-                                        size: 12,
-                                        color: cdkColors.colorText
-                                            .withValues(alpha: 0.7),
-                                      ),
-                                    ],
-                                  ],
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: CDKButton(
+                          key: _addGroupAnchorKey,
+                          style: CDKButtonStyle.normal,
+                          onPressed: () async {
+                            await _showAddGroupPopover(appData);
+                          },
+                          child: const Text('+ Add Zone Group'),
+                        ),
+                      ),
+                    );
+                  }
+                  final _ZoneListRow row = zoneRows[index];
+                  if (row.isGroup) {
+                    final GameZoneGroup group = row.group!;
+                    final bool showGroupActions = _hoveredGroupId == group.id;
+                    final GlobalKey groupActionsAnchorKey =
+                        _groupActionsAnchorKey(group.id);
+                    return MouseRegion(
+                      key: ValueKey('zone-group-hover-${group.id}'),
+                      onEnter: (_) => _setHoveredGroupId(group.id),
+                      onExit: (_) {
+                        if (_hoveredGroupId == group.id) {
+                          _setHoveredGroupId(null);
+                        }
+                      },
+                      child: Container(
+                        key: ValueKey('zone-group-${group.id}'),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 6,
+                          horizontal: 8,
+                        ),
+                        color:
+                            CupertinoColors.systemBlue.withValues(alpha: 0.08),
+                        child: Row(
+                          children: [
+                            CupertinoButton(
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              minimumSize: const Size(20, 20),
+                              onPressed: () async {
+                                await _toggleGroupCollapsed(appData, group.id);
+                              },
+                              child: AnimatedRotation(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeInOutCubic,
+                                turns: group.collapsed ? 0.0 : 0.25,
+                                child: Icon(
+                                  CupertinoIcons.chevron_right,
+                                  size: 14,
+                                  color: cdkColors.colorText,
                                 ),
-                              ],
-                            ),
-                          ),
-                          ReorderableDragStartListener(
-                            index: index,
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 4),
-                              child: Icon(
-                                CupertinoIcons.bars,
-                                size: 16,
-                                color: cdkColors.colorText,
                               ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      CDKText(
+                                        group.name,
+                                        role: CDKTextRole.body,
+                                        style: listItemTitleStyle,
+                                      ),
+                                      if (group.id == GameZoneGroup.mainId) ...[
+                                        const SizedBox(width: 6),
+                                        Icon(
+                                          CupertinoIcons.lock_fill,
+                                          size: 12,
+                                          color: cdkColors.colorText
+                                              .withValues(alpha: 0.7),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (showGroupActions)
+                              CupertinoButton(
+                                key: groupActionsAnchorKey,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6),
+                                minimumSize: const Size(20, 20),
+                                onPressed: () async {
+                                  await _showGroupActionsPopover(
+                                    appData,
+                                    level,
+                                    group,
+                                    groupActionsAnchorKey,
+                                  );
+                                },
+                                child: Icon(
+                                  CupertinoIcons.pencil,
+                                  size: 15,
+                                  color: cdkColors.colorText,
+                                ),
+                              ),
+                            ReorderableDragStartListener(
+                              index: index,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(
+                                  CupertinoIcons.bars,
+                                  size: 16,
+                                  color: cdkColors.colorText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   }

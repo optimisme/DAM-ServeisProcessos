@@ -83,7 +83,7 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
       child: Row(
         children: [
           CDKText(
-            'Tileset',
+            'Layer Tileset',
             role: CDKTextRole.title,
             style: sectionTitleStyle,
           ),
@@ -725,17 +725,20 @@ class _TilesetSelectionColorPicker extends StatelessWidget {
           role: CDKTextRole.caption,
         ),
         SizedBox(height: spacing.xs),
-        Wrap(
-          spacing: spacing.xs,
-          runSpacing: spacing.xs,
-          children: _tilesetAccentOptions.map((option) {
-            final bool isSelected = option.color == selectedColor;
-            return SelectableColorSwatch(
-              color: option.color,
-              selected: isSelected,
-              onTap: () => onSelect(option.color),
-            );
-          }).toList(growable: false),
+        Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: spacing.xs,
+            runSpacing: spacing.xs,
+            children: _tilesetAccentOptions.map((option) {
+              final bool isSelected = option.color == selectedColor;
+              return SelectableColorSwatch(
+                color: option.color,
+                selected: isSelected,
+                onTap: () => onSelect(option.color),
+              );
+            }).toList(growable: false),
+          ),
         ),
       ],
     );

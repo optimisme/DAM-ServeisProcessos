@@ -27,8 +27,10 @@ class LayoutAnimations extends StatefulWidget {
 class _LayoutAnimationsState extends State<LayoutAnimations> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
-  final GlobalKey _animationGroupsAnchorKey = GlobalKey();
+  final GlobalKey _addGroupAnchorKey = GlobalKey();
+  final Map<String, GlobalKey> _groupActionsAnchorKeys = <String, GlobalKey>{};
   int _newGroupCounter = 0;
+  String? _hoveredGroupId;
   Timer? _previewTimer;
   DateTime? _previewLastTick;
   String _previewAnimationId = '';
@@ -286,17 +288,6 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     return GameListGroup.mainId;
   }
 
-  Map<String, int> _animationCountByGroup(AppData appData) {
-    final Map<String, int> counts = {
-      for (final group in _animationGroups(appData)) group.id: 0,
-    };
-    for (final animation in appData.gameData.animations) {
-      final String groupId = _effectiveAnimationGroupId(appData, animation);
-      counts[groupId] = (counts[groupId] ?? 0) + 1;
-    }
-    return counts;
-  }
-
   GameListGroup? _findAnimationGroupById(AppData appData, String groupId) {
     for (final group in _animationGroups(appData)) {
       if (group.id == groupId) {
@@ -319,6 +310,30 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     );
   }
 
+  GlobalKey _groupActionsAnchorKey(String groupId) {
+    return _groupActionsAnchorKeys.putIfAbsent(groupId, GlobalKey.new);
+  }
+
+  void _setHoveredGroupId(String? groupId) {
+    if (_hoveredGroupId == groupId || !mounted) {
+      return;
+    }
+    setState(() {
+      _hoveredGroupId = groupId;
+    });
+  }
+
+  Set<String> _animationGroupNames(
+    AppData appData, {
+    String? excludingId,
+  }) {
+    return _animationGroups(appData)
+        .where((group) => group.id != excludingId)
+        .map((group) => group.name.trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
+  }
+
   String _newGroupId() {
     return '__group_${DateTime.now().microsecondsSinceEpoch}_${_newGroupCounter++}';
   }
@@ -329,6 +344,10 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
   ) async {
     final String nextName = draft.name.trim();
     if (nextName.isEmpty) {
+      return false;
+    }
+    if (_animationGroupNames(appData, excludingId: draft.id)
+        .contains(nextName.toLowerCase())) {
       return false;
     }
 
@@ -418,67 +437,89 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     return true;
   }
 
-  Future<void> _showAnimationGroupsPopover(AppData appData) async {
+  Future<void> _showAddGroupPopover(AppData appData) async {
     if (Overlay.maybeOf(context) == null) {
       return;
     }
-    final List<GroupedListGroupDraft> initialGroups = _animationGroups(appData)
-        .map(
-          (group) => GroupedListGroupDraft(
-            id: group.id,
-            name: group.name,
-            collapsed: group.collapsed,
-          ),
-        )
-        .toList(growable: false);
-    final Map<String, int> animationCountsByGroup =
-        _animationCountByGroup(appData);
     final CDKDialogController controller = CDKDialogController();
-
     CDKDialogsManager.showPopoverArrowed(
       context: context,
-      anchorKey: _animationGroupsAnchorKey,
+      anchorKey: _addGroupAnchorKey,
       isAnimated: true,
       animateContentResize: false,
       dismissOnEscape: true,
       dismissOnOutsideTap: true,
       showBackgroundShade: false,
       controller: controller,
-      child: GroupedListGroupsPopover(
-        title: 'Animation Groups',
-        itemCaption: 'animation(s)',
-        initialGroups: initialGroups,
-        itemCountsByGroup: animationCountsByGroup,
-        mainGroupId: GameListGroup.mainId,
-        onCreateGroup: (name) async {
-          final String trimmed = name.trim();
-          if (trimmed.isEmpty) {
-            return null;
-          }
-          final GroupedListGroupDraft draft = GroupedListGroupDraft(
-            id: _newGroupId(),
-            name: trimmed,
-            collapsed: false,
-          );
-          final bool success = await _upsertAnimationGroup(appData, draft);
-          return success ? draft : null;
-        },
-        onRenameGroup: (groupId, name) async {
-          final String trimmed = name.trim();
-          if (trimmed.isEmpty) {
-            return false;
-          }
-          return _upsertAnimationGroup(
+      child: GroupedListAddGroupPopover(
+        existingNames: _animationGroups(appData).map((group) => group.name),
+        onCancel: controller.close,
+        onAdd: (name) async {
+          final bool added = await _upsertAnimationGroup(
             appData,
             GroupedListGroupDraft(
-              id: groupId,
-              name: trimmed,
+              id: _newGroupId(),
+              name: name,
               collapsed: false,
             ),
           );
+          if (added) {
+            controller.close();
+          }
+          return added;
         },
-        onDeleteGroup: (groupId) =>
-            _confirmAndDeleteAnimationGroup(appData, groupId),
+      ),
+    );
+  }
+
+  Future<void> _showGroupActionsPopover(
+    AppData appData,
+    GameListGroup group,
+    GlobalKey anchorKey,
+  ) async {
+    if (Overlay.maybeOf(context) == null) {
+      return;
+    }
+    final CDKDialogController controller = CDKDialogController();
+    CDKDialogsManager.showPopoverArrowed(
+      context: context,
+      anchorKey: anchorKey,
+      isAnimated: true,
+      animateContentResize: false,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
+      showBackgroundShade: false,
+      controller: controller,
+      child: GroupedListEditGroupPopover(
+        initialName: group.name,
+        existingNames: _animationGroups(appData)
+            .where((candidate) => candidate.id != group.id)
+            .map((candidate) => candidate.name),
+        onCancel: controller.close,
+        onRename: (name) async {
+          final bool renamed = await _upsertAnimationGroup(
+            appData,
+            GroupedListGroupDraft(
+              id: group.id,
+              name: name,
+              collapsed: group.collapsed,
+            ),
+          );
+          if (renamed) {
+            controller.close();
+          }
+          return renamed;
+        },
+        onDelete: group.id == GameListGroup.mainId
+            ? null
+            : () async {
+                final bool deleted =
+                    await _confirmAndDeleteAnimationGroup(appData, group.id);
+                if (deleted) {
+                  controller.close();
+                }
+                return deleted;
+              },
       ),
     );
   }
@@ -954,7 +995,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
           child: Row(
             children: [
               CDKText(
-                'Animations',
+                'Game Animations',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
               ),
@@ -964,15 +1005,6 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                     'Animations define sequences of frames from a spritesheet. They are referenced by sprites to bring game characters and objects to life.',
               ),
               const Spacer(),
-              CDKButton(
-                key: _animationGroupsAnchorKey,
-                style: CDKButtonStyle.normal,
-                onPressed: () async {
-                  await _showAnimationGroupsPopover(appData);
-                },
-                child: const Text('Groups'),
-              ),
-              SizedBox(width: spacing.sm),
               CDKButton(
                 style: CDKButtonStyle.action,
                 onPressed: hasSources
@@ -1019,19 +1051,19 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
           ),
         ),
         _buildPreviewPanel(appData, selectedAnimation),
+        if (animations.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: CDKText(
+              hasSources
+                  ? '(No animations defined)'
+                  : 'Add a spritesheet or atlas in Media first.',
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+          ),
         Expanded(
-          child: animations.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: CDKText(
-                    hasSources
-                        ? '(No animations defined)'
-                        : 'Add a spritesheet or atlas in Media first.',
-                    role: CDKTextRole.caption,
-                    secondary: true,
-                  ),
-                )
-              : CupertinoScrollbar(
+          child: CupertinoScrollbar(
                   controller: _scrollController,
                   child: Localizations.override(
                     context: context,
@@ -1041,7 +1073,7 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                     ],
                     child: ReorderableListView.builder(
                       buildDefaultDragHandles: false,
-                      itemCount: animationRows.length,
+                      itemCount: animationRows.length + 1,
                       onReorder: (oldIndex, newIndex) => _onReorder(
                         appData,
                         animationRows,
@@ -1049,73 +1081,128 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                         newIndex,
                       ),
                       itemBuilder: (context, index) {
-                        final GroupedListRow<GameListGroup, GameAnimation> row =
-                            animationRows[index];
-                        if (row.isGroup) {
-                          final GameListGroup group = row.group!;
+                        if (index == animationRows.length) {
                           return Container(
-                            key: ValueKey('animation-group-${group.id}'),
+                            key: const ValueKey('animation-add-group-row'),
                             padding: const EdgeInsets.symmetric(
                               vertical: 6,
                               horizontal: 8,
                             ),
-                            color: CupertinoColors.systemBlue
-                                .withValues(alpha: 0.08),
-                            child: Row(
-                              children: [
-                                CupertinoButton(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 2),
-                                  minimumSize: const Size(20, 20),
-                                  onPressed: () async {
-                                    await _toggleGroupCollapsed(
-                                        appData, group.id);
-                                  },
-                                  child: AnimatedRotation(
-                                    duration: const Duration(milliseconds: 220),
-                                    curve: Curves.easeInOutCubic,
-                                    turns: group.collapsed ? 0.0 : 0.25,
-                                    child: Icon(
-                                      CupertinoIcons.chevron_right,
-                                      size: 14,
-                                      color: cdkColors.colorText,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      CDKText(
-                                        group.name,
-                                        role: CDKTextRole.body,
-                                        style: listItemTitleStyle,
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: CDKButton(
+                                key: _addGroupAnchorKey,
+                                style: CDKButtonStyle.normal,
+                                onPressed: () async {
+                                  await _showAddGroupPopover(appData);
+                                },
+                                child: const Text('+ Add Animation Group'),
+                              ),
+                            ),
+                          );
+                        }
+                        final GroupedListRow<GameListGroup, GameAnimation> row =
+                            animationRows[index];
+                        if (row.isGroup) {
+                          final GameListGroup group = row.group!;
+                          final bool showGroupActions =
+                              _hoveredGroupId == group.id;
+                          final GlobalKey groupActionsAnchorKey =
+                              _groupActionsAnchorKey(group.id);
+                          return MouseRegion(
+                            key: ValueKey('animation-group-hover-${group.id}'),
+                            onEnter: (_) => _setHoveredGroupId(group.id),
+                            onExit: (_) {
+                              if (_hoveredGroupId == group.id) {
+                                _setHoveredGroupId(null);
+                              }
+                            },
+                            child: Container(
+                              key: ValueKey('animation-group-${group.id}'),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 6,
+                                horizontal: 8,
+                              ),
+                              color: CupertinoColors.systemBlue
+                                  .withValues(alpha: 0.08),
+                              child: Row(
+                                children: [
+                                  CupertinoButton(
+                                    padding:
+                                        const EdgeInsets.symmetric(horizontal: 2),
+                                    minimumSize: const Size(20, 20),
+                                    onPressed: () async {
+                                      await _toggleGroupCollapsed(
+                                          appData, group.id);
+                                    },
+                                    child: AnimatedRotation(
+                                      duration:
+                                          const Duration(milliseconds: 220),
+                                      curve: Curves.easeInOutCubic,
+                                      turns: group.collapsed ? 0.0 : 0.25,
+                                      child: Icon(
+                                        CupertinoIcons.chevron_right,
+                                        size: 14,
+                                        color: cdkColors.colorText,
                                       ),
-                                      if (group.id == GameListGroup.mainId) ...[
-                                        const SizedBox(width: 6),
-                                        Icon(
-                                          CupertinoIcons.lock_fill,
-                                          size: 12,
-                                          color: cdkColors.colorText
-                                              .withValues(alpha: 0.7),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                ReorderableDragStartListener(
-                                  index: index,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    child: Icon(
-                                      CupertinoIcons.bars,
-                                      size: 16,
-                                      color: cdkColors.colorText,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        CDKText(
+                                          group.name,
+                                          role: CDKTextRole.body,
+                                          style: listItemTitleStyle,
+                                        ),
+                                        if (group.id ==
+                                            GameListGroup.mainId) ...[
+                                          const SizedBox(width: 6),
+                                          Icon(
+                                            CupertinoIcons.lock_fill,
+                                            size: 12,
+                                            color: cdkColors.colorText
+                                                .withValues(alpha: 0.7),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  if (showGroupActions)
+                                    CupertinoButton(
+                                      key: groupActionsAnchorKey,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      minimumSize: const Size(20, 20),
+                                      onPressed: () async {
+                                        await _showGroupActionsPopover(
+                                          appData,
+                                          group,
+                                          groupActionsAnchorKey,
+                                        );
+                                      },
+                                      child: Icon(
+                                        CupertinoIcons.pencil,
+                                        size: 15,
+                                        color: cdkColors.colorText,
+                                      ),
+                                    ),
+                                  ReorderableDragStartListener(
+                                    index: index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4),
+                                      child: Icon(
+                                        CupertinoIcons.bars,
+                                        size: 16,
+                                        color: cdkColors.colorText,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         }
@@ -1236,9 +1323,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                           ),
                         );
                       },
+                      ),
                     ),
                   ),
-                ),
         ),
       ],
     );

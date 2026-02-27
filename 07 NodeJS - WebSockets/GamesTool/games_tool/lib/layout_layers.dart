@@ -25,8 +25,10 @@ class LayoutLayers extends StatefulWidget {
 class LayoutLayersState extends State<LayoutLayers> {
   final ScrollController scrollController = ScrollController();
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
-  final GlobalKey _layerGroupsAnchorKey = GlobalKey();
+  final GlobalKey _addGroupAnchorKey = GlobalKey();
+  final Map<String, GlobalKey> _groupActionsAnchorKeys = <String, GlobalKey>{};
   int _newGroupCounter = 0;
+  String? _hoveredGroupId;
 
   String _formatDepthDisplacement(double depth) {
     if (depth == depth.roundToDouble()) {
@@ -85,17 +87,6 @@ class LayoutLayersState extends State<LayoutLayers> {
     return GameListGroup.mainId;
   }
 
-  Map<String, int> _layerCountByGroup(GameLevel level) {
-    final Map<String, int> counts = {
-      for (final group in _layerGroups(level)) group.id: 0,
-    };
-    for (final layer in level.layers) {
-      final String groupId = _effectiveLayerGroupId(level, layer);
-      counts[groupId] = (counts[groupId] ?? 0) + 1;
-    }
-    return counts;
-  }
-
   GameListGroup? _findLayerGroupById(GameLevel level, String groupId) {
     for (final group in _layerGroups(level)) {
       if (group.id == groupId) {
@@ -117,6 +108,30 @@ class LayoutLayersState extends State<LayoutLayers> {
     );
   }
 
+  GlobalKey _groupActionsAnchorKey(String groupId) {
+    return _groupActionsAnchorKeys.putIfAbsent(groupId, GlobalKey.new);
+  }
+
+  void _setHoveredGroupId(String? groupId) {
+    if (_hoveredGroupId == groupId || !mounted) {
+      return;
+    }
+    setState(() {
+      _hoveredGroupId = groupId;
+    });
+  }
+
+  Set<String> _layerGroupNames(
+    GameLevel level, {
+    String? excludingId,
+  }) {
+    return _layerGroups(level)
+        .where((group) => group.id != excludingId)
+        .map((group) => group.name.trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
+  }
+
   String _newGroupId() {
     return '__group_${DateTime.now().microsecondsSinceEpoch}_${_newGroupCounter++}';
   }
@@ -130,6 +145,11 @@ class LayoutLayersState extends State<LayoutLayers> {
 
     final String nextName = draft.name.trim();
     if (nextName.isEmpty) {
+      return false;
+    }
+    final GameLevel level = appData.gameData.levels[appData.selectedLevel];
+    if (_layerGroupNames(level, excludingId: draft.id)
+        .contains(nextName.toLowerCase())) {
       return false;
     }
 
@@ -222,69 +242,93 @@ class LayoutLayersState extends State<LayoutLayers> {
     return true;
   }
 
-  Future<void> _showLayerGroupsPopover(AppData appData) async {
+  Future<void> _showAddGroupPopover(AppData appData) async {
     if (appData.selectedLevel == -1 ||
         appData.selectedLevel >= appData.gameData.levels.length ||
         Overlay.maybeOf(context) == null) {
       return;
     }
     final GameLevel level = appData.gameData.levels[appData.selectedLevel];
-    final List<GroupedListGroupDraft> initialGroups = _layerGroups(level)
-        .map(
-          (group) => GroupedListGroupDraft(
-            id: group.id,
-            name: group.name,
-            collapsed: group.collapsed,
-          ),
-        )
-        .toList(growable: false);
-    final Map<String, int> layerCountsByGroup = _layerCountByGroup(level);
     final CDKDialogController controller = CDKDialogController();
-
     CDKDialogsManager.showPopoverArrowed(
       context: context,
-      anchorKey: _layerGroupsAnchorKey,
+      anchorKey: _addGroupAnchorKey,
       isAnimated: true,
       animateContentResize: false,
       dismissOnEscape: true,
       dismissOnOutsideTap: true,
       showBackgroundShade: false,
       controller: controller,
-      child: GroupedListGroupsPopover(
-        title: 'Layer Groups',
-        itemCaption: 'layer(s)',
-        initialGroups: initialGroups,
-        itemCountsByGroup: layerCountsByGroup,
-        mainGroupId: GameListGroup.mainId,
-        onCreateGroup: (name) async {
-          final String trimmed = name.trim();
-          if (trimmed.isEmpty) {
-            return null;
-          }
-          final GroupedListGroupDraft draft = GroupedListGroupDraft(
-            id: _newGroupId(),
-            name: trimmed,
-            collapsed: false,
-          );
-          final bool success = await _upsertLayerGroup(appData, draft);
-          return success ? draft : null;
-        },
-        onRenameGroup: (groupId, name) async {
-          final String trimmed = name.trim();
-          if (trimmed.isEmpty) {
-            return false;
-          }
-          return _upsertLayerGroup(
+      child: GroupedListAddGroupPopover(
+        existingNames: _layerGroups(level).map((group) => group.name),
+        onCancel: controller.close,
+        onAdd: (name) async {
+          final bool added = await _upsertLayerGroup(
             appData,
             GroupedListGroupDraft(
-              id: groupId,
-              name: trimmed,
+              id: _newGroupId(),
+              name: name,
               collapsed: false,
             ),
           );
+          if (added) {
+            controller.close();
+          }
+          return added;
         },
-        onDeleteGroup: (groupId) =>
-            _confirmAndDeleteLayerGroup(appData, groupId),
+      ),
+    );
+  }
+
+  Future<void> _showGroupActionsPopover(
+    AppData appData,
+    GameLevel level,
+    GameListGroup group,
+    GlobalKey anchorKey,
+  ) async {
+    if (Overlay.maybeOf(context) == null) {
+      return;
+    }
+    final CDKDialogController controller = CDKDialogController();
+    CDKDialogsManager.showPopoverArrowed(
+      context: context,
+      anchorKey: anchorKey,
+      isAnimated: true,
+      animateContentResize: false,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
+      showBackgroundShade: false,
+      controller: controller,
+      child: GroupedListEditGroupPopover(
+        initialName: group.name,
+        existingNames: _layerGroups(level)
+            .where((candidate) => candidate.id != group.id)
+            .map((candidate) => candidate.name),
+        onCancel: controller.close,
+        onRename: (name) async {
+          final bool renamed = await _upsertLayerGroup(
+            appData,
+            GroupedListGroupDraft(
+              id: group.id,
+              name: name,
+              collapsed: group.collapsed,
+            ),
+          );
+          if (renamed) {
+            controller.close();
+          }
+          return renamed;
+        },
+        onDelete: group.id == GameListGroup.mainId
+            ? null
+            : () async {
+                final bool deleted =
+                    await _confirmAndDeleteLayerGroup(appData, group.id);
+                if (deleted) {
+                  controller.close();
+                }
+                return deleted;
+              },
       ),
     );
   }
@@ -740,7 +784,7 @@ class LayoutLayersState extends State<LayoutLayers> {
             child: Row(
               children: [
                 CDKText(
-                  'Labels',
+                  'Level Layers',
                   role: CDKTextRole.title,
                   style: sectionTitleStyle,
                 ),
@@ -784,7 +828,7 @@ class LayoutLayersState extends State<LayoutLayers> {
           child: Row(
             children: [
               CDKText(
-                'Labels',
+                'Level Layers',
                 role: CDKTextRole.title,
                 style: sectionTitleStyle,
               ),
@@ -794,16 +838,6 @@ class LayoutLayersState extends State<LayoutLayers> {
                     'Layers stack tilemap grids within a level. Each layer uses a tileset and can be positioned and ordered by depth.',
               ),
               const Spacer(),
-              if (hasTilesets)
-                CDKButton(
-                  key: _layerGroupsAnchorKey,
-                  style: CDKButtonStyle.normal,
-                  onPressed: () async {
-                    await _showLayerGroupsPopover(appData);
-                  },
-                  child: const Text('Groups'),
-                ),
-              if (hasTilesets) const SizedBox(width: 8),
               if (hasTilesets)
                 CDKButton(
                   style: CDKButtonStyle.action,
@@ -834,77 +868,133 @@ class LayoutLayersState extends State<LayoutLayers> {
                     ],
                     child: ReorderableListView.builder(
                       buildDefaultDragHandles: false,
-                      itemCount: layerRows.length,
+                      itemCount: layerRows.length + 1,
                       onReorder: (oldIndex, newIndex) =>
                           _onReorder(appData, layerRows, oldIndex, newIndex),
                       itemBuilder: (context, index) {
-                        final GroupedListRow<GameListGroup, GameLayer> row =
-                            layerRows[index];
-                        if (row.isGroup) {
-                          final GameListGroup group = row.group!;
+                        if (index == layerRows.length) {
                           return Container(
-                            key: ValueKey('layer-group-${group.id}'),
+                            key: const ValueKey('layer-add-group-row'),
                             padding: const EdgeInsets.symmetric(
                               vertical: 6,
                               horizontal: 8,
                             ),
-                            color: CupertinoColors.systemBlue
-                                .withValues(alpha: 0.08),
-                            child: Row(
-                              children: [
-                                CupertinoButton(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 2),
-                                  minimumSize: const Size(20, 20),
-                                  onPressed: () async {
-                                    await _toggleGroupCollapsed(
-                                        appData, group.id);
-                                  },
-                                  child: AnimatedRotation(
-                                    duration: const Duration(milliseconds: 220),
-                                    curve: Curves.easeInOutCubic,
-                                    turns: group.collapsed ? 0.0 : 0.25,
-                                    child: Icon(
-                                      CupertinoIcons.chevron_right,
-                                      size: 14,
-                                      color: cdkColors.colorText,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      CDKText(
-                                        group.name,
-                                        role: CDKTextRole.body,
-                                        style: listItemTitleStyle,
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: CDKButton(
+                                key: _addGroupAnchorKey,
+                                style: CDKButtonStyle.normal,
+                                onPressed: () async {
+                                  await _showAddGroupPopover(appData);
+                                },
+                                child: const Text('+ Add Layer Group'),
+                              ),
+                            ),
+                          );
+                        }
+                        final GroupedListRow<GameListGroup, GameLayer> row =
+                            layerRows[index];
+                        if (row.isGroup) {
+                          final GameListGroup group = row.group!;
+                          final bool showGroupActions =
+                              _hoveredGroupId == group.id;
+                          final GlobalKey groupActionsAnchorKey =
+                              _groupActionsAnchorKey(group.id);
+                          return MouseRegion(
+                            key: ValueKey('layer-group-hover-${group.id}'),
+                            onEnter: (_) => _setHoveredGroupId(group.id),
+                            onExit: (_) {
+                              if (_hoveredGroupId == group.id) {
+                                _setHoveredGroupId(null);
+                              }
+                            },
+                            child: Container(
+                              key: ValueKey('layer-group-${group.id}'),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 6,
+                                horizontal: 8,
+                              ),
+                              color: CupertinoColors.systemBlue
+                                  .withValues(alpha: 0.08),
+                              child: Row(
+                                children: [
+                                  CupertinoButton(
+                                    padding:
+                                        const EdgeInsets.symmetric(horizontal: 2),
+                                    minimumSize: const Size(20, 20),
+                                    onPressed: () async {
+                                      await _toggleGroupCollapsed(
+                                          appData, group.id);
+                                    },
+                                    child: AnimatedRotation(
+                                      duration:
+                                          const Duration(milliseconds: 220),
+                                      curve: Curves.easeInOutCubic,
+                                      turns: group.collapsed ? 0.0 : 0.25,
+                                      child: Icon(
+                                        CupertinoIcons.chevron_right,
+                                        size: 14,
+                                        color: cdkColors.colorText,
                                       ),
-                                      if (group.id == GameListGroup.mainId) ...[
-                                        const SizedBox(width: 6),
-                                        Icon(
-                                          CupertinoIcons.lock_fill,
-                                          size: 12,
-                                          color: cdkColors.colorText
-                                              .withValues(alpha: 0.7),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                ReorderableDragStartListener(
-                                  index: index,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    child: Icon(
-                                      CupertinoIcons.bars,
-                                      size: 16,
-                                      color: cdkColors.colorText,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        CDKText(
+                                          group.name,
+                                          role: CDKTextRole.body,
+                                          style: listItemTitleStyle,
+                                        ),
+                                        if (group.id ==
+                                            GameListGroup.mainId) ...[
+                                          const SizedBox(width: 6),
+                                          Icon(
+                                            CupertinoIcons.lock_fill,
+                                            size: 12,
+                                            color: cdkColors.colorText
+                                                .withValues(alpha: 0.7),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  if (showGroupActions)
+                                    CupertinoButton(
+                                      key: groupActionsAnchorKey,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      minimumSize: const Size(20, 20),
+                                      onPressed: () async {
+                                        await _showGroupActionsPopover(
+                                          appData,
+                                          level,
+                                          group,
+                                          groupActionsAnchorKey,
+                                        );
+                                      },
+                                      child: Icon(
+                                        CupertinoIcons.pencil,
+                                        size: 15,
+                                        color: cdkColors.colorText,
+                                      ),
+                                    ),
+                                  ReorderableDragStartListener(
+                                    index: index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4),
+                                      child: Icon(
+                                        CupertinoIcons.bars,
+                                        size: 16,
+                                        color: cdkColors.colorText,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         }

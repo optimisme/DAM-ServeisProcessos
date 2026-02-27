@@ -283,6 +283,13 @@ class CanvasPainter extends CustomPainter {
       }
 
       if (renderingSprites) {
+        final Set<int> selectedSpriteIndices = appData.selectedSpriteIndices
+            .where((index) => index >= 0 && index < level.sprites.length)
+            .toSet();
+        if (appData.selectedSprite >= 0 &&
+            appData.selectedSprite < level.sprites.length) {
+          selectedSpriteIndices.add(appData.selectedSprite);
+        }
         for (int i = 0; i < level.sprites.length; i++) {
           final sprite = level.sprites[i];
           final String imageFile = LayoutUtils.spriteImageFile(appData, sprite);
@@ -329,7 +336,7 @@ class CanvasPainter extends CustomPainter {
             canvas.drawImageRect(spriteImage, srcRect, dstRect, Paint());
           }
 
-          if (!renderingLayersPreview && i == appData.selectedSprite) {
+          if (!renderingLayersPreview && selectedSpriteIndices.contains(i)) {
             final Paint selectedPaint = Paint()
               ..color = const Color(0xFF2196F3)
               ..strokeWidth = 2.0 / vScale

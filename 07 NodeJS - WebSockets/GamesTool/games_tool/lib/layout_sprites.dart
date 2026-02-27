@@ -439,6 +439,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       ),
     );
     appData.selectedSprite = -1;
+    appData.selectedSpriteIndices = <int>{};
     appData.update();
   }
 
@@ -468,6 +469,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
       groupId: sprites[index].groupId,
     );
     appData.selectedSprite = index;
+    appData.selectedSpriteIndices = <int>{index};
   }
 
   Future<_SpriteDialogData?> _promptSpriteData({
@@ -605,6 +607,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     appData.pushUndo();
     sprites.removeAt(index);
     appData.selectedSprite = -1;
+    appData.selectedSpriteIndices = <int>{};
     appData.update();
     await _autoSaveIfPossible(appData);
   }
@@ -654,10 +657,12 @@ class LayoutSpritesState extends State<LayoutSprites> {
   void _selectSprite(AppData appData, int index, bool isSelected) {
     if (isSelected) {
       appData.selectedSprite = -1;
+      appData.selectedSpriteIndices = <int>{};
       appData.update();
       return;
     }
     appData.selectedSprite = index;
+    appData.selectedSpriteIndices = <int>{index};
     appData.update();
   }
 
@@ -691,6 +696,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                 ) ==
                 group.id) {
           appData.selectedSprite = -1;
+          appData.selectedSpriteIndices = <int>{};
         }
       },
     );
@@ -737,6 +743,8 @@ class LayoutSpritesState extends State<LayoutSprites> {
       },
       selectedIndex: appData.selectedSprite,
     );
+    appData.selectedSpriteIndices =
+        appData.selectedSprite >= 0 ? <int>{appData.selectedSprite} : <int>{};
   }
 
   void _onReorder(
@@ -848,6 +856,9 @@ class LayoutSpritesState extends State<LayoutSprites> {
     final level = appData.gameData.levels[appData.selectedLevel];
     final sprites = level.sprites;
     final spriteRows = _buildSpriteRows(level);
+    final Set<int> multiSelectedSpriteIndices = appData.selectedSpriteIndices
+        .where((index) => index >= 0 && index < level.sprites.length)
+        .toSet();
     final List<GameAnimation> animations = _animations(appData);
     final bool hasAnimations = animations.isNotEmpty;
 
@@ -894,133 +905,249 @@ class LayoutSpritesState extends State<LayoutSprites> {
           ),
         Expanded(
           child: CupertinoScrollbar(
-                  controller: scrollController,
-                  child: Localizations.override(
-                    context: context,
-                    delegates: [
-                      DefaultMaterialLocalizations.delegate,
-                      DefaultWidgetsLocalizations.delegate,
-                    ],
-                    child: ReorderableListView.builder(
-                      buildDefaultDragHandles: false,
-                      itemCount: spriteRows.length + 1,
-                      onReorder: (oldIndex, newIndex) =>
-                          _onReorder(appData, spriteRows, oldIndex, newIndex),
-                      itemBuilder: (context, index) {
-                        if (index == spriteRows.length) {
-                          return Container(
-                            key: const ValueKey('sprite-add-group-row'),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 6,
-                              horizontal: 8,
-                            ),
-                            child: Align(
-                              alignment: Alignment.center,
-                              child: CDKButton(
-                                key: _addGroupAnchorKey,
-                                style: CDKButtonStyle.normal,
-                                onPressed: () async {
-                                  await _showAddGroupPopover(appData);
-                                },
-                                child: const Text('+ Add Sprite Group'),
+            controller: scrollController,
+            child: Localizations.override(
+              context: context,
+              delegates: [
+                DefaultMaterialLocalizations.delegate,
+                DefaultWidgetsLocalizations.delegate,
+              ],
+              child: ReorderableListView.builder(
+                buildDefaultDragHandles: false,
+                itemCount: spriteRows.length + 1,
+                onReorder: (oldIndex, newIndex) =>
+                    _onReorder(appData, spriteRows, oldIndex, newIndex),
+                itemBuilder: (context, index) {
+                  if (index == spriteRows.length) {
+                    return Container(
+                      key: const ValueKey('sprite-add-group-row'),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 8,
+                      ),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: CDKButton(
+                          key: _addGroupAnchorKey,
+                          style: CDKButtonStyle.normal,
+                          onPressed: () async {
+                            await _showAddGroupPopover(appData);
+                          },
+                          child: const Text('+ Add Sprite Group'),
+                        ),
+                      ),
+                    );
+                  }
+                  final GroupedListRow<GameListGroup, GameSprite> row =
+                      spriteRows[index];
+                  if (row.isGroup) {
+                    final GameListGroup group = row.group!;
+                    final bool showGroupActions = _hoveredGroupId == group.id;
+                    final GlobalKey groupActionsAnchorKey =
+                        _groupActionsAnchorKey(group.id);
+                    return MouseRegion(
+                      key: ValueKey('sprite-group-hover-${group.id}'),
+                      onEnter: (_) => _setHoveredGroupId(group.id),
+                      onExit: (_) {
+                        if (_hoveredGroupId == group.id) {
+                          _setHoveredGroupId(null);
+                        }
+                      },
+                      child: Container(
+                        key: ValueKey('sprite-group-${group.id}'),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 6,
+                          horizontal: 8,
+                        ),
+                        color:
+                            CupertinoColors.systemBlue.withValues(alpha: 0.08),
+                        child: Row(
+                          children: [
+                            CupertinoButton(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 2),
+                              minimumSize: const Size(20, 20),
+                              onPressed: () async {
+                                await _toggleGroupCollapsed(appData, group.id);
+                              },
+                              child: AnimatedRotation(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeInOutCubic,
+                                turns: group.collapsed ? 0.0 : 0.25,
+                                child: Icon(
+                                  CupertinoIcons.chevron_right,
+                                  size: 14,
+                                  color: cdkColors.colorText,
+                                ),
                               ),
                             ),
-                          );
-                        }
-                        final GroupedListRow<GameListGroup, GameSprite> row =
-                            spriteRows[index];
-                        if (row.isGroup) {
-                          final GameListGroup group = row.group!;
-                          final bool showGroupActions =
-                              _hoveredGroupId == group.id;
-                          final GlobalKey groupActionsAnchorKey =
-                              _groupActionsAnchorKey(group.id);
-                          return MouseRegion(
-                            key: ValueKey('sprite-group-hover-${group.id}'),
-                            onEnter: (_) => _setHoveredGroupId(group.id),
-                            onExit: (_) {
-                              if (_hoveredGroupId == group.id) {
-                                _setHoveredGroupId(null);
-                              }
-                            },
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  CDKText(
+                                    group.name,
+                                    role: CDKTextRole.body,
+                                    style: listItemTitleStyle,
+                                  ),
+                                  if (group.id == GameListGroup.mainId) ...[
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      CupertinoIcons.lock_fill,
+                                      size: 12,
+                                      color: cdkColors.colorText
+                                          .withValues(alpha: 0.7),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            if (showGroupActions)
+                              CupertinoButton(
+                                key: groupActionsAnchorKey,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                                minimumSize: const Size(20, 20),
+                                onPressed: () async {
+                                  await _showGroupActionsPopover(
+                                    appData,
+                                    level,
+                                    group,
+                                    groupActionsAnchorKey,
+                                  );
+                                },
+                                child: Icon(
+                                  CupertinoIcons.pencil,
+                                  size: 15,
+                                  color: cdkColors.colorText,
+                                ),
+                              ),
+                            ReorderableDragStartListener(
+                              index: index,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(
+                                  CupertinoIcons.bars,
+                                  size: 16,
+                                  color: cdkColors.colorText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final int spriteIndex = row.itemIndex!;
+                  final bool isSelected =
+                      multiSelectedSpriteIndices.contains(spriteIndex) ||
+                          spriteIndex == appData.selectedSprite;
+                  final bool isPrimarySelected =
+                      spriteIndex == appData.selectedSprite;
+                  final GameSprite sprite = row.item!;
+                  final String animationName =
+                      appData.animationDisplayNameById(sprite.animationId);
+                  final GameAnimation? animation =
+                      _animationById(appData, sprite.animationId);
+                  final String mediaName = animation == null
+                      ? appData.mediaDisplayNameByFileName(sprite.imageFile)
+                      : appData.mediaDisplayNameByFileName(
+                          animation.mediaFile,
+                        );
+                  final String subtitle =
+                      '${sprite.x}, ${sprite.y} | Depth ${sprite.depth} - $animationName';
+                  final String details =
+                      '$mediaName | ${sprite.spriteWidth}x${sprite.spriteHeight} px | FlipX ${sprite.flipX ? 'on' : 'off'} | FlipY ${sprite.flipY ? 'on' : 'off'}';
+                  final bool hiddenByCollapse = row.hiddenByCollapse;
+                  return AnimatedSize(
+                    key: ValueKey(sprite),
+                    duration: const Duration(milliseconds: 300),
+                    reverseDuration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: ClipRect(
+                      child: Align(
+                        heightFactor: hiddenByCollapse ? 0.0 : 1.0,
+                        alignment: Alignment.topCenter,
+                        child: IgnorePointer(
+                          ignoring: hiddenByCollapse,
+                          child: GestureDetector(
+                            onTap: () => _selectSprite(
+                              appData,
+                              spriteIndex,
+                              isSelected,
+                            ),
                             child: Container(
-                              key: ValueKey('sprite-group-${group.id}'),
                               padding: const EdgeInsets.symmetric(
                                 vertical: 6,
                                 horizontal: 8,
                               ),
-                              color: CupertinoColors.systemBlue
-                                  .withValues(alpha: 0.08),
+                              color: isSelected
+                                  ? CupertinoColors.systemBlue
+                                      .withValues(alpha: 0.2)
+                                  : cdkColors.backgroundSecondary0,
                               child: Row(
                                 children: [
-                                  CupertinoButton(
-                                    padding:
-                                        const EdgeInsets.symmetric(horizontal: 2),
-                                    minimumSize: const Size(20, 20),
-                                    onPressed: () async {
-                                      await _toggleGroupCollapsed(
-                                          appData, group.id);
-                                    },
-                                    child: AnimatedRotation(
-                                      duration:
-                                          const Duration(milliseconds: 220),
-                                      curve: Curves.easeInOutCubic,
-                                      turns: group.collapsed ? 0.0 : 0.25,
-                                      child: Icon(
-                                        CupertinoIcons.chevron_right,
-                                        size: 14,
-                                        color: cdkColors.colorText,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
+                                  const SizedBox(width: 22),
                                   Expanded(
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         CDKText(
-                                          group.name,
-                                          role: CDKTextRole.body,
+                                          sprite.name,
+                                          role: isSelected
+                                              ? CDKTextRole.bodyStrong
+                                              : CDKTextRole.body,
                                           style: listItemTitleStyle,
                                         ),
-                                        if (group.id ==
-                                            GameListGroup.mainId) ...[
-                                          const SizedBox(width: 6),
-                                          Icon(
-                                            CupertinoIcons.lock_fill,
-                                            size: 12,
-                                            color: cdkColors.colorText
-                                                .withValues(alpha: 0.7),
-                                          ),
-                                        ],
+                                        const SizedBox(height: 2),
+                                        CDKText(
+                                          subtitle,
+                                          role: CDKTextRole.body,
+                                          color: cdkColors.colorText,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        CDKText(
+                                          details,
+                                          role: CDKTextRole.body,
+                                          color: cdkColors.colorText,
+                                        ),
                                       ],
                                     ),
                                   ),
-                                  if (showGroupActions)
-                                    CupertinoButton(
-                                      key: groupActionsAnchorKey,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                      ),
-                                      minimumSize: const Size(20, 20),
-                                      onPressed: () async {
-                                        await _showGroupActionsPopover(
-                                          appData,
-                                          level,
-                                          group,
-                                          groupActionsAnchorKey,
-                                        );
-                                      },
-                                      child: Icon(
-                                        CupertinoIcons.pencil,
-                                        size: 15,
-                                        color: cdkColors.colorText,
+                                  if (isPrimarySelected && hasAnimations)
+                                    MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      child: CupertinoButton(
+                                        key: _selectedEditAnchorKey,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                        ),
+                                        minimumSize: const Size(20, 20),
+                                        onPressed: () async {
+                                          await _promptAndEditSprite(
+                                            spriteIndex,
+                                            _selectedEditAnchorKey,
+                                            animations,
+                                          );
+                                        },
+                                        child: Icon(
+                                          CupertinoIcons.pencil,
+                                          size: 16,
+                                          color: cdkColors.colorText,
+                                        ),
                                       ),
                                     ),
                                   ReorderableDragStartListener(
                                     index: index,
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 4),
+                                        horizontal: 4,
+                                      ),
                                       child: Icon(
                                         CupertinoIcons.bars,
                                         size: 16,
@@ -1031,134 +1158,15 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                 ],
                               ),
                             ),
-                          );
-                        }
-
-                        final int spriteIndex = row.itemIndex!;
-                        final bool isSelected =
-                            spriteIndex == appData.selectedSprite;
-                        final GameSprite sprite = row.item!;
-                        final String animationName = appData
-                            .animationDisplayNameById(sprite.animationId);
-                        final GameAnimation? animation =
-                            _animationById(appData, sprite.animationId);
-                        final String mediaName = animation == null
-                            ? appData
-                                .mediaDisplayNameByFileName(sprite.imageFile)
-                            : appData.mediaDisplayNameByFileName(
-                                animation.mediaFile,
-                              );
-                        final String subtitle =
-                            '${sprite.x}, ${sprite.y} | Depth ${sprite.depth} - $animationName';
-                        final String details =
-                            '$mediaName | ${sprite.spriteWidth}x${sprite.spriteHeight} px | FlipX ${sprite.flipX ? 'on' : 'off'} | FlipY ${sprite.flipY ? 'on' : 'off'}';
-                        final bool hiddenByCollapse = row.hiddenByCollapse;
-                        return AnimatedSize(
-                          key: ValueKey(sprite),
-                          duration: const Duration(milliseconds: 300),
-                          reverseDuration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOutCubic,
-                          alignment: Alignment.topCenter,
-                          child: ClipRect(
-                            child: Align(
-                              heightFactor: hiddenByCollapse ? 0.0 : 1.0,
-                              alignment: Alignment.topCenter,
-                              child: IgnorePointer(
-                                ignoring: hiddenByCollapse,
-                                child: GestureDetector(
-                                  onTap: () => _selectSprite(
-                                    appData,
-                                    spriteIndex,
-                                    isSelected,
-                                  ),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 6,
-                                      horizontal: 8,
-                                    ),
-                                    color: isSelected
-                                        ? CupertinoColors.systemBlue
-                                            .withValues(alpha: 0.2)
-                                        : cdkColors.backgroundSecondary0,
-                                    child: Row(
-                                      children: [
-                                        const SizedBox(width: 22),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              CDKText(
-                                                sprite.name,
-                                                role: isSelected
-                                                    ? CDKTextRole.bodyStrong
-                                                    : CDKTextRole.body,
-                                                style: listItemTitleStyle,
-                                              ),
-                                              const SizedBox(height: 2),
-                                              CDKText(
-                                                subtitle,
-                                                role: CDKTextRole.body,
-                                                color: cdkColors.colorText,
-                                              ),
-                                              const SizedBox(height: 2),
-                                              CDKText(
-                                                details,
-                                                role: CDKTextRole.body,
-                                                color: cdkColors.colorText,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        if (isSelected && hasAnimations)
-                                          MouseRegion(
-                                            cursor: SystemMouseCursors.click,
-                                            child: CupertinoButton(
-                                              key: _selectedEditAnchorKey,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 6,
-                                              ),
-                                              minimumSize: const Size(20, 20),
-                                              onPressed: () async {
-                                                await _promptAndEditSprite(
-                                                  spriteIndex,
-                                                  _selectedEditAnchorKey,
-                                                  animations,
-                                                );
-                                              },
-                                              child: Icon(
-                                                CupertinoIcons.pencil,
-                                                size: 16,
-                                                color: cdkColors.colorText,
-                                              ),
-                                            ),
-                                          ),
-                                        ReorderableDragStartListener(
-                                          index: index,
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 4,
-                                            ),
-                                            child: Icon(
-                                              CupertinoIcons.bars,
-                                              size: 16,
-                                              color: cdkColors.colorText,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ],
     );

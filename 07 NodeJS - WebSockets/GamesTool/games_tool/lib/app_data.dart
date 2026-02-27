@@ -95,6 +95,7 @@ class AppData extends ChangeNotifier {
   int selectedZone = -1;
   Set<int> selectedZoneIndices = <int>{};
   int selectedSprite = -1;
+  Set<int> selectedSpriteIndices = <int>{};
   int selectedAnimation = -1;
   int selectedMedia = -1;
   int animationSelectionStartFrame = -1;
@@ -1459,6 +1460,7 @@ class AppData extends ChangeNotifier {
     selectedZone = -1;
     selectedZoneIndices = <int>{};
     selectedSprite = -1;
+    selectedSpriteIndices = <int>{};
     selectedAnimation = -1;
     selectedMedia = -1;
     animationSelectionStartFrame = -1;
@@ -1537,6 +1539,7 @@ class AppData extends ChangeNotifier {
     selectedZone = -1;
     selectedZoneIndices = <int>{};
     selectedSprite = -1;
+    selectedSpriteIndices = <int>{};
     selectedAnimation = -1;
     selectedMedia = -1;
     animationSelectionStartFrame = -1;
@@ -1712,6 +1715,7 @@ class AppData extends ChangeNotifier {
       selectedZone = -1;
       selectedZoneIndices = <int>{};
       selectedSprite = -1;
+      selectedSpriteIndices = <int>{};
       selectedAnimation = -1;
       selectedMedia = -1;
       animationSelectionStartFrame = -1;

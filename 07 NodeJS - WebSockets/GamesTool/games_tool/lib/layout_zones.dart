@@ -597,6 +597,7 @@ class LayoutZonesState extends State<LayoutZones> {
       ),
     );
     appData.selectedZone = -1;
+    appData.selectedZoneIndices = <int>{};
   }
 
   void _updateZone({
@@ -622,6 +623,7 @@ class LayoutZonesState extends State<LayoutZones> {
       groupId: existingGroupId,
     );
     appData.selectedZone = index;
+    appData.selectedZoneIndices = <int>{index};
   }
 
   Future<_ZoneDialogData?> _promptZoneData({
@@ -759,6 +761,7 @@ class LayoutZonesState extends State<LayoutZones> {
       mutate: () {
         zones.removeAt(index);
         appData.selectedZone = -1;
+        appData.selectedZoneIndices = <int>{};
       },
     );
   }
@@ -790,6 +793,7 @@ class LayoutZonesState extends State<LayoutZones> {
         );
         zones.insert(index + 1, duplicate);
         appData.selectedZone = index + 1;
+        appData.selectedZoneIndices = <int>{index + 1};
       },
     );
   }
@@ -838,10 +842,12 @@ class LayoutZonesState extends State<LayoutZones> {
   void _selectZone(AppData appData, int index, bool isSelected) {
     if (isSelected) {
       appData.selectedZone = -1;
+      appData.selectedZoneIndices = <int>{};
       appData.update();
       return;
     }
     appData.selectedZone = index;
+    appData.selectedZoneIndices = <int>{index};
     appData.update();
   }
 
@@ -872,6 +878,7 @@ class LayoutZonesState extends State<LayoutZones> {
             _effectiveZoneGroupId(level, level.zones[appData.selectedZone]) ==
                 group.id) {
           appData.selectedZone = -1;
+          appData.selectedZoneIndices = <int>{};
         }
       },
     );
@@ -1018,9 +1025,12 @@ class LayoutZonesState extends State<LayoutZones> {
 
     if (selectedZone == null) {
       appData.selectedZone = -1;
+      appData.selectedZoneIndices = <int>{};
       return;
     }
     appData.selectedZone = zones.indexOf(selectedZone);
+    appData.selectedZoneIndices =
+        appData.selectedZone >= 0 ? <int>{appData.selectedZone} : <int>{};
   }
 
   void _onReorder(
@@ -1138,6 +1148,9 @@ class LayoutZonesState extends State<LayoutZones> {
 
     final level = appData.gameData.levels[appData.selectedLevel];
     final zoneRows = _buildZoneRows(level);
+    final Set<int> multiSelectedZoneIndices = appData.selectedZoneIndices
+        .where((index) => index >= 0 && index < level.zones.length)
+        .toSet();
     final zoneTypes = _zoneTypes(appData);
 
     return Column(
@@ -1239,7 +1252,8 @@ class LayoutZonesState extends State<LayoutZones> {
                         child: Row(
                           children: [
                             CupertinoButton(
-                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 2),
                               minimumSize: const Size(20, 20),
                               onPressed: () async {
                                 await _toggleGroupCollapsed(appData, group.id);
@@ -1320,7 +1334,11 @@ class LayoutZonesState extends State<LayoutZones> {
                   }
 
                   final int zoneIndex = row.zoneIndex!;
-                  final bool isSelected = zoneIndex == appData.selectedZone;
+                  final bool isSelected =
+                      multiSelectedZoneIndices.contains(zoneIndex) ||
+                          zoneIndex == appData.selectedZone;
+                  final bool isPrimarySelected =
+                      zoneIndex == appData.selectedZone;
                   final GameZone zone = row.zone!;
                   final String zoneColorName = _zoneColorName(appData, zone);
                   final bool hiddenByCollapse = row.hiddenByCollapse;
@@ -1389,7 +1407,7 @@ class LayoutZonesState extends State<LayoutZones> {
                                       ],
                                     ),
                                   ),
-                                  if (isSelected)
+                                  if (isPrimarySelected)
                                     MouseRegion(
                                       cursor: SystemMouseCursors.click,
                                       child: CupertinoButton(
@@ -1406,7 +1424,7 @@ class LayoutZonesState extends State<LayoutZones> {
                                         ),
                                       ),
                                     ),
-                                  if (isSelected)
+                                  if (isPrimarySelected)
                                     MouseRegion(
                                       cursor: SystemMouseCursors.click,
                                       child: CupertinoButton(

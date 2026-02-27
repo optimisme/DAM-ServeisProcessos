@@ -226,6 +226,13 @@ class CanvasPainter extends CustomPainter {
       }
 
       if (appData.selectedSection == 'zones') {
+        final Set<int> selectedZoneIndices = appData.selectedZoneIndices
+            .where((index) => index >= 0 && index < level.zones.length)
+            .toSet();
+        if (appData.selectedZone >= 0 &&
+            appData.selectedZone < level.zones.length) {
+          selectedZoneIndices.add(appData.selectedZone);
+        }
         for (int i = 0; i < level.zones.length; i++) {
           final zone = level.zones[i];
           final Rect zoneRect = Rect.fromLTWH(
@@ -240,34 +247,36 @@ class CanvasPainter extends CustomPainter {
             ..style = PaintingStyle.fill;
           canvas.drawRect(zoneRect, fillPaint);
 
-          if (i == appData.selectedZone) {
+          if (selectedZoneIndices.contains(i)) {
             final Paint selectedPaint = Paint()
               ..color = zoneColor
               ..strokeWidth = 2.0 / vScale
               ..style = PaintingStyle.stroke;
             canvas.drawRect(zoneRect, selectedPaint);
 
-            final double maxHandleSize = zone.width <= 0 || zone.height <= 0
-                ? 0
-                : zone.width < zone.height
-                    ? zone.width.toDouble()
-                    : zone.height.toDouble();
-            final double handleSize = maxHandleSize <= 0
-                ? 0
-                : LayoutUtils.zoneResizeHandleSizeWorld(appData)
-                    .clamp(0, maxHandleSize);
-            if (handleSize > 0) {
-              final double right = zoneRect.right;
-              final double bottom = zoneRect.bottom;
-              final Path handlePath = Path()
-                ..moveTo(right, bottom)
-                ..lineTo(right - handleSize, bottom)
-                ..lineTo(right, bottom - handleSize)
-                ..close();
-              final Paint handlePaint = Paint()
-                ..color = zoneColor
-                ..style = PaintingStyle.fill;
-              canvas.drawPath(handlePath, handlePaint);
+            if (i == appData.selectedZone) {
+              final double maxHandleSize = zone.width <= 0 || zone.height <= 0
+                  ? 0
+                  : zone.width < zone.height
+                      ? zone.width.toDouble()
+                      : zone.height.toDouble();
+              final double handleSize = maxHandleSize <= 0
+                  ? 0
+                  : LayoutUtils.zoneResizeHandleSizeWorld(appData)
+                      .clamp(0, maxHandleSize);
+              if (handleSize > 0) {
+                final double right = zoneRect.right;
+                final double bottom = zoneRect.bottom;
+                final Path handlePath = Path()
+                  ..moveTo(right, bottom)
+                  ..lineTo(right - handleSize, bottom)
+                  ..lineTo(right, bottom - handleSize)
+                  ..close();
+                final Paint handlePaint = Paint()
+                  ..color = zoneColor
+                  ..style = PaintingStyle.fill;
+                canvas.drawPath(handlePath, handlePaint);
+              }
             }
           }
         }

@@ -1641,28 +1641,6 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
             ),
           ),
           SizedBox(height: spacing.md),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            EditorLabeledField(
-              label: widget.groupFieldLabel,
-              child: CDKButtonSelect(
-                selectedIndex: widget.groupOptions
-                    .indexWhere((group) => group.id == _selectedGroupId)
-                    .clamp(0, widget.groupOptions.length - 1),
-                options: widget.groupOptions
-                    .map((group) => group.name.trim().isEmpty
-                        ? GameMediaGroup.defaultMainName
-                        : group.name)
-                    .toList(growable: false),
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedGroupId = widget.groupOptions[index].id;
-                  });
-                  _onInputChanged();
-                },
-              ),
-            ),
-            SizedBox(height: spacing.md),
-          ],
           EditorLabeledField(
             label: 'Kind',
             child: CDKPickerButtonsSegmented(
@@ -1704,40 +1682,48 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(height: spacing.sm),
-                      EditorLabeledField(
-                        label: '$sizeLabelPrefix Width (px)',
-                        child: CDKFieldText(
-                          placeholder:
-                              '${sizeLabelPrefix.toLowerCase()} width (px)',
-                          controller: _tileWidthController,
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) => _validateTileFields(),
-                          onSubmitted: (_) {
-                            if (widget.liveEdit) {
-                              _onInputChanged();
-                              return;
-                            }
-                            _confirm();
-                          },
-                        ),
-                      ),
-                      SizedBox(height: spacing.sm),
-                      EditorLabeledField(
-                        label: '$sizeLabelPrefix Height (px)',
-                        child: CDKFieldText(
-                          placeholder:
-                              '${sizeLabelPrefix.toLowerCase()} height (px)',
-                          controller: _tileHeightController,
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) => _validateTileFields(),
-                          onSubmitted: (_) {
-                            if (widget.liveEdit) {
-                              _onInputChanged();
-                              return;
-                            }
-                            _confirm();
-                          },
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: EditorLabeledField(
+                              label: '$sizeLabelPrefix Width (px)',
+                              child: CDKFieldText(
+                                placeholder:
+                                    '${sizeLabelPrefix.toLowerCase()} width (px)',
+                                controller: _tileWidthController,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => _validateTileFields(),
+                                onSubmitted: (_) {
+                                  if (widget.liveEdit) {
+                                    _onInputChanged();
+                                    return;
+                                  }
+                                  _confirm();
+                                },
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: spacing.sm),
+                          Expanded(
+                            child: EditorLabeledField(
+                              label: '$sizeLabelPrefix Height (px)',
+                              child: CDKFieldText(
+                                placeholder:
+                                    '${sizeLabelPrefix.toLowerCase()} height (px)',
+                                controller: _tileHeightController,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => _validateTileFields(),
+                                onSubmitted: (_) {
+                                  if (widget.liveEdit) {
+                                    _onInputChanged();
+                                    return;
+                                  }
+                                  _confirm();
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       if (_sizeError != null) ...[
                         SizedBox(height: spacing.sm),
@@ -1752,6 +1738,34 @@ class _MediaFormDialogState extends State<_MediaFormDialog> {
                   )
                 : const SizedBox.shrink(),
           ),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            SizedBox(height: spacing.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                child: EditorLabeledField(
+                  label: widget.groupFieldLabel,
+                  child: CDKButtonSelect(
+                    selectedIndex: widget.groupOptions
+                        .indexWhere((group) => group.id == _selectedGroupId)
+                        .clamp(0, widget.groupOptions.length - 1),
+                    options: widget.groupOptions
+                        .map((group) => group.name.trim().isEmpty
+                            ? GameMediaGroup.defaultMainName
+                            : group.name)
+                        .toList(growable: false),
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedGroupId = widget.groupOptions[index].id;
+                      });
+                      _onInputChanged();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

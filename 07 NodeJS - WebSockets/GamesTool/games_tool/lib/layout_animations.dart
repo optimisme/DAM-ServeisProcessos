@@ -1605,139 +1605,157 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            EditorLabeledField(
-              label: widget.groupFieldLabel,
-              child: CDKButtonSelect(
-                selectedIndex: widget.groupOptions
-                    .indexWhere((group) => group.id == _selectedGroupId)
-                    .clamp(0, widget.groupOptions.length - 1),
-                options: widget.groupOptions
-                    .map((group) => group.name.trim().isEmpty
-                        ? GameListGroup.defaultMainName
-                        : group.name)
-                    .toList(growable: false),
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedGroupId = widget.groupOptions[index].id;
-                  });
-                  _onInputChanged();
-                },
-              ),
-            ),
-            SizedBox(height: spacing.sm),
-          ],
           EditorLabeledField(
             label: 'Source Media',
-            child: mediaOptions.isEmpty
-                ? const CDKText(
-                    'No spritesheet or atlas available',
-                    role: CDKTextRole.caption,
-                    secondary: true,
-                  )
-                : CDKButtonSelect(
-                    selectedIndex: _selectedAssetIndex,
-                    options: mediaOptions,
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedAssetIndex = index;
-                      });
-                      _onInputChanged();
-                    },
-                  ),
-          ),
-          if (asset != null) ...[
-            const SizedBox(height: 4),
-            CDKText(
-              'Frame size: ${asset.tileWidth}×${asset.tileHeight} px',
-              role: CDKTextRole.caption,
-              color: cdkColors.colorText,
-              secondary: true,
-            ),
-          ],
-          SizedBox(height: spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'Start Frame',
-                  child: CDKFieldText(
-                    placeholder: 'Start',
-                    controller: _startFrameController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) {
-                      setState(() {});
-                      _onInputChanged();
-                    },
-                  ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'End Frame',
-                  child: CDKFieldText(
-                    placeholder: 'End',
-                    controller: _endFrameController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) {
-                      setState(() {});
-                      _onInputChanged();
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'FPS',
-                  child: CDKFieldText(
-                    placeholder: 'Frames per second',
-                    controller: _fpsController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    onChanged: (_) {
-                      setState(() {});
-                      _onInputChanged();
-                    },
-                  ),
-                ),
-              ),
-              SizedBox(width: spacing.md),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CDKText(
-                    'Loop',
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
-                  ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    width: 39,
-                    height: 24,
-                    child: FittedBox(
-                      fit: BoxFit.fill,
-                      child: CupertinoSwitch(
-                        value: _loop,
-                        onChanged: (bool value) {
+            child: Row(
+              children: [
+                mediaOptions.isEmpty
+                    ? const Expanded(
+                        child: CDKText(
+                          'No spritesheet or atlas available',
+                          role: CDKTextRole.caption,
+                          secondary: true,
+                        ),
+                      )
+                    : CDKButtonSelect(
+                        selectedIndex: _selectedAssetIndex,
+                        options: mediaOptions,
+                        onSelected: (int index) {
                           setState(() {
-                            _loop = value;
+                            _selectedAssetIndex = index;
                           });
                           _onInputChanged();
                         },
                       ),
-                    ),
+                if (asset != null) ...[
+                  const Spacer(),
+                  CDKText(
+                    'Frame size: ${asset.tileWidth}×${asset.tileHeight} px',
+                    role: CDKTextRole.caption,
+                    color: cdkColors.colorText,
+                    secondary: true,
                   ),
                 ],
+              ],
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Flexible(
+                flex: 3,
+                child: Padding(
+                  padding: EdgeInsets.only(right: spacing.xs),
+                  child: EditorLabeledField(
+                    label: 'Start Frame',
+                    child: CDKFieldText(
+                      placeholder: 'Start',
+                      controller: _startFrameController,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) {
+                        setState(() {});
+                        _onInputChanged();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                flex: 3,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: spacing.xs),
+                  child: EditorLabeledField(
+                    label: 'End Frame',
+                    child: CDKFieldText(
+                      placeholder: 'End',
+                      controller: _endFrameController,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) {
+                        setState(() {});
+                        _onInputChanged();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                flex: 3,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: spacing.xs),
+                  child: EditorLabeledField(
+                    label: 'FPS',
+                    child: CDKFieldText(
+                      placeholder: 'Frames per second',
+                      controller: _fpsController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) {
+                        setState(() {});
+                        _onInputChanged();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                flex: 1,
+                child: Padding(
+                  padding: EdgeInsets.only(left: spacing.xs),
+                  child: EditorLabeledField(
+                    label: 'Loop',
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: 39,
+                        height: 24,
+                        child: FittedBox(
+                          fit: BoxFit.fill,
+                          child: CupertinoSwitch(
+                            value: _loop,
+                            onChanged: (bool value) {
+                              setState(() {
+                                _loop = value;
+                              });
+                              _onInputChanged();
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            SizedBox(height: spacing.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                child: EditorLabeledField(
+                  label: widget.groupFieldLabel,
+                  child: CDKButtonSelect(
+                    selectedIndex: widget.groupOptions
+                        .indexWhere((group) => group.id == _selectedGroupId)
+                        .clamp(0, widget.groupOptions.length - 1),
+                    options: widget.groupOptions
+                        .map((group) => group.name.trim().isEmpty
+                            ? GameListGroup.defaultMainName
+                            : group.name)
+                        .toList(growable: false),
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedGroupId = widget.groupOptions[index].id;
+                      });
+                      _onInputChanged();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

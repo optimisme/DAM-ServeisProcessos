@@ -1496,6 +1496,30 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
               SizedBox(width: spacing.sm),
               Expanded(
                 child: EditorLabeledField(
+                  label: 'Tiles Width',
+                  child: CDKFieldText(
+                    placeholder: 'Tiles width',
+                    controller: _tilemapWidthController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
+                  label: 'Tiles Height',
+                  child: CDKFieldText(
+                    placeholder: 'Tiles height',
+                    controller: _tilemapHeightController,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => _onInputChanged(),
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: EditorLabeledField(
                   label: 'Depth displacement',
                   child: CDKFieldText(
                     placeholder: 'Depth displacement',
@@ -1521,57 +1545,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
               color: CupertinoColors.systemRed.resolveFrom(context),
             ),
           ],
-          SizedBox(height: spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'Tilemap Width (tiles)',
-                  child: CDKFieldText(
-                    placeholder: 'Tilemap width (tiles)',
-                    controller: _tilemapWidthController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => _onInputChanged(),
-                  ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: EditorLabeledField(
-                  label: 'Tilemap Height (tiles)',
-                  child: CDKFieldText(
-                    placeholder: 'Tilemap height (tiles)',
-                    controller: _tilemapHeightController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => _onInputChanged(),
-                  ),
-                ),
-              ),
-            ],
-          ),
           SizedBox(height: spacing.md),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            EditorLabeledField(
-              label: widget.groupFieldLabel,
-              child: CDKButtonSelect(
-                selectedIndex: widget.groupOptions
-                    .indexWhere((group) => group.id == _selectedGroupId)
-                    .clamp(0, widget.groupOptions.length - 1),
-                options: widget.groupOptions
-                    .map((group) => group.name.trim().isEmpty
-                        ? GameListGroup.defaultMainName
-                        : group.name)
-                    .toList(growable: false),
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedGroupId = widget.groupOptions[index].id;
-                  });
-                  _onInputChanged();
-                },
-              ),
-            ),
-            SizedBox(height: spacing.md),
-          ],
           EditorLabeledField(
             label: 'Tilesheet',
             child: Column(
@@ -1590,8 +1564,14 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
                         _onInputChanged();
                       },
                     ),
-                    SizedBox(width: spacing.md),
+                    SizedBox(width: spacing.sm),
+                    CDKText(
+                      'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
+                      role: CDKTextRole.caption,
+                      color: cdkColors.colorText,
+                    ),
                     const Spacer(),
+                    SizedBox(width: spacing.md),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1621,15 +1601,37 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                CDKText(
-                  'Tile size: ${asset.tileWidth}×${asset.tileHeight} px',
-                  role: CDKTextRole.caption,
-                  secondary: true,
-                ),
               ],
             ),
           ),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            SizedBox(height: spacing.xs),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                child: EditorLabeledField(
+                  label: widget.groupFieldLabel,
+                  child: CDKButtonSelect(
+                    selectedIndex: widget.groupOptions
+                        .indexWhere((group) => group.id == _selectedGroupId)
+                        .clamp(0, widget.groupOptions.length - 1),
+                    options: widget.groupOptions
+                        .map((group) => group.name.trim().isEmpty
+                            ? GameListGroup.defaultMainName
+                            : group.name)
+                        .toList(growable: false),
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedGroupId = widget.groupOptions[index].id;
+                      });
+                      _onInputChanged();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

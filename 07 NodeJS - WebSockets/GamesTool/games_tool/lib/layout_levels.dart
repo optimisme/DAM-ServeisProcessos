@@ -1240,6 +1240,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   @override
   Widget build(BuildContext context) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     final typography = CDKThemeNotifier.typographyTokensOf(context);
     return EditorFormDialogScaffold(
       title: widget.title,
@@ -1292,28 +1293,6 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            EditorLabeledField(
-              label: widget.groupFieldLabel,
-              child: CDKButtonSelect(
-                selectedIndex: widget.groupOptions
-                    .indexWhere((group) => group.id == _selectedGroupId)
-                    .clamp(0, widget.groupOptions.length - 1),
-                options: widget.groupOptions
-                    .map((group) => group.name.trim().isEmpty
-                        ? GameListGroup.defaultMainName
-                        : group.name)
-                    .toList(growable: false),
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedGroupId = widget.groupOptions[index].id;
-                  });
-                  _onInputChanged();
-                },
-              ),
-            ),
-            SizedBox(height: spacing.sm),
-          ],
           EditorLabeledField(
             label: 'Background color',
             child: Row(
@@ -1329,12 +1308,40 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
                   child: CDKText(
                     _backgroundColorHex,
                     role: CDKTextRole.caption,
-                    secondary: true,
+                    color: cdkColors.colorText,
                   ),
                 ),
               ],
             ),
           ),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            SizedBox(height: spacing.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                child: EditorLabeledField(
+                  label: widget.groupFieldLabel,
+                  child: CDKButtonSelect(
+                    selectedIndex: widget.groupOptions
+                        .indexWhere((group) => group.id == _selectedGroupId)
+                        .clamp(0, widget.groupOptions.length - 1),
+                    options: widget.groupOptions
+                        .map((group) => group.name.trim().isEmpty
+                            ? GameListGroup.defaultMainName
+                            : group.name)
+                        .toList(growable: false),
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedGroupId = widget.groupOptions[index].id;
+                      });
+                      _onInputChanged();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (_errorText != null) ...[
             SizedBox(height: spacing.sm),
             Text(

@@ -1777,71 +1777,52 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
         children: [
           EditorLabeledField(
             label: 'Zone Category',
-            child: SizedBox(
-              width: double.infinity,
-              child: CDKButton(
-                key: _typePickerAnchorKey,
-                style: CDKButtonStyle.normal,
-                enabled: widget.zoneTypes.isNotEmpty,
-                onPressed: _showTypePickerPopover,
-                child: Row(
-                  children: [
-                    if (selectedType != null) ...[
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: LayoutUtils.getColorFromName(
-                            selectedType.color,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 280),
+                child: CDKButton(
+                  key: _typePickerAnchorKey,
+                  style: CDKButtonStyle.normal,
+                  enabled: widget.zoneTypes.isNotEmpty,
+                  onPressed: _showTypePickerPopover,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (selectedType != null) ...[
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: LayoutUtils.getColorFromName(
+                              selectedType.color,
+                            ),
+                            shape: BoxShape.circle,
                           ),
-                          shape: BoxShape.circle,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: CDKText(
                           selectedType?.name ?? 'Select a category',
+                          role: CDKTextRole.caption,
+                          color: cdkColors.colorText,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      CupertinoIcons.chevron_down,
-                      size: 14,
-                      color: cdkColors.colorText,
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Icon(
+                        CupertinoIcons.chevron_down,
+                        size: 14,
+                        color: cdkColors.colorText,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
           SizedBox(height: spacing.sm),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            EditorLabeledField(
-              label: widget.groupFieldLabel,
-              child: CDKButtonSelect(
-                selectedIndex: widget.groupOptions
-                    .indexWhere((group) => group.id == _selectedGroupId)
-                    .clamp(0, widget.groupOptions.length - 1),
-                options: widget.groupOptions
-                    .map((group) => group.name.trim().isEmpty
-                        ? GameZoneGroup.defaultMainName
-                        : group.name)
-                    .toList(growable: false),
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedGroupId = widget.groupOptions[index].id;
-                  });
-                  _onInputChanged();
-                },
-              ),
-            ),
-            SizedBox(height: spacing.sm),
-          ],
           Row(
             children: [
               Expanded(
@@ -1881,11 +1862,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
                   ),
                 ),
               ),
-            ],
-          ),
-          SizedBox(height: spacing.sm),
-          Row(
-            children: [
+              SizedBox(width: spacing.sm),
               Expanded(
                 child: EditorLabeledField(
                   label: 'Width (px)',
@@ -1925,6 +1902,34 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
               ),
             ],
           ),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            SizedBox(height: spacing.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                child: EditorLabeledField(
+                  label: widget.groupFieldLabel,
+                  child: CDKButtonSelect(
+                    selectedIndex: widget.groupOptions
+                        .indexWhere((group) => group.id == _selectedGroupId)
+                        .clamp(0, widget.groupOptions.length - 1),
+                    options: widget.groupOptions
+                        .map((group) => group.name.trim().isEmpty
+                            ? GameZoneGroup.defaultMainName
+                            : group.name)
+                        .toList(growable: false),
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedGroupId = widget.groupOptions[index].id;
+                      });
+                      _onInputChanged();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1947,9 +1952,9 @@ class _ZoneTypePickerPopover extends StatelessWidget {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
+      constraints: const BoxConstraints(minWidth: 180, maxWidth: 240),
       child: Padding(
-        padding: EdgeInsets.all(spacing.sm),
+        padding: EdgeInsets.all(spacing.xs),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 220),
           child: ListView.builder(
@@ -1962,8 +1967,8 @@ class _ZoneTypePickerPopover extends StatelessWidget {
                 onTap: () => onSelected(type.name),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 8,
+                    vertical: 4,
+                    horizontal: 6,
                   ),
                   color: isSelected
                       ? CupertinoColors.systemBlue.withValues(alpha: 0.18)
@@ -1982,9 +1987,7 @@ class _ZoneTypePickerPopover extends StatelessWidget {
                       Expanded(
                         child: CDKText(
                           type.name,
-                          role: isSelected
-                              ? CDKTextRole.bodyStrong
-                              : CDKTextRole.body,
+                          role: CDKTextRole.caption,
                           color: cdkColors.colorText,
                         ),
                       ),

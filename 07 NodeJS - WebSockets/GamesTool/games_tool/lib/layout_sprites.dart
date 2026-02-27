@@ -1468,28 +1468,6 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
             ),
           ),
           SizedBox(height: spacing.sm),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            EditorLabeledField(
-              label: widget.groupFieldLabel,
-              child: CDKButtonSelect(
-                selectedIndex: widget.groupOptions
-                    .indexWhere((group) => group.id == _selectedGroupId)
-                    .clamp(0, widget.groupOptions.length - 1),
-                options: widget.groupOptions
-                    .map((group) => group.name.trim().isEmpty
-                        ? GameListGroup.defaultMainName
-                        : group.name)
-                    .toList(growable: false),
-                onSelected: (int index) {
-                  setState(() {
-                    _selectedGroupId = widget.groupOptions[index].id;
-                  });
-                  _onInputChanged();
-                },
-              ),
-            ),
-            SizedBox(height: spacing.sm),
-          ],
           Row(
             children: [
               Expanded(
@@ -1535,103 +1513,129 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
           SizedBox(height: spacing.md),
           EditorLabeledField(
             label: 'Animation',
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (animationOptions.isNotEmpty)
-                  CDKButtonSelect(
-                    selectedIndex: _selectedAnimationIndex,
-                    options: animationOptions,
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedAnimationIndex = index;
-                      });
-                      _onInputChanged();
-                    },
-                  )
-                else
-                  const CDKText(
-                    'No animations available',
-                    role: CDKTextRole.caption,
-                    secondary: true,
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (animationOptions.isNotEmpty)
+                        CDKButtonSelect(
+                          selectedIndex: _selectedAnimationIndex,
+                          options: animationOptions,
+                          onSelected: (int index) {
+                            setState(() {
+                              _selectedAnimationIndex = index;
+                            });
+                            _onInputChanged();
+                          },
+                        )
+                      else
+                        const Expanded(
+                          child: CDKText(
+                            'No animations available',
+                            role: CDKTextRole.caption,
+                            secondary: true,
+                          ),
+                        ),
+                      if (animation != null) ...[
+                        SizedBox(width: spacing.sm),
+                        Expanded(
+                          child: CDKText(
+                            'Frame size: ${(media?.tileWidth ?? widget.initialData.width)}×${(media?.tileHeight ?? widget.initialData.height)} px',
+                            role: CDKTextRole.caption,
+                            color: cdkColors.colorText,
+                            textAlign: TextAlign.right,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                if (animation != null) ...[
-                  const SizedBox(height: 4),
-                  CDKText(
-                    'Source: ${media?.name ?? animation.mediaFile}',
-                    role: CDKTextRole.caption,
-                    secondary: true,
+                ),
+                SizedBox(width: spacing.md),
+                SizedBox(
+                  width: 70,
+                  child: EditorLabeledField(
+                    label: 'Flip X',
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 39,
+                        height: 24,
+                        child: FittedBox(
+                          fit: BoxFit.fill,
+                          child: CupertinoSwitch(
+                            value: _flipX,
+                            onChanged: (bool value) {
+                              setState(() {
+                                _flipX = value;
+                              });
+                              _onInputChanged();
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 2),
-                  CDKText(
-                    'Frame size: ${(media?.tileWidth ?? widget.initialData.width)}×${(media?.tileHeight ?? widget.initialData.height)} px',
-                    role: CDKTextRole.caption,
-                    secondary: true,
+                ),
+                SizedBox(width: spacing.sm),
+                SizedBox(
+                  width: 70,
+                  child: EditorLabeledField(
+                    label: 'Flip Y',
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 39,
+                        height: 24,
+                        child: FittedBox(
+                          fit: BoxFit.fill,
+                          child: CupertinoSwitch(
+                            value: _flipY,
+                            onChanged: (bool value) {
+                              setState(() {
+                                _flipY = value;
+                              });
+                              _onInputChanged();
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ],
+                ),
               ],
             ),
           ),
-          SizedBox(height: spacing.sm),
-          Row(
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CDKText(
-                    'Flip X',
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
+            SizedBox(height: spacing.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                child: EditorLabeledField(
+                  label: widget.groupFieldLabel,
+                  child: CDKButtonSelect(
+                    selectedIndex: widget.groupOptions
+                        .indexWhere((group) => group.id == _selectedGroupId)
+                        .clamp(0, widget.groupOptions.length - 1),
+                    options: widget.groupOptions
+                        .map((group) => group.name.trim().isEmpty
+                            ? GameListGroup.defaultMainName
+                            : group.name)
+                        .toList(growable: false),
+                    onSelected: (int index) {
+                      setState(() {
+                        _selectedGroupId = widget.groupOptions[index].id;
+                      });
+                      _onInputChanged();
+                    },
                   ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    width: 39,
-                    height: 24,
-                    child: FittedBox(
-                      fit: BoxFit.fill,
-                      child: CupertinoSwitch(
-                        value: _flipX,
-                        onChanged: (bool value) {
-                          setState(() {
-                            _flipX = value;
-                          });
-                          _onInputChanged();
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-              SizedBox(width: spacing.md),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CDKText(
-                    'Flip Y',
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
-                  ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    width: 39,
-                    height: 24,
-                    child: FittedBox(
-                      fit: BoxFit.fill,
-                      child: CupertinoSwitch(
-                        value: _flipY,
-                        onChanged: (bool value) {
-                          setState(() {
-                            _flipY = value;
-                          });
-                          _onInputChanged();
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     );

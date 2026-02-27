@@ -42,8 +42,8 @@ Exporta l'aplicació amb "--release" segons la documentació oficial de Flutter 
 Crea un paquet de distribució:
 
 - **Linux**: un .deb, .rpm o Flatpak
-- **Windows**: un .exe o .msi
-- **MacOS**: un .dmg o .pkg
+- **Windows**: un .msi
+- **MacOS**: un .dmg
 
 El paquet ha d'instal·lar l'aplicació de manera que aparegui al menú d'aplicacions del sistema operatiu amb un icona distintiu com qualsevol altra aplicació.
 

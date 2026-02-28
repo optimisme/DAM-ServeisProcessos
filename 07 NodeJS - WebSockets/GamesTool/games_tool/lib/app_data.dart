@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'game_animation.dart';
 import 'game_data.dart';
@@ -14,53 +14,52 @@ import 'game_media_asset.dart';
 
 typedef ProjectMutation = void Function();
 typedef ProjectMutationValidator = String? Function();
-typedef ExportOverwriteConfirmation = Future<bool> Function({
-  required String destinationFolderPath,
-  required List<String> conflictingRelativePaths,
-});
 
 class StoredProject {
   final String id;
-  final String folderName;
-  final String createdAt;
+  final String folderPath;
   String name;
-  String comments;
   String updatedAt;
 
   StoredProject({
     required this.id,
     required this.name,
-    required this.folderName,
-    required this.createdAt,
+    required this.folderPath,
     required this.updatedAt,
-    this.comments = "",
   });
 
-  factory StoredProject.fromJson(Map<String, dynamic> json) {
-    final dynamic rawComments = json['comments'];
+  factory StoredProject.fromPath({
+    required String folderPath,
+    required String name,
+    String? updatedAt,
+  }) {
+    final String normalizedPath = Directory(folderPath).absolute.path;
     return StoredProject(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      folderName: json['folderName'] as String,
-      createdAt: json['createdAt'] as String,
-      updatedAt: json['updatedAt'] as String,
-      comments: rawComments is String ? rawComments : "",
+      id: normalizedPath,
+      folderPath: normalizedPath,
+      name: name,
+      updatedAt: updatedAt ?? DateTime.now().toUtc().toIso8601String(),
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toIndexJson() {
     return {
-      'id': id,
-      'name': name,
-      'folderName': folderName,
-      'createdAt': createdAt,
-      'updatedAt': updatedAt,
-      'comments': comments,
+      'path': folderPath,
     };
+  }
+
+  String get folderName {
+    final List<String> parts = folderPath
+        .split(Platform.pathSeparator)
+        .where((item) => item.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? folderPath : parts.last;
   }
 }
 
 class AppData extends ChangeNotifier {
+  static const MethodChannel _securityBookmarksChannel =
+      MethodChannel('games_tool/security_bookmarks');
   static const String appFolderName = "GamesTool";
   static const String projectsFolderName = "projects";
   static const String projectsIndexFileName = "projects_index.json";
@@ -69,7 +68,6 @@ class AppData extends ChangeNotifier {
   static const String zonesFolderName = "zones";
   static const String tileMapFileFieldName = "tileMapFile";
   static const String zonesFileFieldName = "zonesFile";
-  static const String projectCommentsFieldName = "projectComments";
   static const Color defaultTilesetSelectionColor = Color(0xFFFFCC00);
   int frame = 0;
   final gameFileName = "game_data.json";
@@ -81,6 +79,9 @@ class AppData extends ChangeNotifier {
   String storagePath = "";
   String projectsPath = "";
   String selectedProjectId = "";
+  List<String> _knownProjectPaths = [];
+  Map<String, String> _projectBookmarksByPath = <String, String>{};
+  List<String> missingProjectPaths = [];
   String projectStatusMessage = "";
   String autosaveInlineMessage = "";
   bool autosaveHasError = false;
@@ -423,6 +424,133 @@ class AppData extends ChangeNotifier {
     return _findProjectById(selectedProjectId);
   }
 
+  bool get hasMissingProjectPaths => missingProjectPaths.isNotEmpty;
+
+  String? get nextMissingProjectPath {
+    if (missingProjectPaths.isEmpty) {
+      return null;
+    }
+    return missingProjectPaths.first;
+  }
+
+  String _normalizeKnownProjectPath(String value) {
+    final String trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    String normalized = Directory(trimmed).absolute.path;
+    while (normalized.length > 1 &&
+        normalized.endsWith(Platform.pathSeparator)) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
+
+  bool get _supportsSecurityBookmarks =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
+
+  Future<String?> _createSecurityBookmarkForPath(String path) async {
+    if (!_supportsSecurityBookmarks) {
+      return null;
+    }
+    try {
+      final dynamic result = await _securityBookmarksChannel.invokeMethod(
+        'createBookmark',
+        <String, dynamic>{'path': path},
+      );
+      if (result is String && result.isNotEmpty) {
+        return result;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, String>?> _resolveSecurityBookmark(
+    String bookmark,
+  ) async {
+    if (!_supportsSecurityBookmarks || bookmark.trim().isEmpty) {
+      return null;
+    }
+    try {
+      final dynamic result = await _securityBookmarksChannel.invokeMethod(
+        'resolveBookmark',
+        <String, dynamic>{'bookmark': bookmark},
+      );
+      if (result is! Map) {
+        return null;
+      }
+      final Map<String, dynamic> payload = Map<String, dynamic>.from(result);
+      final dynamic rawPath = payload['path'];
+      if (rawPath is! String || rawPath.trim().isEmpty) {
+        return null;
+      }
+      final dynamic rawBookmark = payload['bookmark'];
+      return <String, String>{
+        'path': rawPath,
+        'bookmark': rawBookmark is String && rawBookmark.isNotEmpty
+            ? rawBookmark
+            : bookmark,
+      };
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _restoreSecurityScopedAccessForKnownPaths() async {
+    if (!_supportsSecurityBookmarks) {
+      return;
+    }
+    final Set<String> uniquePaths = <String>{};
+    final List<String> normalizedPaths = <String>[];
+    final Map<String, String> nextBookmarks = <String, String>{};
+    final Map<String, String> resolvedPathByRawPath = <String, String>{};
+
+    for (final String rawPath in _knownProjectPaths) {
+      final String normalizedRawPath = _normalizeKnownProjectPath(rawPath);
+      if (normalizedRawPath.isEmpty) {
+        continue;
+      }
+      final String bookmark = _projectBookmarksByPath[normalizedRawPath] ??
+          _projectBookmarksByPath[rawPath] ??
+          '';
+      String resolvedPath = normalizedRawPath;
+      String? resolvedBookmark;
+
+      if (bookmark.isNotEmpty) {
+        final Map<String, String>? resolved =
+            await _resolveSecurityBookmark(bookmark);
+        if (resolved != null) {
+          resolvedPath = _normalizeKnownProjectPath(resolved['path'] ?? '');
+          resolvedBookmark = resolved['bookmark'];
+        }
+      }
+
+      resolvedPath =
+          resolvedPath.isEmpty ? normalizedRawPath : resolvedPath;
+      resolvedPathByRawPath[normalizedRawPath] = resolvedPath;
+      if (!uniquePaths.add(resolvedPath)) {
+        continue;
+      }
+      normalizedPaths.add(resolvedPath);
+
+      final String finalBookmark = resolvedBookmark ??
+          (bookmark.isNotEmpty
+              ? bookmark
+              : (await _createSecurityBookmarkForPath(resolvedPath) ?? ''));
+      if (finalBookmark.isNotEmpty) {
+        nextBookmarks[resolvedPath] = finalBookmark;
+      }
+    }
+
+    _knownProjectPaths = normalizedPaths;
+    _projectBookmarksByPath = nextBookmarks;
+    final String normalizedSelectedPath =
+        _normalizeKnownProjectPath(selectedProjectId);
+    if (normalizedSelectedPath.isNotEmpty) {
+      selectedProjectId = resolvedPathByRawPath[normalizedSelectedPath] ??
+          normalizedSelectedPath;
+    }
+  }
+
   Future<void> initializeStorage() async {
     try {
       final Directory appSupportDirectory =
@@ -436,6 +564,7 @@ class AppData extends ChangeNotifier {
       projectsPath = "$storagePath${Platform.pathSeparator}$projectsFolderName";
 
       await _loadProjectsIndex();
+      await _restoreSecurityScopedAccessForKnownPaths();
 
       final Directory projectsDirectory = Directory(projectsPath);
       if (!await projectsDirectory.exists()) {
@@ -447,7 +576,6 @@ class AppData extends ChangeNotifier {
       if (selectedProjectId != "" && selectedProject != null) {
         await openProject(selectedProjectId, notify: false);
       } else {
-        selectedProjectId = "";
         gameData = GameData(name: "", levels: []);
         filePath = "";
         fileName = "";
@@ -467,6 +595,9 @@ class AppData extends ChangeNotifier {
   Future<void> _loadProjectsIndex() async {
     projects = [];
     selectedProjectId = "";
+    _knownProjectPaths = [];
+    _projectBookmarksByPath = <String, String>{};
+    missingProjectPaths = [];
 
     final File indexFile = File(
       "$storagePath${Platform.pathSeparator}$projectsIndexFileName",
@@ -485,17 +616,97 @@ class AppData extends ChangeNotifier {
       return;
     }
 
-    selectedProjectId = (decoded['selectedProjectId'] as String?) ?? "";
-    final dynamic listDynamic = decoded['projects'];
-    if (listDynamic is! List<dynamic>) {
-      return;
+    final Set<String> uniquePaths = <String>{};
+    final List<String> knownPaths = <String>[];
+    final Map<String, String> legacyIdToPath = <String, String>{};
+
+    void addKnownPath(String? candidate) {
+      if (candidate == null) {
+        return;
+      }
+      final String normalized = _normalizeKnownProjectPath(candidate);
+      if (normalized.isEmpty || !uniquePaths.add(normalized)) {
+        return;
+      }
+      knownPaths.add(normalized);
     }
 
-    projects = listDynamic
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .map(StoredProject.fromJson)
-        .toList();
+    final dynamic projectPathsDynamic = decoded['projectPaths'];
+    if (projectPathsDynamic is List) {
+      for (final dynamic item in projectPathsDynamic) {
+        if (item is String) {
+          addKnownPath(item);
+        }
+      }
+    }
+
+    final dynamic legacyProjectsDynamic = decoded['projects'];
+    if (legacyProjectsDynamic is List) {
+      for (final dynamic item in legacyProjectsDynamic) {
+        if (item is! Map) {
+          continue;
+        }
+        final Map<String, dynamic> map = Map<String, dynamic>.from(item);
+        String? pathFromLegacy;
+        final dynamic rawFolderPath = map['folderPath'];
+        if (rawFolderPath is String && rawFolderPath.trim().isNotEmpty) {
+          pathFromLegacy = rawFolderPath;
+        } else {
+          final dynamic rawFolderName = map['folderName'];
+          if (rawFolderName is String && rawFolderName.trim().isNotEmpty) {
+            pathFromLegacy =
+                "$projectsPath${Platform.pathSeparator}${rawFolderName.trim()}";
+          }
+        }
+        if (pathFromLegacy == null) {
+          continue;
+        }
+        final String normalized = _normalizeKnownProjectPath(pathFromLegacy);
+        if (normalized.isEmpty) {
+          continue;
+        }
+        addKnownPath(normalized);
+        final dynamic rawLegacyId = map['id'];
+        if (rawLegacyId is String && rawLegacyId.isNotEmpty) {
+          legacyIdToPath[rawLegacyId] = normalized;
+        }
+      }
+    }
+
+    String selectedPath = '';
+    final dynamic rawSelectedPath = decoded['selectedProjectPath'];
+    if (rawSelectedPath is String) {
+      selectedPath = _normalizeKnownProjectPath(rawSelectedPath);
+    }
+    if (selectedPath.isEmpty) {
+      final String rawLegacySelectedId =
+          (decoded['selectedProjectId'] as String?) ?? "";
+      if (rawLegacySelectedId.isNotEmpty) {
+        selectedPath = legacyIdToPath[rawLegacySelectedId] ??
+            _normalizeKnownProjectPath(rawLegacySelectedId);
+      }
+    }
+
+    _knownProjectPaths = knownPaths;
+    final dynamic rawBookmarksDynamic = decoded['projectBookmarks'];
+    if (rawBookmarksDynamic is Map) {
+      final Map<String, String> parsedBookmarks = <String, String>{};
+      for (final MapEntry<dynamic, dynamic> entry in rawBookmarksDynamic.entries) {
+        if (entry.key is! String || entry.value is! String) {
+          continue;
+        }
+        final String key = _normalizeKnownProjectPath(entry.key as String);
+        final String value = (entry.value as String).trim();
+        if (key.isEmpty || value.isEmpty) {
+          continue;
+        }
+        parsedBookmarks[key] = value;
+      }
+      _projectBookmarksByPath = parsedBookmarks;
+    }
+    if (selectedPath.isNotEmpty) {
+      selectedProjectId = selectedPath;
+    }
   }
 
   Future<void> _saveProjectsIndex() async {
@@ -504,61 +715,107 @@ class AppData extends ChangeNotifier {
     }
     final File indexFile =
         File("$storagePath${Platform.pathSeparator}$projectsIndexFileName");
+    final Map<String, String> persistedBookmarks = <String, String>{};
+    for (final String path in _knownProjectPaths) {
+      final String bookmark = _projectBookmarksByPath[path] ?? '';
+      if (bookmark.isNotEmpty) {
+        persistedBookmarks[path] = bookmark;
+      }
+    }
     final String content = const JsonEncoder.withIndent("  ").convert({
-      'version': 1,
-      'selectedProjectId': selectedProjectId,
-      'projects': projects.map((project) => project.toJson()).toList(),
+      'version': 3,
+      'selectedProjectPath': selectedProjectId,
+      'projectPaths': _knownProjectPaths,
+      'projectBookmarks': persistedBookmarks,
     });
     await indexFile.writeAsString(content);
   }
 
   Future<void> _syncProjectsWithDisk() async {
-    final Directory projectsDirectory = Directory(projectsPath);
-    if (!await projectsDirectory.exists()) {
-      return;
+    final Set<String> uniqueKnown = <String>{};
+    final List<String> normalizedKnown = <String>[];
+    final Map<String, String> normalizedBookmarks = <String, String>{};
+    for (final String rawPath in _knownProjectPaths) {
+      final String normalized = _normalizeKnownProjectPath(rawPath);
+      if (normalized.isEmpty || !uniqueKnown.add(normalized)) {
+        continue;
+      }
+      normalizedKnown.add(normalized);
+      final String bookmark =
+          _projectBookmarksByPath[normalized] ?? _projectBookmarksByPath[rawPath] ?? '';
+      if (bookmark.isNotEmpty) {
+        normalizedBookmarks[normalized] = bookmark;
+      }
+    }
+    _knownProjectPaths = normalizedKnown;
+    _projectBookmarksByPath = normalizedBookmarks;
+
+    final List<StoredProject> loadedProjects = <StoredProject>[];
+    final List<String> missingPaths = <String>[];
+    for (final String folderPath in _knownProjectPaths) {
+      final File gameFile =
+          File("$folderPath${Platform.pathSeparator}$gameFileName");
+      if (!await gameFile.exists()) {
+        missingPaths.add(folderPath);
+        continue;
+      }
+      final String inferredName =
+          await _readProjectNameFromDisk(gameFile) ?? _lastPathSegment(folderPath);
+      String updatedAt = DateTime.now().toUtc().toIso8601String();
+      try {
+        updatedAt = (await gameFile.lastModified()).toUtc().toIso8601String();
+      } catch (_) {}
+      loadedProjects.add(
+        StoredProject.fromPath(
+          folderPath: folderPath,
+          name: inferredName,
+          updatedAt: updatedAt,
+        ),
+      );
     }
 
-    final Set<String> knownFolders =
-        projects.map((project) => project.folderName).toSet();
-    final List<StoredProject> discoveredProjects = [];
-
-    await for (final entity in projectsDirectory.list(followLinks: false)) {
-      if (entity is! Directory) {
-        continue;
-      }
-      final File gameFile =
-          File("${entity.path}${Platform.pathSeparator}$gameFileName");
-      if (!await gameFile.exists()) {
-        continue;
-      }
-
-      final String folderName = _lastPathSegment(entity.path);
-      if (!knownFolders.contains(folderName)) {
-        final String inferredName =
-            await _readProjectNameFromDisk(gameFile) ?? folderName;
-        final String inferredComments =
-            await _readProjectCommentsFromDisk(gameFile) ?? "";
-        discoveredProjects.add(
-          StoredProject(
-            id: _newProjectId(),
+    // Legacy compatibility: discover projects stored under app support.
+    final Directory projectsDirectory = Directory(projectsPath);
+    if (await projectsDirectory.exists()) {
+      await for (final FileSystemEntity entity
+          in projectsDirectory.list(followLinks: false)) {
+        if (entity is! Directory) {
+          continue;
+        }
+        final String normalizedPath = _normalizeKnownProjectPath(entity.path);
+        if (normalizedPath.isEmpty || uniqueKnown.contains(normalizedPath)) {
+          continue;
+        }
+        final File gameFile =
+            File("${entity.path}${Platform.pathSeparator}$gameFileName");
+        if (!await gameFile.exists()) {
+          continue;
+        }
+        uniqueKnown.add(normalizedPath);
+        _knownProjectPaths.add(normalizedPath);
+        final String? bookmark =
+            await _createSecurityBookmarkForPath(normalizedPath);
+        if (bookmark != null && bookmark.isNotEmpty) {
+          _projectBookmarksByPath[normalizedPath] = bookmark;
+        }
+        final String inferredName = await _readProjectNameFromDisk(gameFile) ??
+            _lastPathSegment(normalizedPath);
+        String updatedAt = DateTime.now().toUtc().toIso8601String();
+        try {
+          updatedAt = (await gameFile.lastModified()).toUtc().toIso8601String();
+        } catch (_) {}
+        loadedProjects.add(
+          StoredProject.fromPath(
+            folderPath: normalizedPath,
             name: inferredName,
-            folderName: folderName,
-            createdAt: DateTime.now().toUtc().toIso8601String(),
-            updatedAt: DateTime.now().toUtc().toIso8601String(),
-            comments: inferredComments,
+            updatedAt: updatedAt,
           ),
         );
       }
     }
 
-    projects = projects.where((project) {
-      final File gameFile = File(
-        "$projectsPath${Platform.pathSeparator}${project.folderName}${Platform.pathSeparator}$gameFileName",
-      );
-      return gameFile.existsSync();
-    }).toList();
-
-    projects.addAll(discoveredProjects);
+    projects = loadedProjects;
+    missingProjectPaths = missingPaths;
     await _saveProjectsIndex();
   }
 
@@ -573,25 +830,6 @@ class AppData extends ChangeNotifier {
       }
     } catch (_) {}
     return null;
-  }
-
-  Future<String?> _readProjectCommentsFromDisk(File gameFile) async {
-    try {
-      final dynamic decoded = jsonDecode(await gameFile.readAsString());
-      if (decoded is! Map) {
-        return null;
-      }
-      if (!decoded.containsKey(projectCommentsFieldName)) {
-        return null;
-      }
-      final dynamic comments = decoded[projectCommentsFieldName];
-      return comments is String ? _sanitizeProjectComments(comments) : "";
-    } catch (_) {}
-    return null;
-  }
-
-  String _newProjectId() {
-    return DateTime.now().microsecondsSinceEpoch.toString();
   }
 
   String _lastPathSegment(String value) {
@@ -611,18 +849,14 @@ class AppData extends ChangeNotifier {
     return cleaned.isEmpty ? "project" : cleaned;
   }
 
-  String _sanitizeProjectComments(String? value) {
-    if (value == null) {
-      return "";
-    }
-    return value.replaceAll('\r\n', '\n').trim();
-  }
-
-  Future<String> _buildUniqueProjectFolderName(String baseFolderName) async {
+  Future<String> _buildUniqueProjectFolderName({
+    required String parentDirectoryPath,
+    required String baseFolderName,
+  }) async {
     String candidate = baseFolderName;
     int cnt = 2;
     while (await Directory(
-      "$projectsPath${Platform.pathSeparator}$candidate",
+      "$parentDirectoryPath${Platform.pathSeparator}$candidate",
     ).exists()) {
       candidate = "${baseFolderName}_$cnt";
       cnt++;
@@ -1258,71 +1492,6 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  Set<String> _collectExternalTileMapPathsFromDecodedGameData(
-      dynamic decodedGameData) {
-    final Set<String> paths = <String>{};
-    if (decodedGameData is! Map<String, dynamic>) {
-      return paths;
-    }
-    final dynamic rawLevels = decodedGameData['levels'];
-    if (rawLevels is! List) {
-      return paths;
-    }
-    for (int levelIndex = 0; levelIndex < rawLevels.length; levelIndex++) {
-      final dynamic rawLevel = rawLevels[levelIndex];
-      if (rawLevel is! Map<String, dynamic>) {
-        continue;
-      }
-      final dynamic rawLayers = rawLevel['layers'];
-      if (rawLayers is! List) {
-        continue;
-      }
-      for (int layerIndex = 0; layerIndex < rawLayers.length; layerIndex++) {
-        final dynamic rawLayer = rawLayers[layerIndex];
-        if (rawLayer is! Map<String, dynamic>) {
-          continue;
-        }
-        final dynamic rawReference = rawLayer[tileMapFileFieldName];
-        if (rawReference is! String) {
-          continue;
-        }
-        final String relativePath = _normalizeProjectRelativePath(rawReference);
-        if (relativePath.isNotEmpty) {
-          paths.add(relativePath);
-        }
-      }
-    }
-    return paths;
-  }
-
-  Set<String> _collectExternalZonePathsFromDecodedGameData(
-      dynamic decodedGameData) {
-    final Set<String> paths = <String>{};
-    if (decodedGameData is! Map<String, dynamic>) {
-      return paths;
-    }
-    final dynamic rawLevels = decodedGameData['levels'];
-    if (rawLevels is! List) {
-      return paths;
-    }
-
-    for (int levelIndex = 0; levelIndex < rawLevels.length; levelIndex++) {
-      final dynamic rawLevel = rawLevels[levelIndex];
-      if (rawLevel is! Map<String, dynamic>) {
-        continue;
-      }
-      final dynamic rawReference = rawLevel[zonesFileFieldName];
-      if (rawReference is! String) {
-        continue;
-      }
-      final String relativePath = _normalizeProjectRelativePath(rawReference);
-      if (relativePath.isNotEmpty) {
-        paths.add(relativePath);
-      }
-    }
-    return paths;
-  }
-
   String _projectAbsolutePathForRelativePath(
     String projectDirectoryPath,
     String relativePath,
@@ -1420,34 +1589,6 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  String _normalizeArchivePath(String value) {
-    return value.replaceAll('\\', '/');
-  }
-
-  String _archiveRootPrefixFromGameData(Archive archive) {
-    final List<String> gameDataEntries = archive.files
-        .where((file) => file.isFile)
-        .map((file) => _normalizeArchivePath(file.name))
-        .where(
-            (name) => name == gameFileName || name.endsWith('/$gameFileName'))
-        .toList();
-
-    if (gameDataEntries.isEmpty) {
-      throw Exception("ZIP does not contain $gameFileName");
-    }
-
-    gameDataEntries.sort((a, b) {
-      final int depthA = a.split('/').length;
-      final int depthB = b.split('/').length;
-      return depthA.compareTo(depthB);
-    });
-    final String selected = gameDataEntries.first;
-    if (selected == gameFileName) {
-      return "";
-    }
-    return selected.substring(0, selected.length - gameFileName.length);
-  }
-
   void _resetWorkingProjectData() {
     _clearAutosaveState();
     selectedProjectId = "";
@@ -1502,34 +1643,63 @@ class AppData extends ChangeNotifier {
     });
   }
 
-  Future<String> createProject(
-      {String? projectName, String? projectComments}) async {
+  Future<String?> pickDirectory({
+    required String dialogTitle,
+    String? initialDirectory,
+  }) async {
+    final String? selectedPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: dialogTitle,
+      initialDirectory: initialDirectory,
+    );
+    if (selectedPath == null) {
+      return null;
+    }
+    final String normalized = _normalizeKnownProjectPath(selectedPath);
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  Future<String> createProject({
+    required String workingDirectoryPath,
+    String? projectName,
+  }) async {
     await flushPendingAutosave();
     if (projectsPath == "") {
       await initializeStorage();
     }
 
+    final String normalizedWorkingDirectory =
+        _normalizeKnownProjectPath(workingDirectoryPath);
+    if (normalizedWorkingDirectory.isEmpty) {
+      throw Exception("Invalid working directory path");
+    }
+    final Directory workingDirectory = Directory(normalizedWorkingDirectory);
+    await workingDirectory.create(recursive: true);
+
     final String defaultName = projectName?.trim().isNotEmpty == true
         ? projectName!.trim()
         : "New Project";
-    final String defaultComments = _sanitizeProjectComments(projectComments);
     final String folderName = await _buildUniqueProjectFolderName(
-      _sanitizeFolderName(defaultName),
+      parentDirectoryPath: normalizedWorkingDirectory,
+      baseFolderName: _sanitizeFolderName(defaultName),
     );
     final Directory projectDirectory =
-        Directory("$projectsPath${Platform.pathSeparator}$folderName");
+        Directory("$normalizedWorkingDirectory${Platform.pathSeparator}$folderName");
     await projectDirectory.create(recursive: true);
 
-    final String now = DateTime.now().toUtc().toIso8601String();
-    final StoredProject newProject = StoredProject(
-      id: _newProjectId(),
+    final String projectPath = _normalizeKnownProjectPath(projectDirectory.path);
+    final StoredProject newProject = StoredProject.fromPath(
+      folderPath: projectPath,
       name: defaultName,
-      folderName: folderName,
-      createdAt: now,
-      updatedAt: now,
-      comments: defaultComments,
     );
+    projects.removeWhere((StoredProject item) => item.id == projectPath);
     projects.add(newProject);
+    _knownProjectPaths.remove(projectPath);
+    _knownProjectPaths.add(projectPath);
+    final String? bookmark = await _createSecurityBookmarkForPath(projectPath);
+    if (bookmark != null && bookmark.isNotEmpty) {
+      _projectBookmarksByPath[projectPath] = bookmark;
+    }
+    missingProjectPaths.remove(projectPath);
     selectedProjectId = newProject.id;
 
     gameData = GameData(name: defaultName, levels: []);
@@ -1566,13 +1736,127 @@ class AppData extends ChangeNotifier {
     viewportPreviewHeight = 180;
     viewportPreviewLevel = -1;
 
-    filePath = projectDirectory.path;
+    filePath = projectPath;
     fileName = gameFileName;
     await saveGame();
-    await _saveProjectsIndex();
+    await _syncProjectsWithDisk();
     projectStatusMessage = "Created project \"$defaultName\"";
     notifyListeners();
     return newProject.id;
+  }
+
+  Future<String?> addExistingProjectFromFolder({
+    String? initialDirectory,
+  }) async {
+    final String? projectFolderPath = await pickDirectory(
+      dialogTitle: "Select existing project folder",
+      initialDirectory: initialDirectory ?? projectsPath,
+    );
+    if (projectFolderPath == null) {
+      return null;
+    }
+    return addExistingProjectFromPath(projectFolderPath);
+  }
+
+  Future<String?> addExistingProjectFromPath(String projectFolderPath) async {
+    await flushPendingAutosave();
+    final String normalizedPath = _normalizeKnownProjectPath(projectFolderPath);
+    if (normalizedPath.isEmpty) {
+      projectStatusMessage = "Invalid project folder path";
+      notifyListeners();
+      return null;
+    }
+
+    final File gameFile =
+        File("$normalizedPath${Platform.pathSeparator}$gameFileName");
+    if (!await gameFile.exists()) {
+      projectStatusMessage =
+          "No $gameFileName found in selected folder: $normalizedPath";
+      notifyListeners();
+      return null;
+    }
+
+    if (!_knownProjectPaths.contains(normalizedPath)) {
+      _knownProjectPaths.add(normalizedPath);
+    }
+    final String? bookmark = await _createSecurityBookmarkForPath(normalizedPath);
+    if (bookmark != null && bookmark.isNotEmpty) {
+      _projectBookmarksByPath[normalizedPath] = bookmark;
+    }
+    missingProjectPaths.remove(normalizedPath);
+    await _syncProjectsWithDisk();
+    selectedProjectId = normalizedPath;
+    await openProject(normalizedPath, notify: false);
+    projectStatusMessage = "Added existing project from \"$normalizedPath\"";
+    notifyListeners();
+    return normalizedPath;
+  }
+
+  Future<void> removeKnownProjectPath(String projectFolderPath) async {
+    final String normalizedPath = _normalizeKnownProjectPath(projectFolderPath);
+    if (normalizedPath.isEmpty) {
+      return;
+    }
+    _knownProjectPaths.removeWhere((path) => path == normalizedPath);
+    _projectBookmarksByPath.remove(normalizedPath);
+    missingProjectPaths.removeWhere((path) => path == normalizedPath);
+    projects.removeWhere((project) => project.id == normalizedPath);
+    if (selectedProjectId == normalizedPath) {
+      _resetWorkingProjectData();
+    }
+    await _saveProjectsIndex();
+    notifyListeners();
+  }
+
+  Future<void> removeMissingProjectPath(String projectFolderPath) async {
+    await removeKnownProjectPath(projectFolderPath);
+  }
+
+  Future<bool> relinkMissingProjectPath({
+    required String missingProjectPath,
+    required String replacementProjectPath,
+  }) async {
+    final String normalizedMissingPath =
+        _normalizeKnownProjectPath(missingProjectPath);
+    final String normalizedReplacementPath =
+        _normalizeKnownProjectPath(replacementProjectPath);
+    if (normalizedMissingPath.isEmpty || normalizedReplacementPath.isEmpty) {
+      return false;
+    }
+    final File replacementGameFile = File(
+      "$normalizedReplacementPath${Platform.pathSeparator}$gameFileName",
+    );
+    if (!await replacementGameFile.exists()) {
+      return false;
+    }
+    if (normalizedMissingPath != normalizedReplacementPath &&
+        _knownProjectPaths.contains(normalizedReplacementPath)) {
+      return false;
+    }
+
+    final int index = _knownProjectPaths.indexOf(normalizedMissingPath);
+    if (index >= 0) {
+      _knownProjectPaths[index] = normalizedReplacementPath;
+    } else {
+      _knownProjectPaths.add(normalizedReplacementPath);
+    }
+    _projectBookmarksByPath.remove(normalizedMissingPath);
+    final String? bookmark =
+        await _createSecurityBookmarkForPath(normalizedReplacementPath);
+    if (bookmark != null && bookmark.isNotEmpty) {
+      _projectBookmarksByPath[normalizedReplacementPath] = bookmark;
+    }
+    missingProjectPaths.remove(normalizedMissingPath);
+    if (selectedProjectId == normalizedMissingPath) {
+      selectedProjectId = normalizedReplacementPath;
+    }
+
+    await _syncProjectsWithDisk();
+    selectedProjectId = normalizedReplacementPath;
+    await openProject(normalizedReplacementPath, notify: false);
+    projectStatusMessage = "Project relinked to \"$normalizedReplacementPath\"";
+    notifyListeners();
+    return true;
   }
 
   Future<bool> renameProject(String projectId, String newName) async {
@@ -1585,7 +1869,6 @@ class AppData extends ChangeNotifier {
   Future<bool> updateProjectInfo(
     String projectId, {
     required String newName,
-    String? comments,
   }) async {
     final String cleanName = newName.trim();
     if (cleanName.isEmpty) {
@@ -1597,20 +1880,15 @@ class AppData extends ChangeNotifier {
     }
 
     project.name = cleanName;
-    project.comments = comments == null
-        ? project.comments
-        : _sanitizeProjectComments(comments);
     project.updatedAt = DateTime.now().toUtc().toIso8601String();
 
-    final String projectPath =
-        "$projectsPath${Platform.pathSeparator}${project.folderName}";
+    final String projectPath = project.folderPath;
     final File file =
         File("$projectPath${Platform.pathSeparator}$gameFileName");
     if (await file.exists()) {
       final dynamic decoded = jsonDecode(await file.readAsString());
       if (decoded is Map<String, dynamic>) {
         decoded['name'] = cleanName;
-        decoded[projectCommentsFieldName] = project.comments;
         final String output = await _formatMapAsGameJson(decoded);
         await file.writeAsString(output);
       }
@@ -1635,6 +1913,95 @@ class AppData extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> relocateProject({
+    required String projectId,
+    required String destinationRootPath,
+    required bool deleteOldFolderIfCopied,
+  }) async {
+    await flushPendingAutosave();
+    final StoredProject? project = _findProjectById(projectId);
+    if (project == null) {
+      return false;
+    }
+
+    final String normalizedDestinationRoot =
+        _normalizeKnownProjectPath(destinationRootPath);
+    if (normalizedDestinationRoot.isEmpty) {
+      return false;
+    }
+
+    final String sourcePath = _normalizeKnownProjectPath(project.folderPath);
+    if (sourcePath == normalizedDestinationRoot) {
+      return false;
+    }
+
+    try {
+      final Directory destinationRootDirectory =
+          Directory(normalizedDestinationRoot);
+      await destinationRootDirectory.create(recursive: true);
+
+      final String destinationFolderName = await _buildUniqueProjectFolderName(
+        parentDirectoryPath: normalizedDestinationRoot,
+        baseFolderName: _sanitizeFolderName(project.folderName),
+      );
+      final String destinationProjectPath =
+          "$normalizedDestinationRoot${Platform.pathSeparator}$destinationFolderName";
+
+      await _copyDirectoryRecursively(
+        source: Directory(sourcePath),
+        destination: Directory(destinationProjectPath),
+      );
+
+      final File destinationGameFile = File(
+        "$destinationProjectPath${Platform.pathSeparator}$gameFileName",
+      );
+      if (!await destinationGameFile.exists()) {
+        throw Exception("Copy failed: missing $gameFileName in destination");
+      }
+
+      if (deleteOldFolderIfCopied) {
+        try {
+          await Directory(sourcePath).delete(recursive: true);
+        } catch (_) {}
+      }
+
+      final int knownIndex = _knownProjectPaths.indexOf(sourcePath);
+      if (knownIndex >= 0) {
+        _knownProjectPaths[knownIndex] = destinationProjectPath;
+      } else {
+        _knownProjectPaths.add(destinationProjectPath);
+      }
+      _knownProjectPaths.removeWhere((String item) => item == sourcePath);
+      if (!_knownProjectPaths.contains(destinationProjectPath)) {
+        _knownProjectPaths.add(destinationProjectPath);
+      }
+      _projectBookmarksByPath.remove(sourcePath);
+      final String? bookmark =
+          await _createSecurityBookmarkForPath(destinationProjectPath);
+      if (bookmark != null && bookmark.isNotEmpty) {
+        _projectBookmarksByPath[destinationProjectPath] = bookmark;
+      }
+      projects.removeWhere((StoredProject item) => item.id == sourcePath);
+      missingProjectPaths.remove(sourcePath);
+
+      selectedProjectId = destinationProjectPath;
+      await _syncProjectsWithDisk();
+      await openProject(destinationProjectPath, notify: false);
+      projectStatusMessage = deleteOldFolderIfCopied
+          ? "Moved project to \"$destinationProjectPath\""
+          : "Copied project to \"$destinationProjectPath\"";
+      notifyListeners();
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error relocating project: $e");
+      }
+      projectStatusMessage = "Change folder failed: $e";
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> deleteProject(String projectId) async {
     await flushPendingAutosave();
     final StoredProject? project = _findProjectById(projectId);
@@ -1643,12 +2010,13 @@ class AppData extends ChangeNotifier {
     }
 
     try {
-      final Directory projectDirectory = Directory(
-        "$projectsPath${Platform.pathSeparator}${project.folderName}",
-      );
+      final Directory projectDirectory = Directory(project.folderPath);
       if (await projectDirectory.exists()) {
         await projectDirectory.delete(recursive: true);
       }
+      _knownProjectPaths.removeWhere((path) => path == project.folderPath);
+      _projectBookmarksByPath.remove(project.folderPath);
+      missingProjectPaths.removeWhere((path) => path == project.folderPath);
       projects.removeWhere((item) => item.id == projectId);
       if (selectedProjectId == projectId) {
         _resetWorkingProjectData();
@@ -1675,8 +2043,7 @@ class AppData extends ChangeNotifier {
         return;
       }
 
-      final String projectPath =
-          "$projectsPath${Platform.pathSeparator}${project.folderName}";
+      final String projectPath = project.folderPath;
       final File file =
           File("$projectPath${Platform.pathSeparator}$gameFileName");
       if (!await file.exists()) {
@@ -1744,16 +2111,6 @@ class AppData extends ChangeNotifier {
       if (gameData.name.trim().isNotEmpty) {
         project.name = gameData.name.trim();
       }
-      final String? commentsFromGameData =
-          decoded.containsKey(projectCommentsFieldName)
-              ? (decoded[projectCommentsFieldName] is String
-                  ? _sanitizeProjectComments(
-                      decoded[projectCommentsFieldName] as String)
-                  : "")
-              : null;
-      if (commentsFromGameData != null) {
-        project.comments = commentsFromGameData;
-      }
       project.updatedAt = DateTime.now().toUtc().toIso8601String();
       await _saveProjectsIndex();
 
@@ -1779,317 +2136,31 @@ class AppData extends ChangeNotifier {
     await openProject(selectedProjectId);
   }
 
-  Future<String?> importProject() async {
-    try {
-      await flushPendingAutosave();
-      if (projectsPath == "") {
-        await initializeStorage();
-      }
-
-      final FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['zip'],
-        allowMultiple: false,
-        initialDirectory: projectsPath,
-      );
-      if (result == null || result.files.single.path == null) {
-        return null;
-      }
-
-      final String zipPath = result.files.single.path!;
-      final String zipFileName = _lastPathSegment(zipPath);
-      final String baseName = zipFileName.toLowerCase().endsWith('.zip')
-          ? zipFileName.substring(0, zipFileName.length - 4)
-          : zipFileName;
-      final List<int> zipBytes = await File(zipPath).readAsBytes();
-      final Archive archive = ZipDecoder().decodeBytes(zipBytes, verify: true);
-      final String archiveRootPrefix = _archiveRootPrefixFromGameData(archive);
-
-      final String destinationFolderName = await _buildUniqueProjectFolderName(
-        _sanitizeFolderName(baseName),
-      );
-      final Directory destinationDirectory = Directory(
-        "$projectsPath${Platform.pathSeparator}$destinationFolderName",
-      );
-      await destinationDirectory.create(recursive: true);
-
-      bool wroteAnyFile = false;
-      for (final archiveFile in archive.files) {
-        if (!archiveFile.isFile) {
-          continue;
-        }
-
-        String entryPath = _normalizeArchivePath(archiveFile.name);
-        if (archiveRootPrefix != "") {
-          if (!entryPath.startsWith(archiveRootPrefix)) {
-            continue;
-          }
-          entryPath = entryPath.substring(archiveRootPrefix.length);
-        }
-        if (entryPath.startsWith('/')) {
-          entryPath = entryPath.substring(1);
-        }
-        if (entryPath.isEmpty) {
-          continue;
-        }
-
-        final String outputPath =
-            "${destinationDirectory.path}${Platform.pathSeparator}${entryPath.replaceAll('/', Platform.pathSeparator)}";
-        final File outputFile = File(outputPath);
-        await outputFile.parent.create(recursive: true);
-
-        final dynamic content = archiveFile.content;
-        if (content is! List<int>) {
-          throw Exception("Invalid ZIP content for entry: $entryPath");
-        }
-        await outputFile.writeAsBytes(content);
-        wroteAnyFile = true;
-      }
-
-      if (!wroteAnyFile) {
-        throw Exception("ZIP archive is empty");
-      }
-
-      final File importedGameFile = File(
-        "${destinationDirectory.path}${Platform.pathSeparator}$gameFileName",
-      );
-      if (!await importedGameFile.exists()) {
-        throw Exception("ZIP does not include $gameFileName at project root");
-      }
-
-      final String inferredName = await _readProjectNameFromDisk(
-            File(
-              "${destinationDirectory.path}${Platform.pathSeparator}$gameFileName",
-            ),
-          ) ??
-          baseName;
-      final String inferredComments =
-          await _readProjectCommentsFromDisk(importedGameFile) ?? "";
-
-      final String now = DateTime.now().toUtc().toIso8601String();
-      final StoredProject importedProject = StoredProject(
-        id: _newProjectId(),
-        name: inferredName,
-        folderName: destinationFolderName,
-        createdAt: now,
-        updatedAt: now,
-        comments: inferredComments,
-      );
-      projects.add(importedProject);
-      selectedProjectId = importedProject.id;
-      await _saveProjectsIndex();
-      await openProject(importedProject.id, notify: false);
-      projectStatusMessage = "Imported ZIP \"$zipFileName\"";
-      notifyListeners();
-      return importedProject.id;
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error importing project: $e");
-      }
-      projectStatusMessage = "Import failed: $e";
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Future<bool> exportSelectedProject() async {
-    try {
-      await flushPendingAutosave();
-      final StoredProject? project = selectedProject;
-      if (project == null) {
-        return false;
-      }
-
-      String? destinationZipPath = await FilePicker.platform.saveFile(
-        dialogTitle: "Export Project as ZIP",
-        fileName: "${project.folderName}.zip",
-        initialDirectory: projectsPath,
-        type: FileType.custom,
-        allowedExtensions: ['zip'],
-      );
-      if (destinationZipPath == null) {
-        return false;
-      }
-      if (!destinationZipPath.toLowerCase().endsWith('.zip')) {
-        destinationZipPath = "$destinationZipPath.zip";
-      }
-
-      final Directory sourceDirectory = Directory(
-        "$projectsPath${Platform.pathSeparator}${project.folderName}",
-      );
-      final Map<String, List<int>> exportFiles = await _buildProjectExportFiles(
-        project: project,
-        sourceDirectoryPath: sourceDirectory.path,
-      );
-      final Archive archive = Archive();
-      for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
-        archive.addFile(
-          ArchiveFile(
-            entry.key,
-            entry.value.length,
-            entry.value,
-          ),
-        );
-      }
-
-      final List<int> zipBytes = ZipEncoder().encode(archive);
-      await File(destinationZipPath).writeAsBytes(zipBytes);
-      projectStatusMessage = "Exported ZIP to $destinationZipPath";
-      notifyListeners();
-      return true;
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error exporting project: $e");
-      }
-      projectStatusMessage = "Export failed: $e";
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<Map<String, List<int>>> _buildProjectExportFiles({
-    required StoredProject project,
-    required String sourceDirectoryPath,
+  Future<void> _copyDirectoryRecursively({
+    required Directory source,
+    required Directory destination,
   }) async {
-    final Map<String, List<int>> exportFiles = <String, List<int>>{};
-    final Set<String> exportedRelativePaths = <String>{};
-
-    final File gameDataFile = File(
-      "$sourceDirectoryPath${Platform.pathSeparator}$gameFileName",
-    );
-    if (!await gameDataFile.exists()) {
-      throw Exception("Cannot export: missing $gameFileName");
+    if (!await source.exists()) {
+      throw Exception("Source folder does not exist: ${source.path}");
     }
-    final List<int> gameDataBytesFromDisk = await gameDataFile.readAsBytes();
-    List<int> gameDataBytesForExport = gameDataBytesFromDisk;
-    dynamic decodedGameData;
-    try {
-      decodedGameData = jsonDecode(utf8.decode(gameDataBytesFromDisk));
-      if (decodedGameData is Map<String, dynamic>) {
-        decodedGameData[projectCommentsFieldName] = project.comments;
-        final String output = await _formatMapAsGameJson(decodedGameData);
-        gameDataBytesForExport = utf8.encode(output);
-      }
-    } catch (_) {
-      decodedGameData = null;
-    }
-    exportFiles[gameFileName] = gameDataBytesForExport;
-    exportedRelativePaths.add(gameFileName);
-
-    Future<void> addReferencedFile({
-      required String rawReference,
-      required String debugLabel,
-    }) async {
-      final String relativePath = _normalizeProjectRelativePath(rawReference);
-      if (relativePath.isEmpty ||
-          relativePath == gameFileName ||
-          exportedRelativePaths.contains(relativePath)) {
-        return;
-      }
-      final File sourceFile = File(
-        _projectAbsolutePathForRelativePath(sourceDirectoryPath, relativePath),
-      );
-      if (!await sourceFile.exists()) {
-        if (kDebugMode) {
-          print("Skipping missing referenced $debugLabel file: $relativePath");
-        }
-        return;
-      }
-      exportFiles[relativePath] = await sourceFile.readAsBytes();
-      exportedRelativePaths.add(relativePath);
-    }
-
-    for (final String reference in referencedMediaFileNames()) {
-      if (!_hasSupportedImageExtension(reference)) {
+    await destination.create(recursive: true);
+    await for (final FileSystemEntity entity
+        in source.list(recursive: false, followLinks: false)) {
+      final String name = _lastPathSegment(entity.path);
+      final String targetPath =
+          "${destination.path}${Platform.pathSeparator}$name";
+      if (entity is Directory) {
+        await _copyDirectoryRecursively(
+          source: entity,
+          destination: Directory(targetPath),
+        );
         continue;
       }
-      await addReferencedFile(rawReference: reference, debugLabel: "media");
-    }
-    for (final String reference
-        in _collectExternalTileMapPathsFromDecodedGameData(decodedGameData)) {
-      await addReferencedFile(rawReference: reference, debugLabel: "tilemap");
-    }
-    for (final String reference
-        in _collectExternalZonePathsFromDecodedGameData(decodedGameData)) {
-      await addReferencedFile(rawReference: reference, debugLabel: "zones");
-    }
-
-    return exportFiles;
-  }
-
-  Future<bool> exportSelectedProjectToFolder({
-    ExportOverwriteConfirmation? confirmOverwrite,
-  }) async {
-    try {
-      await flushPendingAutosave();
-      final StoredProject? project = selectedProject;
-      if (project == null) {
-        return false;
+      if (entity is File) {
+        final File targetFile = File(targetPath);
+        await targetFile.parent.create(recursive: true);
+        await entity.copy(targetPath);
       }
-
-      final String? destinationRootPath =
-          await FilePicker.platform.getDirectoryPath(
-        dialogTitle: "Export Project to Folder",
-        initialDirectory: projectsPath,
-      );
-      if (destinationRootPath == null) {
-        return false;
-      }
-
-      final String destinationFolderName = project.folderName;
-      final Directory destinationDirectory = Directory(
-        "$destinationRootPath${Platform.pathSeparator}$destinationFolderName",
-      );
-
-      final Directory sourceDirectory = Directory(
-        "$projectsPath${Platform.pathSeparator}${project.folderName}",
-      );
-      final Map<String, List<int>> exportFiles = await _buildProjectExportFiles(
-        project: project,
-        sourceDirectoryPath: sourceDirectory.path,
-      );
-
-      final List<String> conflictingRelativePaths = <String>[];
-      for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
-        final String outputPath =
-            "${destinationDirectory.path}${Platform.pathSeparator}${entry.key.replaceAll('/', Platform.pathSeparator)}";
-        if (await File(outputPath).exists()) {
-          conflictingRelativePaths.add(entry.key);
-        }
-      }
-      if (conflictingRelativePaths.isNotEmpty) {
-        final bool allowOverwrite = confirmOverwrite == null
-            ? false
-            : await confirmOverwrite(
-                destinationFolderPath: destinationDirectory.path,
-                conflictingRelativePaths: conflictingRelativePaths,
-              );
-        if (!allowOverwrite) {
-          projectStatusMessage = "Export to folder cancelled";
-          notifyListeners();
-          return false;
-        }
-      }
-
-      await destinationDirectory.create(recursive: true);
-      for (final MapEntry<String, List<int>> entry in exportFiles.entries) {
-        final String outputPath =
-            "${destinationDirectory.path}${Platform.pathSeparator}${entry.key.replaceAll('/', Platform.pathSeparator)}";
-        final File outputFile = File(outputPath);
-        await outputFile.parent.create(recursive: true);
-        await outputFile.writeAsBytes(entry.value);
-      }
-
-      projectStatusMessage = "Exported folder to ${destinationDirectory.path}";
-      notifyListeners();
-      return true;
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error exporting project to folder: $e");
-      }
-      projectStatusMessage = "Export to folder failed: $e";
-      notifyListeners();
-      return false;
     }
   }
 
@@ -2102,7 +2173,7 @@ class AppData extends ChangeNotifier {
     }
 
     if (filePath == "") {
-      filePath = "$projectsPath${Platform.pathSeparator}${project.folderName}";
+      filePath = project.folderPath;
     }
     fileName = gameFileName;
 
@@ -2113,7 +2184,6 @@ class AppData extends ChangeNotifier {
 
     final file = File("$filePath${Platform.pathSeparator}$fileName");
     final Map<String, dynamic> encoded = gameData.toJson();
-    encoded[projectCommentsFieldName] = project.comments;
     final Set<String> tileMapPaths =
         await _writeExternalTileMapsAndStripInlineFromGameData(
       encoded: encoded,
@@ -2265,7 +2335,7 @@ class AppData extends ChangeNotifier {
 
     final String initialDirectory = filePath != ""
         ? filePath
-        : "$projectsPath${Platform.pathSeparator}${selectedProject!.folderName}";
+        : selectedProject!.folderPath;
 
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -2280,8 +2350,7 @@ class AppData extends ChangeNotifier {
     String selectedPath = result.files.single.path!;
     String selectedFileName = _lastPathSegment(selectedPath);
     if (filePath == "") {
-      filePath =
-          "$projectsPath${Platform.pathSeparator}${selectedProject!.folderName}";
+      filePath = selectedProject!.folderPath;
       fileName = gameFileName;
     }
 

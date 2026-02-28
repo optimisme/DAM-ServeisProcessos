@@ -1047,7 +1047,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                   );
                                 },
                                 child: Icon(
-                                  CupertinoIcons.pencil,
+                                  CupertinoIcons.ellipsis_circle,
                                   size: 15,
                                   color: cdkColors.colorText,
                                 ),
@@ -1165,7 +1165,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                                           );
                                         },
                                         child: Icon(
-                                          CupertinoIcons.pencil,
+                                          CupertinoIcons.ellipsis_circle,
                                           size: 16,
                                           color: cdkColors.colorText,
                                         ),

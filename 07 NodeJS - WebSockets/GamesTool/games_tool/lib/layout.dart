@@ -1505,7 +1505,7 @@ class _LayoutState extends State<Layout> {
           onPressed: canReset
               ? () => _resetWorldViewport(appData, viewportSize)
               : null,
-          child: const Icon(CupertinoIcons.arrow_counterclockwise),
+          child: const Icon(CupertinoIcons.viewfinder),
         ),
       ),
     );

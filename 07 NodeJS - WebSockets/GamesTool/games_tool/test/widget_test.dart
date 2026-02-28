@@ -7,6 +7,7 @@
 
 import 'package:games_tool/app.dart';
 import 'package:games_tool/app_data.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -19,14 +20,16 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider(
         create: (_) => appData,
-        child: const App(),
+        child: const Directionality(
+          textDirection: TextDirection.ltr,
+          child: App(),
+        ),
       ),
     );
 
     await tester.pump();
 
-    expect(find.text('Projects'), findsWidgets);
-    expect(find.text('Import ZIP'), findsNWidgets(2));
-    expect(find.text('Export ZIP'), findsNWidgets(2));
+    expect(find.text('+ Add Project'), findsOneWidget);
+    expect(find.text('Add Existing Project'), findsOneWidget);
   });
 }

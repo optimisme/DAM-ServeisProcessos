@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
@@ -15,18 +16,121 @@ class LayoutProjectsMain extends StatefulWidget {
   State<LayoutProjectsMain> createState() => _LayoutProjectsMainState();
 }
 
+enum _MissingProjectAction { relink, remove }
+
 class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
+  bool _isResolvingMissingProjects = false;
+  bool _missingProjectsResolutionScheduled = false;
+
+  void _scheduleMissingProjectsResolution() {
+    if (_missingProjectsResolutionScheduled || _isResolvingMissingProjects) {
+      return;
+    }
+    _missingProjectsResolutionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _missingProjectsResolutionScheduled = false;
+      await _resolveMissingProjects();
+    });
+  }
+
+  Future<_MissingProjectAction?> _promptMissingProjectAction(
+    String missingProjectPath,
+  ) async {
+    final CDKDialogController controller = CDKDialogController();
+    final Completer<_MissingProjectAction?> completer =
+        Completer<_MissingProjectAction?>();
+    _MissingProjectAction? result;
+
+    CDKDialogsManager.showModal(
+      context: context,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
+      showBackgroundShade: true,
+      controller: controller,
+      onHide: () {
+        if (!completer.isCompleted) {
+          completer.complete(result);
+        }
+      },
+      child: _MissingProjectDialog(
+        missingProjectPath: missingProjectPath,
+        onRelink: () {
+          result = _MissingProjectAction.relink;
+          controller.close();
+        },
+        onRemove: () {
+          result = _MissingProjectAction.remove;
+          controller.close();
+        },
+        onCancel: controller.close,
+      ),
+    );
+
+    return completer.future;
+  }
+
+  Future<void> _resolveMissingProjects() async {
+    if (_isResolvingMissingProjects || !mounted) {
+      return;
+    }
+    _isResolvingMissingProjects = true;
+    final AppData appData = Provider.of<AppData>(context, listen: false);
+    try {
+      while (mounted) {
+        final String? missingPath = appData.nextMissingProjectPath;
+        if (missingPath == null) {
+          break;
+        }
+
+        final _MissingProjectAction? action =
+            await _promptMissingProjectAction(missingPath);
+        if (!mounted || action == null) {
+          break;
+        }
+
+        if (action == _MissingProjectAction.remove) {
+          await appData.removeMissingProjectPath(missingPath);
+          continue;
+        }
+
+        String? initialDirectory;
+        try {
+          initialDirectory = Directory(missingPath).parent.path;
+        } catch (_) {}
+        final String? replacementPath = await appData.pickDirectory(
+          dialogTitle: "Relink project folder",
+          initialDirectory: initialDirectory,
+        );
+        if (replacementPath == null) {
+          break;
+        }
+
+        final bool relinked = await appData.relinkMissingProjectPath(
+          missingProjectPath: missingPath,
+          replacementProjectPath: replacementPath,
+        );
+        if (!relinked) {
+          appData.projectStatusMessage =
+              "Invalid folder. The selected path is not a valid project or is already linked.";
+          appData.update();
+        }
+      }
+    } finally {
+      _isResolvingMissingProjects = false;
+    }
+  }
 
   Future<_ProjectDialogData?> _promptProjectData({
     required String title,
     required String confirmLabel,
     String initialName = '',
-    String initialComments = '',
+    String? projectPath,
     String? editingProjectId,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
     VoidCallback? onDelete,
+    VoidCallback? onChangeFolder,
   }) async {
     final AppData appData = Provider.of<AppData>(context, listen: false);
     final Set<String> existingNames = appData.projects
@@ -42,7 +146,7 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
       title: title,
       confirmLabel: confirmLabel,
       initialName: initialName,
-      initialComments: initialComments,
+      projectPath: projectPath,
       existingNames: existingNames,
       onConfirm: (value) {
         result = value;
@@ -54,6 +158,12 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
           : () {
               controller.close();
               onDelete();
+            },
+      onChangeFolder: onChangeFolder == null
+          ? null
+          : () {
+              controller.close();
+              onChangeFolder();
             },
     );
 
@@ -98,15 +208,24 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
   Future<void> _promptAndAddProject() async {
     final _ProjectDialogData? data = await _promptProjectData(
       title: "New empty project",
-      confirmLabel: "Add",
+      confirmLabel: "Continue",
     );
     if (data == null || !mounted) {
       return;
     }
+
     final AppData appData = Provider.of<AppData>(context, listen: false);
+    final String? workingDirectoryPath = await appData.pickDirectory(
+      dialogTitle: "Select working folder",
+      initialDirectory: appData.projectsPath,
+    );
+    if (workingDirectoryPath == null || !mounted) {
+      return;
+    }
+
     await appData.createProject(
       projectName: data.name,
-      projectComments: data.comments,
+      workingDirectoryPath: workingDirectoryPath,
     );
   }
 
@@ -118,7 +237,7 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
       title: "Edit project",
       confirmLabel: "Save",
       initialName: project.name,
-      initialComments: project.comments,
+      projectPath: project.folderPath,
       editingProjectId: project.id,
       anchorKey: anchorKey,
       useArrowedPopover: true,
@@ -130,6 +249,33 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
         final AppData appData = Provider.of<AppData>(context, listen: false);
         await appData.deleteProject(project.id);
       },
+      onChangeFolder: () async {
+        final AppData appData = Provider.of<AppData>(context, listen: false);
+        final String? destinationRootPath = await appData.pickDirectory(
+          dialogTitle: "Select new destination folder",
+          initialDirectory: project.folderPath,
+        );
+        if (destinationRootPath == null || !mounted) {
+          return;
+        }
+        final bool? keepOldFolder = await CDKDialogsManager.showConfirm(
+          context: context,
+          title: "Keep old project folder?",
+          message:
+              "The project will be copied to the new destination.\n\nChoose whether to keep or delete the previous folder.",
+          confirmLabel: "Keep old folder",
+          cancelLabel: "Delete old folder",
+          showBackgroundShade: true,
+        );
+        if (keepOldFolder == null || !mounted) {
+          return;
+        }
+        await appData.relocateProject(
+          projectId: project.id,
+          destinationRootPath: destinationRootPath,
+          deleteOldFolderIfCopied: !keepOldFolder,
+        );
+      },
     );
     if (data == null || !mounted) {
       return;
@@ -138,7 +284,6 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
     await appData.updateProjectInfo(
       project.id,
       newName: data.name,
-      comments: data.comments,
     );
   }
 
@@ -168,6 +313,22 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
     return "Last modified: $date $time";
   }
 
+  String _formatProjectPathForDisplay(String rawPath) {
+    final String normalized = rawPath.trim();
+    const int headLength = 20;
+    const int tailLength = 25;
+    const String separator = ' ... ';
+    final int minLengthForShortening = headLength + tailLength + separator.length;
+
+    if (normalized.length <= minLengthForShortening) {
+      return normalized;
+    }
+
+    final String head = normalized.substring(0, headLength);
+    final String tail = normalized.substring(normalized.length - tailLength);
+    return '$head$separator$tail';
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppData appData = Provider.of<AppData>(context);
@@ -178,13 +339,17 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
       return const Center(child: CupertinoActivityIndicator());
     }
 
+    if (appData.hasMissingProjectPaths) {
+      _scheduleMissingProjectsResolution();
+    }
+
     if (appData.projects.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CDKText(
-              'No projects found.\nCreate a new empty project or import one.',
+            const CDKText(
+              'No projects found.\nCreate a new project or add an existing one.',
               textAlign: TextAlign.center,
               role: CDKTextRole.body,
               color: CupertinoColors.black,
@@ -271,6 +436,13 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
                                     ? cdkColors.colorTextSecondary
                                     : cdkColors.colorText,
                               ),
+                              const SizedBox(height: 2),
+                              CDKText(
+                                _formatProjectPathForDisplay(project.folderPath),
+                                role: CDKTextRole.caption,
+                                color: cdkColors.colorTextSecondary,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ],
                           ),
                         ),
@@ -294,7 +466,7 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
                               );
                             },
                             child: Icon(
-                              CupertinoIcons.pencil,
+                              CupertinoIcons.ellipsis_circle,
                               size: 16,
                               color: cdkColors.colorText,
                             ),
@@ -321,11 +493,9 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
 class _ProjectDialogData {
   const _ProjectDialogData({
     required this.name,
-    required this.comments,
   });
 
   final String name;
-  final String comments;
 }
 
 class _ProjectFormDialog extends StatefulWidget {
@@ -333,21 +503,23 @@ class _ProjectFormDialog extends StatefulWidget {
     required this.title,
     required this.confirmLabel,
     required this.initialName,
-    required this.initialComments,
+    this.projectPath,
     required this.existingNames,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
+    this.onChangeFolder,
   });
 
   final String title;
   final String confirmLabel;
   final String initialName;
-  final String initialComments;
+  final String? projectPath;
   final Set<String> existingNames;
   final ValueChanged<_ProjectDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
+  final VoidCallback? onChangeFolder;
 
   @override
   State<_ProjectFormDialog> createState() => _ProjectFormDialogState();
@@ -356,8 +528,6 @@ class _ProjectFormDialog extends StatefulWidget {
 class _ProjectFormDialogState extends State<_ProjectFormDialog> {
   late final TextEditingController _nameController =
       TextEditingController(text: widget.initialName);
-  late final TextEditingController _commentsController =
-      TextEditingController(text: widget.initialComments);
   final FocusNode _nameFocusNode = FocusNode();
   String? _errorText;
 
@@ -389,7 +559,6 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
     widget.onConfirm(
       _ProjectDialogData(
         name: cleaned,
-        comments: _commentsController.text,
       ),
     );
   }
@@ -407,7 +576,6 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
   @override
   void dispose() {
     _nameController.dispose();
-    _commentsController.dispose();
     _nameFocusNode.dispose();
     super.dispose();
   }
@@ -418,7 +586,7 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
     final typography = CDKThemeNotifier.typographyTokensOf(context);
     return EditorFormDialogScaffold(
       title: widget.title,
-      description: 'Set project name and optional comments.',
+      description: 'Set project name.',
       confirmLabel: widget.confirmLabel,
       confirmEnabled: _isValid,
       onConfirm: _confirm,
@@ -447,21 +615,104 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
               color: CupertinoColors.systemRed,
             ),
           ],
-          SizedBox(height: spacing.sm),
-          EditorLabeledField(
-            label: 'Comments',
-            child: CupertinoTextField(
-              controller: _commentsController,
-              style: typography.body,
-              placeholderStyle: typography.caption,
-              minLines: 4,
-              maxLines: 6,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          if (widget.onChangeFolder != null &&
+              widget.projectPath != null &&
+              widget.projectPath!.trim().isNotEmpty) ...[
+            SizedBox(height: spacing.md),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.projectPath!,
+                    style: typography.caption,
+                    softWrap: true,
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  onPressed: widget.onChangeFolder,
+                  child: const Text('Change Folder Destination'),
+                ),
+              ],
             ),
-          ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _MissingProjectDialog extends StatelessWidget {
+  const _MissingProjectDialog({
+    required this.missingProjectPath,
+    required this.onRelink,
+    required this.onRemove,
+    required this.onCancel,
+  });
+
+  final String missingProjectPath;
+  final VoidCallback onRelink;
+  final VoidCallback onRemove;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 360, maxWidth: 500),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CDKText(
+              "Project folder not found",
+              role: CDKTextRole.bodyStrong,
+            ),
+            SizedBox(height: spacing.sm),
+            const CDKText(
+              "This known project path is no longer available:",
+              role: CDKTextRole.body,
+            ),
+            SizedBox(height: spacing.xs),
+            CDKText(
+              missingProjectPath,
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+            SizedBox(height: spacing.md),
+            const CDKText(
+              "Do you want to relink to another folder or remove this project from the list?",
+              role: CDKTextRole.body,
+            ),
+            SizedBox(height: spacing.lg),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  onPressed: onCancel,
+                  child: const Text("Later"),
+                ),
+                SizedBox(width: spacing.sm),
+                CDKButton(
+                  style: CDKButtonStyle.destructive,
+                  onPressed: onRemove,
+                  child: const Text("Remove"),
+                ),
+                SizedBox(width: spacing.sm),
+                CDKButton(
+                  style: CDKButtonStyle.action,
+                  onPressed: onRelink,
+                  child: const Text("Relink"),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

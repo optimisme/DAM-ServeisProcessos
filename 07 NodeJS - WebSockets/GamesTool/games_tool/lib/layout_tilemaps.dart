@@ -399,7 +399,7 @@ class LayoutTilemapsState extends State<LayoutTilemaps> {
             enabled: (_tilesetZoom - 1.0).abs() > 0.0001,
             onPressed: () => _setTilesetZoom(1.0),
             child: const Icon(
-              CupertinoIcons.arrow_counterclockwise,
+              CupertinoIcons.viewfinder,
               size: 14,
             ),
           ),

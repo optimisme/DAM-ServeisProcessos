@@ -1175,7 +1175,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
                                         );
                                       },
                                       child: Icon(
-                                        CupertinoIcons.pencil,
+                                        CupertinoIcons.ellipsis_circle,
                                         size: 15,
                                         color: cdkColors.colorText,
                                       ),
@@ -1301,7 +1301,7 @@ class _LayoutMediaState extends State<LayoutMedia> {
                                                 );
                                               },
                                               child: Icon(
-                                                CupertinoIcons.pencil,
+                                                CupertinoIcons.ellipsis_circle,
                                                 size: 16,
                                                 color: cdkColors.colorText,
                                               ),

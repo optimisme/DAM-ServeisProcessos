@@ -1,5 +1,5 @@
 {
-  "name": "Exemple 0",
+  "name": "Demo game",
   "levels": [
     {
       "name": "L'era Xampinyó",
@@ -317,7 +317,7 @@
     {
       "id": "__group_1772115382813671_1",
       "name": "Heroi Aturat",
-      "collapsed": true
+      "collapsed": false
     },
     {
       "id": "__group_1772115377170906_0",
@@ -347,6 +347,5 @@
       "name": "Arbre",
       "color": "teal"
     }
-  ],
-  "projectComments": "Personatge: https://erisesra.itch.io/character-templates-pack\nTerreny: https://merchant-shade.itch.io/16x16-puny-world"
+  ]
 }

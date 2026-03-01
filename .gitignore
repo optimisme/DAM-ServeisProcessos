@@ -87,26 +87,3 @@ __pycache__
 # Windows generated files
 **/windows/flutter/ephemeral/
 **/windows/flutter/generated_plugin_registrant.*
-
-# GamesTool policy: commit only personalized OS code/config, not full generated
-# platform scaffolding.
-**/GamesTool/game_example/android/
-**/GamesTool/game_example/ios/
-**/GamesTool/game_example/linux/
-**/GamesTool/game_example/macos/
-**/GamesTool/game_example/web/
-**/GamesTool/game_example/windows/
-
-**/GamesTool/games_tool/android/
-**/GamesTool/games_tool/ios/
-**/GamesTool/games_tool/linux/
-**/GamesTool/games_tool/web/
-**/GamesTool/games_tool/windows/
-
-# macOS in games_tool: keep only custom Runner files versioned.
-**/GamesTool/games_tool/macos/**
-!**/GamesTool/games_tool/macos/
-!**/GamesTool/games_tool/macos/Runner/
-!**/GamesTool/games_tool/macos/Runner/MainFlutterWindow.swift
-!**/GamesTool/games_tool/macos/Runner/DebugProfile.entitlements
-!**/GamesTool/games_tool/macos/Runner/Release.entitlements

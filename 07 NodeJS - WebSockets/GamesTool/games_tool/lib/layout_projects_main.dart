@@ -36,6 +36,7 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
 
   Future<_MissingProjectAction?> _promptMissingProjectAction(
     String missingProjectPath,
+    String missingProjectName,
   ) async {
     final CDKDialogController controller = CDKDialogController();
     final Completer<_MissingProjectAction?> completer =
@@ -54,6 +55,7 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
         }
       },
       child: _MissingProjectDialog(
+        missingProjectName: missingProjectName,
         missingProjectPath: missingProjectPath,
         onRelink: () {
           result = _MissingProjectAction.relink;
@@ -82,9 +84,11 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
         if (missingPath == null) {
           break;
         }
+        final String missingProjectName =
+            appData.projectDisplayNameForPath(missingPath);
 
         final _MissingProjectAction? action =
-            await _promptMissingProjectAction(missingPath);
+            await _promptMissingProjectAction(missingPath, missingProjectName);
         if (!mounted || action == null) {
           break;
         }
@@ -96,10 +100,16 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
 
         String? initialDirectory;
         try {
-          initialDirectory = Directory(missingPath).parent.path;
+          final Directory missingDirectory = Directory(missingPath);
+          if (await missingDirectory.exists()) {
+            // If possible, open picker directly in the project folder to relink.
+            initialDirectory = missingDirectory.path;
+          } else {
+            initialDirectory = missingDirectory.parent.path;
+          }
         } catch (_) {}
         final String? replacementPath = await appData.pickDirectory(
-          dialogTitle: "Relink project folder",
+          dialogTitle: "Relink project folder: $missingProjectName",
           initialDirectory: initialDirectory,
         );
         if (replacementPath == null) {
@@ -318,7 +328,8 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
     const int headLength = 20;
     const int tailLength = 25;
     const String separator = ' ... ';
-    final int minLengthForShortening = headLength + tailLength + separator.length;
+    final int minLengthForShortening =
+        headLength + tailLength + separator.length;
 
     if (normalized.length <= minLengthForShortening) {
       return normalized;
@@ -438,7 +449,8 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
                               ),
                               const SizedBox(height: 2),
                               CDKText(
-                                _formatProjectPathForDisplay(project.folderPath),
+                                _formatProjectPathForDisplay(
+                                    project.folderPath),
                                 role: CDKTextRole.caption,
                                 color: cdkColors.colorTextSecondary,
                                 overflow: TextOverflow.ellipsis,
@@ -646,12 +658,14 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
 
 class _MissingProjectDialog extends StatelessWidget {
   const _MissingProjectDialog({
+    required this.missingProjectName,
     required this.missingProjectPath,
     required this.onRelink,
     required this.onRemove,
     required this.onCancel,
   });
 
+  final String missingProjectName;
   final String missingProjectPath;
   final VoidCallback onRelink;
   final VoidCallback onRemove;
@@ -668,13 +682,13 @@ class _MissingProjectDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const CDKText(
-              "Project folder not found",
+            CDKText(
+              'Project "$missingProjectName" needs relink',
               role: CDKTextRole.bodyStrong,
             ),
             SizedBox(height: spacing.sm),
             const CDKText(
-              "This known project path is no longer available:",
+              "Stored project folder is no longer accessible:",
               role: CDKTextRole.body,
             ),
             SizedBox(height: spacing.xs),
@@ -684,8 +698,8 @@ class _MissingProjectDialog extends StatelessWidget {
               secondary: true,
             ),
             SizedBox(height: spacing.md),
-            const CDKText(
-              "Do you want to relink to another folder or remove this project from the list?",
+            CDKText(
+              'Relink "$missingProjectName" to a valid project folder, or remove it from the list.',
               role: CDKTextRole.body,
             ),
             SizedBox(height: spacing.lg),

@@ -81,6 +81,7 @@ class AppData extends ChangeNotifier {
   String selectedProjectId = "";
   List<String> _knownProjectPaths = [];
   Map<String, String> _projectBookmarksByPath = <String, String>{};
+  Map<String, String> _knownProjectNamesByPath = <String, String>{};
   List<String> missingProjectPaths = [];
   String projectStatusMessage = "";
   String autosaveInlineMessage = "";
@@ -433,14 +434,32 @@ class AppData extends ChangeNotifier {
     return missingProjectPaths.first;
   }
 
+  String projectDisplayNameForPath(String path) {
+    final String normalizedPath = _normalizeKnownProjectPath(path);
+    final String explicitName =
+        (_knownProjectNamesByPath[normalizedPath] ?? '').trim();
+    if (explicitName.isNotEmpty) {
+      return explicitName;
+    }
+    final StoredProject? project = _findProjectById(normalizedPath);
+    final String projectName = project?.name.trim() ?? '';
+    if (projectName.isNotEmpty) {
+      return projectName;
+    }
+    if (normalizedPath.isNotEmpty) {
+      return _lastPathSegment(normalizedPath);
+    }
+    return _lastPathSegment(path);
+  }
+
   String _normalizeKnownProjectPath(String value) {
     final String trimmed = value.trim();
     if (trimmed.isEmpty) {
       return '';
     }
     String normalized = Directory(trimmed).absolute.path;
-    while (normalized.length > 1 &&
-        normalized.endsWith(Platform.pathSeparator)) {
+    while (
+        normalized.length > 1 && normalized.endsWith(Platform.pathSeparator)) {
       normalized = normalized.substring(0, normalized.length - 1);
     }
     return normalized;
@@ -502,6 +521,7 @@ class AppData extends ChangeNotifier {
     final Set<String> uniquePaths = <String>{};
     final List<String> normalizedPaths = <String>[];
     final Map<String, String> nextBookmarks = <String, String>{};
+    final Map<String, String> nextProjectNames = <String, String>{};
     final Map<String, String> resolvedPathByRawPath = <String, String>{};
 
     for (final String rawPath in _knownProjectPaths) {
@@ -524,13 +544,23 @@ class AppData extends ChangeNotifier {
         }
       }
 
-      resolvedPath =
-          resolvedPath.isEmpty ? normalizedRawPath : resolvedPath;
+      resolvedPath = resolvedPath.isEmpty ? normalizedRawPath : resolvedPath;
       resolvedPathByRawPath[normalizedRawPath] = resolvedPath;
+      final String projectName = (_knownProjectNamesByPath[normalizedRawPath] ??
+              _knownProjectNamesByPath[rawPath] ??
+              '')
+          .trim();
       if (!uniquePaths.add(resolvedPath)) {
+        if (projectName.isNotEmpty &&
+            (nextProjectNames[resolvedPath] ?? '').trim().isEmpty) {
+          nextProjectNames[resolvedPath] = projectName;
+        }
         continue;
       }
       normalizedPaths.add(resolvedPath);
+      if (projectName.isNotEmpty) {
+        nextProjectNames[resolvedPath] = projectName;
+      }
 
       final String finalBookmark = resolvedBookmark ??
           (bookmark.isNotEmpty
@@ -543,6 +573,7 @@ class AppData extends ChangeNotifier {
 
     _knownProjectPaths = normalizedPaths;
     _projectBookmarksByPath = nextBookmarks;
+    _knownProjectNamesByPath = nextProjectNames;
     final String normalizedSelectedPath =
         _normalizeKnownProjectPath(selectedProjectId);
     if (normalizedSelectedPath.isNotEmpty) {
@@ -597,6 +628,7 @@ class AppData extends ChangeNotifier {
     selectedProjectId = "";
     _knownProjectPaths = [];
     _projectBookmarksByPath = <String, String>{};
+    _knownProjectNamesByPath = <String, String>{};
     missingProjectPaths = [];
 
     final File indexFile = File(
@@ -619,6 +651,7 @@ class AppData extends ChangeNotifier {
     final Set<String> uniquePaths = <String>{};
     final List<String> knownPaths = <String>[];
     final Map<String, String> legacyIdToPath = <String, String>{};
+    final Map<String, String> parsedProjectNamesByPath = <String, String>{};
 
     void addKnownPath(String? candidate) {
       if (candidate == null) {
@@ -637,6 +670,23 @@ class AppData extends ChangeNotifier {
         if (item is String) {
           addKnownPath(item);
         }
+      }
+    }
+
+    final dynamic projectNamesDynamic = decoded['projectNames'];
+    if (projectNamesDynamic is Map) {
+      for (final MapEntry<dynamic, dynamic> entry
+          in projectNamesDynamic.entries) {
+        if (entry.key is! String || entry.value is! String) {
+          continue;
+        }
+        final String normalizedPath =
+            _normalizeKnownProjectPath(entry.key as String);
+        final String name = (entry.value as String).trim();
+        if (normalizedPath.isEmpty || name.isEmpty) {
+          continue;
+        }
+        parsedProjectNamesByPath[normalizedPath] = name;
       }
     }
 
@@ -666,6 +716,10 @@ class AppData extends ChangeNotifier {
           continue;
         }
         addKnownPath(normalized);
+        final dynamic rawName = map['name'];
+        if (rawName is String && rawName.trim().isNotEmpty) {
+          parsedProjectNamesByPath[normalized] = rawName.trim();
+        }
         final dynamic rawLegacyId = map['id'];
         if (rawLegacyId is String && rawLegacyId.isNotEmpty) {
           legacyIdToPath[rawLegacyId] = normalized;
@@ -688,10 +742,18 @@ class AppData extends ChangeNotifier {
     }
 
     _knownProjectPaths = knownPaths;
+    _knownProjectNamesByPath = <String, String>{};
+    for (final String path in _knownProjectPaths) {
+      final String name = (parsedProjectNamesByPath[path] ?? '').trim();
+      if (name.isNotEmpty) {
+        _knownProjectNamesByPath[path] = name;
+      }
+    }
     final dynamic rawBookmarksDynamic = decoded['projectBookmarks'];
     if (rawBookmarksDynamic is Map) {
       final Map<String, String> parsedBookmarks = <String, String>{};
-      for (final MapEntry<dynamic, dynamic> entry in rawBookmarksDynamic.entries) {
+      for (final MapEntry<dynamic, dynamic> entry
+          in rawBookmarksDynamic.entries) {
         if (entry.key is! String || entry.value is! String) {
           continue;
         }
@@ -716,17 +778,23 @@ class AppData extends ChangeNotifier {
     final File indexFile =
         File("$storagePath${Platform.pathSeparator}$projectsIndexFileName");
     final Map<String, String> persistedBookmarks = <String, String>{};
+    final Map<String, String> persistedProjectNames = <String, String>{};
     for (final String path in _knownProjectPaths) {
       final String bookmark = _projectBookmarksByPath[path] ?? '';
       if (bookmark.isNotEmpty) {
         persistedBookmarks[path] = bookmark;
       }
+      final String projectName = (_knownProjectNamesByPath[path] ?? '').trim();
+      if (projectName.isNotEmpty) {
+        persistedProjectNames[path] = projectName;
+      }
     }
     final String content = const JsonEncoder.withIndent("  ").convert({
-      'version': 3,
+      'version': 4,
       'selectedProjectPath': selectedProjectId,
       'projectPaths': _knownProjectPaths,
       'projectBookmarks': persistedBookmarks,
+      'projectNames': persistedProjectNames,
     });
     await indexFile.writeAsString(content);
   }
@@ -735,32 +803,56 @@ class AppData extends ChangeNotifier {
     final Set<String> uniqueKnown = <String>{};
     final List<String> normalizedKnown = <String>[];
     final Map<String, String> normalizedBookmarks = <String, String>{};
+    final Map<String, String> normalizedNames = <String, String>{};
     for (final String rawPath in _knownProjectPaths) {
       final String normalized = _normalizeKnownProjectPath(rawPath);
       if (normalized.isEmpty || !uniqueKnown.add(normalized)) {
         continue;
       }
       normalizedKnown.add(normalized);
-      final String bookmark =
-          _projectBookmarksByPath[normalized] ?? _projectBookmarksByPath[rawPath] ?? '';
+      final String bookmark = _projectBookmarksByPath[normalized] ??
+          _projectBookmarksByPath[rawPath] ??
+          '';
       if (bookmark.isNotEmpty) {
         normalizedBookmarks[normalized] = bookmark;
+      }
+      final String projectName = _knownProjectNamesByPath[normalized] ??
+          _knownProjectNamesByPath[rawPath] ??
+          '';
+      if (projectName.trim().isNotEmpty) {
+        normalizedNames[normalized] = projectName.trim();
       }
     }
     _knownProjectPaths = normalizedKnown;
     _projectBookmarksByPath = normalizedBookmarks;
+    _knownProjectNamesByPath = normalizedNames;
+    final Map<String, String> nextKnownProjectNames =
+        Map<String, String>.from(_knownProjectNamesByPath);
 
     final List<StoredProject> loadedProjects = <StoredProject>[];
     final List<String> missingPaths = <String>[];
     for (final String folderPath in _knownProjectPaths) {
-      final File gameFile =
-          File("$folderPath${Platform.pathSeparator}$gameFileName");
-      if (!await gameFile.exists()) {
+      if (!await _ensureProjectSecurityAccess(folderPath)) {
+        nextKnownProjectNames.putIfAbsent(
+          folderPath,
+          () => _lastPathSegment(folderPath),
+        );
         missingPaths.add(folderPath);
         continue;
       }
-      final String inferredName =
-          await _readProjectNameFromDisk(gameFile) ?? _lastPathSegment(folderPath);
+      final File gameFile =
+          File("$folderPath${Platform.pathSeparator}$gameFileName");
+      if (!await gameFile.exists()) {
+        nextKnownProjectNames.putIfAbsent(
+          folderPath,
+          () => _lastPathSegment(folderPath),
+        );
+        missingPaths.add(folderPath);
+        continue;
+      }
+      final String inferredName = await _readProjectNameFromDisk(gameFile) ??
+          _lastPathSegment(folderPath);
+      nextKnownProjectNames[folderPath] = inferredName;
       String updatedAt = DateTime.now().toUtc().toIso8601String();
       try {
         updatedAt = (await gameFile.lastModified()).toUtc().toIso8601String();
@@ -800,6 +892,7 @@ class AppData extends ChangeNotifier {
         }
         final String inferredName = await _readProjectNameFromDisk(gameFile) ??
             _lastPathSegment(normalizedPath);
+        nextKnownProjectNames[normalizedPath] = inferredName;
         String updatedAt = DateTime.now().toUtc().toIso8601String();
         try {
           updatedAt = (await gameFile.lastModified()).toUtc().toIso8601String();
@@ -815,6 +908,7 @@ class AppData extends ChangeNotifier {
     }
 
     projects = loadedProjects;
+    _knownProjectNamesByPath = nextKnownProjectNames;
     missingProjectPaths = missingPaths;
     await _saveProjectsIndex();
   }
@@ -1682,11 +1776,12 @@ class AppData extends ChangeNotifier {
       parentDirectoryPath: normalizedWorkingDirectory,
       baseFolderName: _sanitizeFolderName(defaultName),
     );
-    final Directory projectDirectory =
-        Directory("$normalizedWorkingDirectory${Platform.pathSeparator}$folderName");
+    final Directory projectDirectory = Directory(
+        "$normalizedWorkingDirectory${Platform.pathSeparator}$folderName");
     await projectDirectory.create(recursive: true);
 
-    final String projectPath = _normalizeKnownProjectPath(projectDirectory.path);
+    final String projectPath =
+        _normalizeKnownProjectPath(projectDirectory.path);
     final StoredProject newProject = StoredProject.fromPath(
       folderPath: projectPath,
       name: defaultName,
@@ -1695,6 +1790,7 @@ class AppData extends ChangeNotifier {
     projects.add(newProject);
     _knownProjectPaths.remove(projectPath);
     _knownProjectPaths.add(projectPath);
+    _knownProjectNamesByPath[projectPath] = defaultName;
     final String? bookmark = await _createSecurityBookmarkForPath(projectPath);
     if (bookmark != null && bookmark.isNotEmpty) {
       _projectBookmarksByPath[projectPath] = bookmark;
@@ -1779,7 +1875,11 @@ class AppData extends ChangeNotifier {
     if (!_knownProjectPaths.contains(normalizedPath)) {
       _knownProjectPaths.add(normalizedPath);
     }
-    final String? bookmark = await _createSecurityBookmarkForPath(normalizedPath);
+    final String inferredName = await _readProjectNameFromDisk(gameFile) ??
+        _lastPathSegment(normalizedPath);
+    _knownProjectNamesByPath[normalizedPath] = inferredName;
+    final String? bookmark =
+        await _createSecurityBookmarkForPath(normalizedPath);
     if (bookmark != null && bookmark.isNotEmpty) {
       _projectBookmarksByPath[normalizedPath] = bookmark;
     }
@@ -1799,6 +1899,7 @@ class AppData extends ChangeNotifier {
     }
     _knownProjectPaths.removeWhere((path) => path == normalizedPath);
     _projectBookmarksByPath.remove(normalizedPath);
+    _knownProjectNamesByPath.remove(normalizedPath);
     missingProjectPaths.removeWhere((path) => path == normalizedPath);
     projects.removeWhere((project) => project.id == normalizedPath);
     if (selectedProjectId == normalizedPath) {
@@ -1840,6 +1941,15 @@ class AppData extends ChangeNotifier {
     } else {
       _knownProjectPaths.add(normalizedReplacementPath);
     }
+    final String preservedName =
+        (_knownProjectNamesByPath[normalizedMissingPath] ?? '').trim();
+    final String replacementName =
+        await _readProjectNameFromDisk(replacementGameFile) ??
+            (preservedName.isNotEmpty
+                ? preservedName
+                : _lastPathSegment(normalizedReplacementPath));
+    _knownProjectNamesByPath.remove(normalizedMissingPath);
+    _knownProjectNamesByPath[normalizedReplacementPath] = replacementName;
     _projectBookmarksByPath.remove(normalizedMissingPath);
     final String? bookmark =
         await _createSecurityBookmarkForPath(normalizedReplacementPath);
@@ -1881,6 +1991,7 @@ class AppData extends ChangeNotifier {
 
     project.name = cleanName;
     project.updatedAt = DateTime.now().toUtc().toIso8601String();
+    _knownProjectNamesByPath[project.folderPath] = cleanName;
 
     final String projectPath = project.folderPath;
     final File file =
@@ -1975,6 +2086,10 @@ class AppData extends ChangeNotifier {
       if (!_knownProjectPaths.contains(destinationProjectPath)) {
         _knownProjectPaths.add(destinationProjectPath);
       }
+      final String destinationProjectName =
+          await _readProjectNameFromDisk(destinationGameFile) ?? project.name;
+      _knownProjectNamesByPath.remove(sourcePath);
+      _knownProjectNamesByPath[destinationProjectPath] = destinationProjectName;
       _projectBookmarksByPath.remove(sourcePath);
       final String? bookmark =
           await _createSecurityBookmarkForPath(destinationProjectPath);
@@ -2016,6 +2131,7 @@ class AppData extends ChangeNotifier {
       }
       _knownProjectPaths.removeWhere((path) => path == project.folderPath);
       _projectBookmarksByPath.remove(project.folderPath);
+      _knownProjectNamesByPath.remove(project.folderPath);
       missingProjectPaths.removeWhere((path) => path == project.folderPath);
       projects.removeWhere((item) => item.id == projectId);
       if (selectedProjectId == projectId) {
@@ -2044,6 +2160,13 @@ class AppData extends ChangeNotifier {
       }
 
       final String projectPath = project.folderPath;
+      final bool hasSecurityAccess =
+          await _ensureProjectSecurityAccess(projectPath);
+      if (!hasSecurityAccess && _supportsSecurityBookmarks) {
+        throw Exception(
+          "Security-scoped access unavailable for: $projectPath",
+        );
+      }
       final File file =
           File("$projectPath${Platform.pathSeparator}$gameFileName");
       if (!await file.exists()) {
@@ -2110,6 +2233,7 @@ class AppData extends ChangeNotifier {
       viewportPreviewLevel = -1;
       if (gameData.name.trim().isNotEmpty) {
         project.name = gameData.name.trim();
+        _knownProjectNamesByPath[projectPath] = gameData.name.trim();
       }
       project.updatedAt = DateTime.now().toUtc().toIso8601String();
       await _saveProjectsIndex();
@@ -2121,11 +2245,80 @@ class AppData extends ChangeNotifier {
       if (kDebugMode) {
         print("Error opening project: $e");
       }
-      projectStatusMessage = "Open failed: $e";
+      final StoredProject? project = _findProjectById(projectId);
+      final String failedPath = _normalizeKnownProjectPath(
+        project?.folderPath ?? projectId,
+      );
+      if (_isMacOSPathPermissionDenied(e, failedPath)) {
+        final String projectName = project?.name.trim() ?? '';
+        if (projectName.isNotEmpty) {
+          _knownProjectNamesByPath[failedPath] = projectName;
+        }
+        if (failedPath.isNotEmpty &&
+            !missingProjectPaths.contains(failedPath)) {
+          missingProjectPaths.add(failedPath);
+        }
+        projectStatusMessage =
+            "Open failed: macOS denied folder access. Relink this project to grant permissions again.";
+      } else {
+        projectStatusMessage = "Open failed: $e";
+      }
       if (notify) {
         notifyListeners();
       }
     }
+  }
+
+  bool _isMacOSPathPermissionDenied(Object error, String expectedPath) {
+    if (!_supportsSecurityBookmarks) {
+      return false;
+    }
+    final String message = error.toString().toLowerCase();
+    if (!(message.contains('operation not permitted') ||
+        message.contains('errno = 1') ||
+        message.contains('security-scoped access unavailable'))) {
+      return false;
+    }
+    if (expectedPath.trim().isEmpty) {
+      return message.contains('pathaccessexception');
+    }
+    return message.contains(expectedPath.toLowerCase());
+  }
+
+  Future<bool> _ensureProjectSecurityAccess(String projectPath) async {
+    if (!_supportsSecurityBookmarks) {
+      return true;
+    }
+    String bookmark = _projectBookmarksByPath[projectPath] ?? '';
+    bool changedBookmarks = false;
+    if (bookmark.isEmpty) {
+      final String? createdBookmark =
+          await _createSecurityBookmarkForPath(projectPath);
+      if (createdBookmark != null && createdBookmark.isNotEmpty) {
+        bookmark = createdBookmark;
+        _projectBookmarksByPath[projectPath] = createdBookmark;
+        changedBookmarks = true;
+      }
+    }
+    if (bookmark.isEmpty) {
+      return false;
+    }
+
+    final Map<String, String>? resolved =
+        await _resolveSecurityBookmark(bookmark);
+    if (resolved == null) {
+      return false;
+    }
+    final String refreshedBookmark = resolved['bookmark'] ?? bookmark;
+    if (refreshedBookmark.isNotEmpty &&
+        refreshedBookmark != _projectBookmarksByPath[projectPath]) {
+      _projectBookmarksByPath[projectPath] = refreshedBookmark;
+      changedBookmarks = true;
+    }
+    if (changedBookmarks) {
+      await _saveProjectsIndex();
+    }
+    return true;
   }
 
   Future<void> reloadWorkingProject() async {
@@ -2333,9 +2526,8 @@ class AppData extends ChangeNotifier {
       return "";
     }
 
-    final String initialDirectory = filePath != ""
-        ? filePath
-        : selectedProject!.folderPath;
+    final String initialDirectory =
+        filePath != "" ? filePath : selectedProject!.folderPath;
 
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,

@@ -99,6 +99,8 @@ class AppData extends ChangeNotifier {
   int selectedSprite = -1;
   Set<int> selectedSpriteIndices = <int>{};
   int selectedAnimation = -1;
+  int selectedAnimationHitBox = -1;
+  bool animationRigShowPixelGrid = true;
   int selectedMedia = -1;
   int animationSelectionStartFrame = -1;
   int animationSelectionEndFrame = -1;

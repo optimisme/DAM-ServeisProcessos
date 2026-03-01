@@ -9,10 +9,13 @@ import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart
 import 'package:provider/provider.dart';
 import 'app_data.dart';
 import 'canvas_painter.dart';
+import 'game_animation.dart';
+import 'game_animation_hit_box.dart';
 import 'game_layer.dart';
 import 'game_level.dart';
 import 'game_sprite.dart';
 import 'game_zone.dart';
+import 'layout_animation_rigs.dart';
 import 'layout_animations.dart';
 import 'layout_sprites.dart';
 import 'layout_layers.dart';
@@ -44,6 +47,8 @@ class _LayoutState extends State<Layout> {
       GlobalKey<LayoutZonesState>();
   final GlobalKey<LayoutViewportState> layoutViewportKey =
       GlobalKey<LayoutViewportState>();
+  final GlobalKey<LayoutAnimationRigsState> layoutAnimationRigsKey =
+      GlobalKey<LayoutAnimationRigsState>();
 
   // ignore: unused_field
   Timer? _timer;
@@ -60,8 +65,14 @@ class _LayoutState extends State<Layout> {
   bool _didModifySpriteDuringGesture = false;
   bool _didModifyLayerDuringGesture = false;
   bool _didModifyAnimationDuringGesture = false;
+  bool _didModifyAnimationRigDuringGesture = false;
   bool _didModifyTilemapDuringGesture = false;
   int? _animationDragStartFrame;
+  bool _isDraggingAnimationRigAnchor = false;
+  bool _isDraggingAnimationRigHitBox = false;
+  bool _isResizingAnimationRigHitBox = false;
+  Offset _animationRigHitBoxDragOffset = Offset.zero;
+  int _drawCanvasRequestId = 0;
   bool _isPointerDown = false;
   bool _isHoveringSelectedTilemapLayer = false;
   bool _isDragGestureActive = false;
@@ -98,6 +109,7 @@ class _LayoutState extends State<Layout> {
     'projects',
     'media',
     'animations',
+    'animation_rigs',
     'levels',
     'layers',
     'tilemap',
@@ -266,6 +278,7 @@ class _LayoutState extends State<Layout> {
         addSprite();
         break;
       case 'animations':
+      case 'animation_rigs':
         addAnimation();
         break;
       case 'media':
@@ -324,13 +337,25 @@ class _LayoutState extends State<Layout> {
     );
   }
 
+  String _sectionLabel(String section) {
+    final String normalized = section.replaceAll('_', ' ').trim();
+    if (normalized.isEmpty) {
+      return section;
+    }
+    return normalized
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1))
+        .join(' ');
+  }
+
   List<Widget> _buildSegmentedOptions(BuildContext context) {
     return sections
         .map(
           (segment) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
             child: CDKText(
-              segment[0].toUpperCase() + segment.substring(1),
+              _sectionLabel(segment),
               role: CDKTextRole.caption,
             ),
           ),
@@ -352,6 +377,8 @@ class _LayoutState extends State<Layout> {
         return LayoutZones(key: layoutZonesKey);
       case 'animations':
         return const LayoutAnimations();
+      case 'animation_rigs':
+        return LayoutAnimationRigs(key: layoutAnimationRigsKey);
       case 'sprites':
         return LayoutSprites(key: layoutSpritesKey);
       case 'viewport':
@@ -370,6 +397,7 @@ class _LayoutState extends State<Layout> {
   }
 
   Future<void> _drawCanvasImage(AppData appData) async {
+    final int requestId = ++_drawCanvasRequestId;
     ui.Image image;
     switch (appData.selectedSection) {
       case 'projects':
@@ -405,12 +433,17 @@ class _LayoutState extends State<Layout> {
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
       case 'animations':
         image = await LayoutUtils.drawCanvasImageAnimations(appData);
+      case 'animation_rigs':
+        image = await LayoutUtils.drawCanvasImageAnimationRig(appData);
       case 'media':
         image = await LayoutUtils.drawCanvasImageMedia(appData);
       default:
         image = await LayoutUtils.drawCanvasImageEmpty(appData);
     }
 
+    if (!mounted || requestId != _drawCanvasRequestId) {
+      return;
+    }
     setState(() {
       _layerImage = image;
     });
@@ -435,6 +468,269 @@ class _LayoutState extends State<Layout> {
       return;
     }
     appData.queueAutosave();
+  }
+
+  GameAnimation? _selectedAnimationForRig(AppData appData) {
+    if (appData.selectedAnimation < 0 ||
+        appData.selectedAnimation >= appData.gameData.animations.length) {
+      return null;
+    }
+    return appData.gameData.animations[appData.selectedAnimation];
+  }
+
+  Size? _animationRigFrameSize() {
+    final ui.Image? frameImage = _layerImage;
+    if (frameImage == null) {
+      return null;
+    }
+    return Size(
+      frameImage.width.toDouble(),
+      frameImage.height.toDouble(),
+    );
+  }
+
+  Offset? _animationRigImagePosition(
+    AppData appData,
+    Offset localPosition, {
+    bool requireInside = true,
+  }) {
+    final Size? frameSize = _animationRigFrameSize();
+    if (frameSize == null) {
+      return null;
+    }
+    final Offset imageCoords = LayoutUtils.translateCoords(
+      localPosition,
+      appData.imageOffset,
+      appData.scaleFactor,
+    );
+    if (!requireInside) {
+      return imageCoords;
+    }
+    if (imageCoords.dx < 0 ||
+        imageCoords.dy < 0 ||
+        imageCoords.dx > frameSize.width ||
+        imageCoords.dy > frameSize.height) {
+      return null;
+    }
+    return imageCoords;
+  }
+
+  Rect _animationRigHitBoxRectImage(
+    GameAnimationHitBox hitBox,
+    Size frameSize,
+  ) {
+    return Rect.fromLTWH(
+      hitBox.x.clamp(0.0, 1.0) * frameSize.width,
+      hitBox.y.clamp(0.0, 1.0) * frameSize.height,
+      hitBox.width.clamp(0.01, 1.0) * frameSize.width,
+      hitBox.height.clamp(0.01, 1.0) * frameSize.height,
+    );
+  }
+
+  double _animationRigResizeHandleSizeImage(AppData appData) {
+    final double scale = appData.scaleFactor <= 0 ? 1.0 : appData.scaleFactor;
+    return (14.0 / scale).clamp(6.0, 24.0);
+  }
+
+  int _animationRigHitBoxIndexFromLocalPosition(
+    AppData appData,
+    Offset localPosition,
+  ) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final Size? frameSize = _animationRigFrameSize();
+    final Offset? imageCoords = _animationRigImagePosition(
+      appData,
+      localPosition,
+      requireInside: false,
+    );
+    if (animation == null || frameSize == null || imageCoords == null) {
+      return -1;
+    }
+    for (int i = animation.hitBoxes.length - 1; i >= 0; i--) {
+      final Rect rect = _animationRigHitBoxRectImage(
+        animation.hitBoxes[i],
+        frameSize,
+      );
+      if (rect.contains(imageCoords)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  int _animationRigResizeHitBoxIndexFromLocalPosition(
+    AppData appData,
+    Offset localPosition,
+  ) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final Size? frameSize = _animationRigFrameSize();
+    final Offset? imageCoords = _animationRigImagePosition(
+      appData,
+      localPosition,
+      requireInside: false,
+    );
+    if (animation == null || frameSize == null || imageCoords == null) {
+      return -1;
+    }
+    for (int i = animation.hitBoxes.length - 1; i >= 0; i--) {
+      final Rect rect = _animationRigHitBoxRectImage(
+        animation.hitBoxes[i],
+        frameSize,
+      );
+      final double handleSize =
+          _animationRigResizeHandleSizeImage(appData).clamp(
+        0.0,
+        rect.width < rect.height ? rect.width : rect.height,
+      );
+      if (handleSize <= 0) {
+        continue;
+      }
+      final bool inBounds = imageCoords.dx >= rect.right - handleSize &&
+          imageCoords.dx <= rect.right &&
+          imageCoords.dy >= rect.bottom - handleSize &&
+          imageCoords.dy <= rect.bottom;
+      if (!inBounds) {
+        continue;
+      }
+      if (imageCoords.dx + imageCoords.dy >=
+          rect.right + rect.bottom - handleSize) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  double _animationRigAnchorGrabRadiusImage(AppData appData) {
+    final double scale = appData.scaleFactor <= 0 ? 1.0 : appData.scaleFactor;
+    return (12.0 / scale).clamp(4.0, 24.0);
+  }
+
+  bool _animationRigAnchorHitFromLocalPosition(
+    AppData appData,
+    Offset localPosition,
+  ) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final Size? frameSize = _animationRigFrameSize();
+    final Offset? imageCoords = _animationRigImagePosition(
+      appData,
+      localPosition,
+      requireInside: false,
+    );
+    if (animation == null || frameSize == null || imageCoords == null) {
+      return false;
+    }
+    final Offset anchorCenter = Offset(
+      animation.anchorX.clamp(0.0, 1.0) * frameSize.width,
+      animation.anchorY.clamp(0.0, 1.0) * frameSize.height,
+    );
+    final double radius = _animationRigAnchorGrabRadiusImage(appData);
+    return (imageCoords - anchorCenter).distance <= radius;
+  }
+
+  bool _setAnimationRigAnchorFromLocalPosition(
+    AppData appData,
+    Offset localPosition,
+  ) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final Size? frameSize = _animationRigFrameSize();
+    final Offset? imageCoords = _animationRigImagePosition(
+      appData,
+      localPosition,
+      requireInside: false,
+    );
+    if (animation == null || frameSize == null || imageCoords == null) {
+      return false;
+    }
+    final double nextAnchorX =
+        (imageCoords.dx / frameSize.width).clamp(0.0, 1.0);
+    final double nextAnchorY =
+        (imageCoords.dy / frameSize.height).clamp(0.0, 1.0);
+    final bool changedX = (animation.anchorX - nextAnchorX).abs() > 0.0005;
+    final bool changedY = (animation.anchorY - nextAnchorY).abs() > 0.0005;
+    if (!changedX && !changedY) {
+      return false;
+    }
+    animation.anchorX = nextAnchorX;
+    animation.anchorY = nextAnchorY;
+    return true;
+  }
+
+  bool _dragSelectedAnimationRigHitBox(
+    AppData appData,
+    Offset localPosition,
+  ) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final Size? frameSize = _animationRigFrameSize();
+    final int selected = appData.selectedAnimationHitBox;
+    final Offset? imageCoords = _animationRigImagePosition(
+      appData,
+      localPosition,
+      requireInside: false,
+    );
+    if (animation == null ||
+        frameSize == null ||
+        imageCoords == null ||
+        selected < 0 ||
+        selected >= animation.hitBoxes.length) {
+      return false;
+    }
+    final GameAnimationHitBox current = animation.hitBoxes[selected];
+    final double rawX =
+        (imageCoords.dx - _animationRigHitBoxDragOffset.dx) / frameSize.width;
+    final double rawY =
+        (imageCoords.dy - _animationRigHitBoxDragOffset.dy) / frameSize.height;
+    final double nextX = rawX.clamp(0.0, (1.0 - current.width).clamp(0.0, 1.0));
+    final double nextY =
+        rawY.clamp(0.0, (1.0 - current.height).clamp(0.0, 1.0));
+    final bool changedX = (current.x - nextX).abs() > 0.0005;
+    final bool changedY = (current.y - nextY).abs() > 0.0005;
+    if (!changedX && !changedY) {
+      return false;
+    }
+    animation.hitBoxes[selected] = current.copyWith(
+      x: nextX,
+      y: nextY,
+    );
+    return true;
+  }
+
+  bool _resizeSelectedAnimationRigHitBox(
+    AppData appData,
+    Offset localPosition,
+  ) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final Size? frameSize = _animationRigFrameSize();
+    final int selected = appData.selectedAnimationHitBox;
+    final Offset? imageCoords = _animationRigImagePosition(
+      appData,
+      localPosition,
+      requireInside: false,
+    );
+    if (animation == null ||
+        frameSize == null ||
+        imageCoords == null ||
+        selected < 0 ||
+        selected >= animation.hitBoxes.length) {
+      return false;
+    }
+    final GameAnimationHitBox current = animation.hitBoxes[selected];
+    final double rightNorm = (imageCoords.dx / frameSize.width).clamp(0.0, 1.0);
+    final double bottomNorm =
+        (imageCoords.dy / frameSize.height).clamp(0.0, 1.0);
+    final double nextWidth =
+        (rightNorm - current.x).clamp(0.01, 1.0 - current.x);
+    final double nextHeight =
+        (bottomNorm - current.y).clamp(0.01, 1.0 - current.y);
+    final bool changedW = (current.width - nextWidth).abs() > 0.0005;
+    final bool changedH = (current.height - nextHeight).abs() > 0.0005;
+    if (!changedW && !changedH) {
+      return false;
+    }
+    animation.hitBoxes[selected] = current.copyWith(
+      width: nextWidth,
+      height: nextHeight,
+    );
+    return true;
   }
 
   bool _isLayerSelectionModifierPressed() {
@@ -2057,6 +2353,111 @@ class _LayoutState extends State<Layout> {
                                                     appData.update();
                                                   }
                                                 }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animation_rigs") {
+                                                _didModifyAnimationRigDuringGesture =
+                                                    false;
+                                                _isDraggingAnimationRigAnchor =
+                                                    false;
+                                                _isDraggingAnimationRigHitBox =
+                                                    false;
+                                                _isResizingAnimationRigHitBox =
+                                                    false;
+                                                _animationRigHitBoxDragOffset =
+                                                    Offset.zero;
+                                                if (_selectedAnimationForRig(
+                                                        appData) ==
+                                                    null) {
+                                                  return;
+                                                }
+
+                                                final int resizeHitBoxIndex =
+                                                    _animationRigResizeHitBoxIndexFromLocalPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (resizeHitBoxIndex != -1) {
+                                                  appData.selectedAnimationHitBox =
+                                                      resizeHitBoxIndex;
+                                                  appData.pushUndo();
+                                                  _isResizingAnimationRigHitBox =
+                                                      true;
+                                                  appData.update();
+                                                  layoutAnimationRigsKey
+                                                      .currentState
+                                                      ?.updateForm(appData);
+                                                  return;
+                                                }
+
+                                                final int hitBoxIndex =
+                                                    _animationRigHitBoxIndexFromLocalPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (hitBoxIndex != -1) {
+                                                  appData.selectedAnimationHitBox =
+                                                      hitBoxIndex;
+                                                  final Size? frameSize =
+                                                      _animationRigFrameSize();
+                                                  final Offset? imageCoords =
+                                                      _animationRigImagePosition(
+                                                    appData,
+                                                    details.localPosition,
+                                                    requireInside: false,
+                                                  );
+                                                  if (frameSize != null &&
+                                                      imageCoords != null) {
+                                                    final GameAnimation?
+                                                        animation =
+                                                        _selectedAnimationForRig(
+                                                            appData);
+                                                    if (animation != null &&
+                                                        hitBoxIndex <
+                                                            animation.hitBoxes
+                                                                .length) {
+                                                      final Rect hitRect =
+                                                          _animationRigHitBoxRectImage(
+                                                        animation.hitBoxes[
+                                                            hitBoxIndex],
+                                                        frameSize,
+                                                      );
+                                                      _animationRigHitBoxDragOffset =
+                                                          imageCoords -
+                                                              hitRect.topLeft;
+                                                      appData.pushUndo();
+                                                      _isDraggingAnimationRigHitBox =
+                                                          true;
+                                                    }
+                                                  }
+                                                  appData.update();
+                                                  layoutAnimationRigsKey
+                                                      .currentState
+                                                      ?.updateForm(appData);
+                                                  return;
+                                                }
+
+                                                final bool anchorGrabbed =
+                                                    _animationRigAnchorHitFromLocalPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (anchorGrabbed) {
+                                                  final bool selectionChanged =
+                                                      appData.selectedAnimationHitBox !=
+                                                          -1;
+                                                  appData.selectedAnimationHitBox =
+                                                      -1;
+                                                  appData.pushUndo();
+                                                  _isDraggingAnimationRigAnchor =
+                                                      true;
+                                                  if (selectionChanged) {
+                                                    appData.update();
+                                                    layoutAnimationRigsKey
+                                                        .currentState
+                                                        ?.updateForm(appData);
+                                                  }
+                                                }
                                               }
                                             },
                                             onPanUpdate: (details) async {
@@ -2304,6 +2705,41 @@ class _LayoutState extends State<Layout> {
                                                     appData.update();
                                                   }
                                                 }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animation_rigs") {
+                                                if (!_isPointerDown) {
+                                                  // scroll-triggered pan — ignore
+                                                } else {
+                                                  bool changed = false;
+                                                  if (_isResizingAnimationRigHitBox) {
+                                                    changed =
+                                                        _resizeSelectedAnimationRigHitBox(
+                                                      appData,
+                                                      details.localPosition,
+                                                    );
+                                                  } else if (_isDraggingAnimationRigHitBox) {
+                                                    changed =
+                                                        _dragSelectedAnimationRigHitBox(
+                                                      appData,
+                                                      details.localPosition,
+                                                    );
+                                                  } else if (_isDraggingAnimationRigAnchor) {
+                                                    changed =
+                                                        _setAnimationRigAnchorFromLocalPosition(
+                                                      appData,
+                                                      details.localPosition,
+                                                    );
+                                                  }
+                                                  if (changed) {
+                                                    _didModifyAnimationRigDuringGesture =
+                                                        true;
+                                                    appData.update();
+                                                    layoutAnimationRigsKey
+                                                        .currentState
+                                                        ?.updateForm(appData);
+                                                  }
+                                                }
                                               }
                                             },
                                             onPanEnd: (details) async {
@@ -2443,6 +2879,25 @@ class _LayoutState extends State<Layout> {
                                                           appData),
                                                     );
                                                   }
+                                                }
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animation_rigs") {
+                                                _isDraggingAnimationRigAnchor =
+                                                    false;
+                                                _isDraggingAnimationRigHitBox =
+                                                    false;
+                                                _isResizingAnimationRigHitBox =
+                                                    false;
+                                                _animationRigHitBoxDragOffset =
+                                                    Offset.zero;
+                                                if (_didModifyAnimationRigDuringGesture) {
+                                                  _didModifyAnimationRigDuringGesture =
+                                                      false;
+                                                  unawaited(
+                                                    _autoSaveIfPossible(
+                                                        appData),
+                                                  );
                                                 }
                                               }
 
@@ -2678,6 +3133,42 @@ class _LayoutState extends State<Layout> {
                                                         appData);
                                                   }
                                                 }());
+                                              } else if (appData
+                                                      .selectedSection ==
+                                                  "animation_rigs") {
+                                                final int hitBoxIndex =
+                                                    _animationRigHitBoxIndexFromLocalPosition(
+                                                  appData,
+                                                  details.localPosition,
+                                                );
+                                                if (hitBoxIndex != -1) {
+                                                  if (appData
+                                                          .selectedAnimationHitBox !=
+                                                      hitBoxIndex) {
+                                                    appData.selectedAnimationHitBox =
+                                                        hitBoxIndex;
+                                                    appData.update();
+                                                    layoutAnimationRigsKey
+                                                        .currentState
+                                                        ?.updateForm(appData);
+                                                  }
+                                                  return;
+                                                }
+                                                if (_selectedAnimationForRig(
+                                                        appData) ==
+                                                    null) {
+                                                  return;
+                                                }
+                                                if (appData
+                                                        .selectedAnimationHitBox !=
+                                                    -1) {
+                                                  appData.selectedAnimationHitBox =
+                                                      -1;
+                                                  appData.update();
+                                                  layoutAnimationRigsKey
+                                                      .currentState
+                                                      ?.updateForm(appData);
+                                                }
                                               }
                                             },
                                             onTapUp: (TapUpDetails details) {

@@ -2150,7 +2150,10 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     return false;
   }
 
-  void _upsertDraft() {
+  void _addDraft() {
+    if (_selectedIndex >= 0 && _selectedIndex < _drafts.length) {
+      return;
+    }
     final String nextName = _nameController.text.trim();
     if (nextName.isEmpty) {
       setState(() {
@@ -2166,28 +2169,44 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     }
 
     setState(() {
-      if (_selectedIndex >= 0 && _selectedIndex < _drafts.length) {
-        _drafts[_selectedIndex] = _drafts[_selectedIndex].copyWith(
+      final int insertIndex = _drafts.length;
+      _drafts.add(
+        _ZoneTypeDraft(
+          key: '__new_${_newKeyCounter++}',
           name: nextName,
           color: _selectedColor,
-        );
-      } else {
-        final int insertIndex = _drafts.length;
-        _drafts.add(
-          _ZoneTypeDraft(
-            key: '__new_${_newKeyCounter++}',
-            name: nextName,
-            color: _selectedColor,
-          ),
-        );
-        _typesListKey.currentState?.insertItem(
-          insertIndex,
-          duration: _rowAnimationDuration,
-        );
-        _selectedIndex = -1;
-        _nameController.clear();
-        _selectedColor = widget.colorPalette.first;
-      }
+        ),
+      );
+      _typesListKey.currentState?.insertItem(
+        insertIndex,
+        duration: _rowAnimationDuration,
+      );
+      _selectedIndex = -1;
+      _nameController.clear();
+      _selectedColor = widget.colorPalette.first;
+      _nameError = null;
+    });
+    _emitChanged();
+  }
+
+  void _autoUpdateSelectedDraft({
+    String? name,
+    String? color,
+  }) {
+    if (_selectedIndex < 0 || _selectedIndex >= _drafts.length) {
+      return;
+    }
+    final _ZoneTypeDraft current = _drafts[_selectedIndex];
+    final String nextName = name ?? current.name;
+    final String nextColor = color ?? current.color;
+    if (nextName == current.name && nextColor == current.color) {
+      return;
+    }
+    setState(() {
+      _drafts[_selectedIndex] = current.copyWith(
+        name: nextName,
+        color: nextColor,
+      );
       _nameError = null;
     });
     _emitChanged();
@@ -2234,7 +2253,6 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
     final bool selectedTypeIsUsed = hasSelection &&
         widget.usedTypeKeys.contains(_drafts[_selectedIndex].key);
     final bool canDelete = hasSelection && !selectedTypeIsUsed;
-    final bool isUpdateMode = hasSelection;
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
@@ -2284,14 +2302,38 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
               CDKFieldText(
                 placeholder: 'Category name',
                 controller: _nameController,
-                onChanged: (_) {
+                onChanged: (value) {
+                  final String trimmed = value.trim();
+                  if (hasSelection) {
+                    if (trimmed.isEmpty) {
+                      if (_nameError != 'Category name is required.') {
+                        setState(() {
+                          _nameError = 'Category name is required.';
+                        });
+                      }
+                      return;
+                    }
+                    if (_isNameDuplicated(trimmed,
+                        excludingIndex: _selectedIndex)) {
+                      if (_nameError !=
+                          'A category with this name already exists.') {
+                        setState(() {
+                          _nameError =
+                              'A category with this name already exists.';
+                        });
+                      }
+                      return;
+                    }
+                    _autoUpdateSelectedDraft(name: trimmed);
+                    return;
+                  }
                   if (_nameError != null) {
                     setState(() {
                       _nameError = null;
                     });
                   }
                 },
-                onSubmitted: (_) => _upsertDraft(),
+                onSubmitted: (_) => _addDraft(),
               ),
               const SizedBox(height: 4),
               SizedBox(
@@ -2319,9 +2361,15 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
                     color: LayoutUtils.getColorFromName(colorName),
                     selected: _selectedColor == colorName,
                     onTap: () {
+                      if (_selectedColor == colorName) {
+                        return;
+                      }
                       setState(() {
                         _selectedColor = colorName;
                       });
+                      if (hasSelection) {
+                        _autoUpdateSelectedDraft(color: colorName);
+                      }
                     },
                   );
                 }).toList(growable: false),
@@ -2349,8 +2397,8 @@ class _ZoneTypesPopoverState extends State<_ZoneTypesPopover> {
                   ),
                   CDKButton(
                     style: CDKButtonStyle.action,
-                    onPressed: _upsertDraft,
-                    child: Text(isUpdateMode ? 'Update' : 'Add category'),
+                    onPressed: hasSelection ? null : _addDraft,
+                    child: const Text('Add category'),
                   ),
                 ],
               ),

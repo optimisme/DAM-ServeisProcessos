@@ -1,3 +1,5 @@
+import 'game_animation_hit_box.dart';
+
 class GameAnimation {
   static const String defaultGroupId = '__main__';
   static const double defaultAnchorX = 0.5;
@@ -34,6 +36,7 @@ class GameAnimation {
   double anchorX;
   double anchorY;
   String anchorColor;
+  List<GameAnimationHitBox> hitBoxes;
 
   GameAnimation({
     required this.id,
@@ -47,10 +50,12 @@ class GameAnimation {
     double? anchorX,
     double? anchorY,
     String? anchorColor,
+    List<GameAnimationHitBox>? hitBoxes,
   })  : groupId = _normalizeGroupId(groupId),
         anchorX = _normalizeAnchorComponent(anchorX, defaultAnchorX),
         anchorY = _normalizeAnchorComponent(anchorY, defaultAnchorY),
-        anchorColor = _normalizeAnchorColor(anchorColor);
+        anchorColor = _normalizeAnchorColor(anchorColor),
+        hitBoxes = hitBoxes ?? <GameAnimationHitBox>[];
 
   factory GameAnimation.fromJson(Map<String, dynamic> json) {
     final int parsedStart = (json['startFrame'] as num?)?.toInt() ?? 0;
@@ -73,6 +78,10 @@ class GameAnimation {
       anchorY:
           (json['anchorY'] as num?)?.toDouble() ?? GameAnimation.defaultAnchorY,
       anchorColor: json['anchorColor'] as String? ?? defaultAnchorColor,
+      hitBoxes: ((json['hitBoxes'] as List<dynamic>?) ?? const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .map(GameAnimationHitBox.fromJson)
+          .toList(growable: true),
     );
   }
 
@@ -89,6 +98,7 @@ class GameAnimation {
       'anchorX': _normalizeAnchorComponent(anchorX, defaultAnchorX),
       'anchorY': _normalizeAnchorComponent(anchorY, defaultAnchorY),
       'anchorColor': _normalizeAnchorColor(anchorColor),
+      'hitBoxes': hitBoxes.map((item) => item.toJson()).toList(),
     };
   }
 

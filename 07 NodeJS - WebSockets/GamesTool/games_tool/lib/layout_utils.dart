@@ -430,6 +430,24 @@ class LayoutUtils {
     return start + offset;
   }
 
+  static int animationPlaybackFrameIndex({
+    required AppData appData,
+    required GameAnimation animation,
+    required int totalFrames,
+    bool forceLoop = false,
+  }) {
+    final int safeTotal = math.max(1, totalFrames);
+    final int start = animation.startFrame.clamp(0, safeTotal - 1);
+    final int end = animation.endFrame.clamp(start, safeTotal - 1);
+    final int span = math.max(1, end - start + 1);
+    final int ticks =
+        ((appData.frame / _editorTicksPerSecond) * animation.fps).floor();
+    final int offset = (forceLoop || animation.loop)
+        ? ticks % span
+        : math.min(ticks, span - 1);
+    return start + offset;
+  }
+
   static Future<ui.Image> drawCanvasImageEmpty(AppData appData) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -727,6 +745,46 @@ class LayoutUtils {
 
     final picture = recorder.endRecording();
     return await picture.toImage(image.width, image.height);
+  }
+
+  static Future<ui.Image> drawCanvasImageAnimationRig(AppData appData) async {
+    final _AnimationGridInfo? gridInfo =
+        await _selectedAnimationGridInfo(appData);
+    if (gridInfo == null) {
+      return await drawCanvasImageEmpty(appData);
+    }
+
+    final int frameIndex = animationPlaybackFrameIndex(
+      appData: appData,
+      animation: gridInfo.animation,
+      totalFrames: gridInfo.totalFrames,
+      forceLoop: true,
+    );
+    final int row = frameIndex ~/ gridInfo.cols;
+    final int col = frameIndex % gridInfo.cols;
+    final double frameWidth = gridInfo.media.tileWidth.toDouble();
+    final double frameHeight = gridInfo.media.tileHeight.toDouble();
+    final Rect src = Rect.fromLTWH(
+      col * frameWidth,
+      row * frameHeight,
+      frameWidth,
+      frameHeight,
+    );
+    if (src.right > gridInfo.image.width ||
+        src.bottom > gridInfo.image.height) {
+      return await drawCanvasImageEmpty(appData);
+    }
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawImageRect(
+      gridInfo.image,
+      src,
+      Rect.fromLTWH(0, 0, frameWidth, frameHeight),
+      Paint()..filterQuality = FilterQuality.none,
+    );
+    final picture = recorder.endRecording();
+    return await picture.toImage(frameWidth.ceil(), frameHeight.ceil());
   }
 
   static Offset translateCoords(

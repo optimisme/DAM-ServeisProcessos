@@ -7,8 +7,8 @@
       "layers": [
         {
           "name": "Decoracions",
-          "x": 42,
-          "y": 4,
+          "x": 0,
+          "y": 0,
           "depth": 0.0,
           "tilesSheetFile": "media/punyworld-overworld-tileset.png",
           "tilesWidth": 16,
@@ -128,7 +128,7 @@
       "tileWidth": 20,
       "tileHeight": 20,
       "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
+      "groupId": "__group_1772359181414251_0"
     },
     {
       "name": "Heroi Salt",
@@ -137,7 +137,7 @@
       "tileWidth": 20,
       "tileHeight": 20,
       "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
+      "groupId": "__group_1772359181414251_0"
     },
     {
       "name": "Heroi Camina",
@@ -146,13 +146,18 @@
       "tileWidth": 20,
       "tileHeight": 20,
       "selectionColorHex": "#FFCC00",
-      "groupId": "__main__"
+      "groupId": "__group_1772359181414251_0"
     }
   ],
   "mediaGroups": [
     {
       "id": "__main__",
       "name": "Main",
+      "collapsed": false
+    },
+    {
+      "id": "__group_1772359181414251_0",
+      "name": "Heroi",
       "collapsed": false
     }
   ],
@@ -165,7 +170,21 @@
       "endFrame": 3,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115382813671_1"
+      "groupId": "__group_1772115382813671_1",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099235919869",
@@ -175,7 +194,21 @@
       "endFrame": 7,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115382813671_1"
+      "groupId": "__group_1772115382813671_1",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099263954479",
@@ -185,7 +218,21 @@
       "endFrame": 11,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115382813671_1"
+      "groupId": "__group_1772115382813671_1",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099284318147",
@@ -195,7 +242,21 @@
       "endFrame": 15,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115382813671_1"
+      "groupId": "__group_1772115382813671_1",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099299323661",
@@ -205,7 +266,21 @@
       "endFrame": 19,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115382813671_1"
+      "groupId": "__group_1772115382813671_1",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099330451684",
@@ -215,7 +290,21 @@
       "endFrame": 4,
       "fps": 8.0,
       "loop": false,
-      "groupId": "__group_1772115377170906_0"
+      "groupId": "__group_1772115377170906_0",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099342092609",
@@ -225,7 +314,21 @@
       "endFrame": 9,
       "fps": 8.0,
       "loop": false,
-      "groupId": "__group_1772115377170906_0"
+      "groupId": "__group_1772115377170906_0",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099350583942",
@@ -235,7 +338,21 @@
       "endFrame": 14,
       "fps": 8.0,
       "loop": false,
-      "groupId": "__group_1772115377170906_0"
+      "groupId": "__group_1772115377170906_0",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099360120626",
@@ -245,7 +362,21 @@
       "endFrame": 19,
       "fps": 8.0,
       "loop": false,
-      "groupId": "__group_1772115377170906_0"
+      "groupId": "__group_1772115377170906_0",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099368150074",
@@ -255,7 +386,21 @@
       "endFrame": 24,
       "fps": 8.0,
       "loop": false,
-      "groupId": "__group_1772115377170906_0"
+      "groupId": "__group_1772115377170906_0",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099423666593",
@@ -265,7 +410,21 @@
       "endFrame": 3,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115389184027_2"
+      "groupId": "__group_1772115389184027_2",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099432167084",
@@ -275,7 +434,21 @@
       "endFrame": 7,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115389184027_2"
+      "groupId": "__group_1772115389184027_2",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099439457925",
@@ -285,7 +458,21 @@
       "endFrame": 11,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115389184027_2"
+      "groupId": "__group_1772115389184027_2",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099455402130",
@@ -295,7 +482,21 @@
       "endFrame": 15,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115389184027_2"
+      "groupId": "__group_1772115389184027_2",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     },
     {
       "id": "anim_1772099462736390",
@@ -305,7 +506,21 @@
       "endFrame": 19,
       "fps": 8.0,
       "loop": true,
-      "groupId": "__group_1772115389184027_2"
+      "groupId": "__group_1772115389184027_2",
+      "anchorX": 0.5,
+      "anchorY": 0.7,
+      "anchorColor": "red",
+      "hitBoxes": [
+        {
+          "id": "__hb_1772358656410791_0",
+          "name": "xocs",
+          "color": "red",
+          "x": 0.11974431818181808,
+          "y": 0.09999999999999998,
+          "width": 0.75,
+          "height": 0.9
+        }
+      ]
     }
   ],
   "animationGroups": [
@@ -322,12 +537,12 @@
     {
       "id": "__group_1772115377170906_0",
       "name": "Heroi Salt",
-      "collapsed": true
+      "collapsed": false
     },
     {
       "id": "__group_1772115389184027_2",
       "name": "Heroi Camina",
-      "collapsed": true
+      "collapsed": false
     }
   ],
   "zoneTypes": [

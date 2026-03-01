@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'app_data.dart';
+import 'game_animation.dart';
+import 'game_animation_hit_box.dart';
 import 'game_level.dart';
 import 'layout_utils.dart';
 
@@ -70,6 +72,16 @@ class CanvasPainter extends CustomPainter {
       Paint(),
     );
 
+    if (appData.selectedSection == 'animation_rigs') {
+      _paintAnimationRigOverlay(
+        canvas,
+        dx: dx,
+        dy: dy,
+        scaledWidth: scaledWidth,
+        scaledHeight: scaledHeight,
+      );
+    }
+
     // Dragging tile ghost (tilemap section)
     if (appData.selectedSection == 'tilemap' &&
         appData.draggingTileIndex != -1 &&
@@ -101,6 +113,165 @@ class CanvasPainter extends CustomPainter {
           Paint(),
         );
       }
+    }
+  }
+
+  void _paintAnimationRigOverlay(
+    Canvas canvas, {
+    required double dx,
+    required double dy,
+    required double scaledWidth,
+    required double scaledHeight,
+  }) {
+    if (appData.selectedAnimation < 0 ||
+        appData.selectedAnimation >= appData.gameData.animations.length) {
+      return;
+    }
+    if (scaledWidth <= 0 || scaledHeight <= 0) {
+      return;
+    }
+    final GameAnimation animation =
+        appData.gameData.animations[appData.selectedAnimation];
+
+    if (appData.animationRigShowPixelGrid) {
+      _paintAnimationRigPixelGrid(
+        canvas,
+        dx: dx,
+        dy: dy,
+        scaledWidth: scaledWidth,
+        scaledHeight: scaledHeight,
+      );
+    }
+
+    final double anchorX = animation.anchorX.clamp(0.0, 1.0);
+    final double anchorY = animation.anchorY.clamp(0.0, 1.0);
+    final Offset anchorCenter = Offset(
+      dx + scaledWidth * anchorX,
+      dy + scaledHeight * anchorY,
+    );
+    final Color anchorColor =
+        LayoutUtils.getColorFromName(animation.anchorColor);
+    const double anchorRadius = 6.0;
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius + 1.0,
+      Paint()
+        ..color = const Color(0xB3FFFFFF)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius,
+      Paint()
+        ..color = anchorColor
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius,
+      Paint()
+        ..color = const Color(0xB3000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    final int selectedIndex = appData.selectedAnimationHitBox;
+    for (int i = 0; i < animation.hitBoxes.length; i++) {
+      final GameAnimationHitBox hitBox = animation.hitBoxes[i];
+      final Rect rect = Rect.fromLTWH(
+        dx + scaledWidth * hitBox.x.clamp(0.0, 1.0),
+        dy + scaledHeight * hitBox.y.clamp(0.0, 1.0),
+        scaledWidth * hitBox.width.clamp(0.0, 1.0),
+        scaledHeight * hitBox.height.clamp(0.0, 1.0),
+      );
+      if (rect.width <= 0 || rect.height <= 0) {
+        continue;
+      }
+      final Color color = LayoutUtils.getColorFromName(hitBox.color);
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..color = color.withValues(alpha: 0.18)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..color = color
+          ..strokeWidth = i == selectedIndex ? 2.2 : 1.4
+          ..style = PaintingStyle.stroke,
+      );
+
+      if (i == selectedIndex) {
+        final double handleSize =
+            (14.0).clamp(0, math.min(rect.width, rect.height));
+        if (handleSize > 0) {
+          final Path handlePath = Path()
+            ..moveTo(rect.right, rect.bottom)
+            ..lineTo(rect.right - handleSize, rect.bottom)
+            ..lineTo(rect.right, rect.bottom - handleSize)
+            ..close();
+          canvas.drawPath(
+            handlePath,
+            Paint()
+              ..color = color
+              ..style = PaintingStyle.fill,
+          );
+        }
+      }
+
+      _drawLabel(
+        canvas,
+        hitBox.name.trim().isEmpty ? 'Hit Box ${i + 1}' : hitBox.name,
+        Offset(rect.left + 4, rect.top + 4),
+        TextStyle(
+          color: color,
+          fontSize: 9.0,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+  }
+
+  void _paintAnimationRigPixelGrid(
+    Canvas canvas, {
+    required double dx,
+    required double dy,
+    required double scaledWidth,
+    required double scaledHeight,
+  }) {
+    final double sourceWidth = layerImage.width.toDouble();
+    final double sourceHeight = layerImage.height.toDouble();
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return;
+    }
+    final double stepX = scaledWidth / sourceWidth;
+    final double stepY = scaledHeight / sourceHeight;
+    if (stepX < 3.0 || stepY < 3.0) {
+      return;
+    }
+
+    final Paint gridPaint = Paint()
+      ..color = const Color(0x55000000)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    for (int x = 0; x <= sourceWidth.toInt(); x++) {
+      final double lineX = dx + x * stepX;
+      canvas.drawLine(
+        Offset(lineX, dy),
+        Offset(lineX, dy + scaledHeight),
+        gridPaint,
+      );
+    }
+    for (int y = 0; y <= sourceHeight.toInt(); y++) {
+      final double lineY = dy + y * stepY;
+      canvas.drawLine(
+        Offset(dx, lineY),
+        Offset(dx + scaledWidth, lineY),
+        gridPaint,
+      );
     }
   }
 

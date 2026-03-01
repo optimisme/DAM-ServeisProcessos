@@ -40,6 +40,8 @@ class Layout extends StatefulWidget {
 enum _LayersCanvasTool { arrow, hand }
 
 class _LayoutState extends State<Layout> {
+  static const double _animationRigFrameStripReservedHeight = 120.0;
+
   // Clau del layout escollit
   final GlobalKey<LayoutSpritesState> layoutSpritesKey =
       GlobalKey<LayoutSpritesState>();
@@ -478,6 +480,120 @@ class _LayoutState extends State<Layout> {
     return appData.gameData.animations[appData.selectedAnimation];
   }
 
+  List<int> _animationRigSelectedFrames(
+    AppData appData,
+    GameAnimation animation, {
+    bool writeBack = false,
+  }) {
+    final int animationStart =
+        animation.startFrame < 0 ? 0 : animation.startFrame;
+    final int animationEnd = animation.endFrame < animationStart
+        ? animationStart
+        : animation.endFrame;
+    int selectedStart = appData.animationRigSelectionStartFrame;
+    int selectedEnd = appData.animationRigSelectionEndFrame;
+    if (selectedStart < 0 || selectedEnd < 0) {
+      selectedStart = animationStart;
+      selectedEnd = animationEnd;
+    }
+    if (selectedStart < animationStart) {
+      selectedStart = animationStart;
+    }
+    if (selectedStart > animationEnd) {
+      selectedStart = animationEnd;
+    }
+    if (selectedEnd < animationStart) {
+      selectedEnd = animationStart;
+    }
+    if (selectedEnd > animationEnd) {
+      selectedEnd = animationEnd;
+    }
+    final int normalizedStart =
+        selectedStart <= selectedEnd ? selectedStart : selectedEnd;
+    final int normalizedEnd =
+        selectedStart <= selectedEnd ? selectedEnd : selectedStart;
+    if (writeBack &&
+        (appData.animationRigSelectionStartFrame != normalizedStart ||
+            appData.animationRigSelectionEndFrame != normalizedEnd)) {
+      appData.animationRigSelectionStartFrame = normalizedStart;
+      appData.animationRigSelectionEndFrame = normalizedEnd;
+    }
+    return List<int>.generate(
+      normalizedEnd - normalizedStart + 1,
+      (index) => normalizedStart + index,
+      growable: false,
+    );
+  }
+
+  int _animationRigActiveFrame(
+    AppData appData,
+    GameAnimation animation, {
+    bool writeBack = false,
+  }) {
+    final List<int> selectedFrames = _animationRigSelectedFrames(
+      appData,
+      animation,
+      writeBack: writeBack,
+    );
+    if (selectedFrames.isEmpty) {
+      return animation.startFrame;
+    }
+    final int current = appData.animationRigActiveFrame;
+    final int active =
+        selectedFrames.contains(current) ? current : selectedFrames.first;
+    if (writeBack && appData.animationRigActiveFrame != active) {
+      appData.animationRigActiveFrame = active;
+    }
+    return active;
+  }
+
+  GameAnimationFrameRig _activeAnimationRig(
+    AppData appData,
+    GameAnimation animation, {
+    bool writeBack = false,
+  }) {
+    final int frame = _animationRigActiveFrame(
+      appData,
+      animation,
+      writeBack: writeBack,
+    );
+    return animation.rigForFrame(frame);
+  }
+
+  void _setAnimationRigFrameSelection(
+    AppData appData,
+    GameAnimation animation, {
+    required int startFrame,
+    required int endFrame,
+    bool setActiveToStart = true,
+  }) {
+    final int animationStart =
+        animation.startFrame < 0 ? 0 : animation.startFrame;
+    final int animationEnd = animation.endFrame < animationStart
+        ? animationStart
+        : animation.endFrame;
+    int nextStart = startFrame.clamp(animationStart, animationEnd);
+    int nextEnd = endFrame.clamp(animationStart, animationEnd);
+    if (nextStart > nextEnd) {
+      final int swap = nextStart;
+      nextStart = nextEnd;
+      nextEnd = swap;
+    }
+    appData.animationRigSelectionStartFrame = nextStart;
+    appData.animationRigSelectionEndFrame = nextEnd;
+    if (setActiveToStart) {
+      appData.animationRigActiveFrame = nextStart;
+    }
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    if (appData.selectedAnimationHitBox >= activeRig.hitBoxes.length) {
+      appData.selectedAnimationHitBox = -1;
+    }
+  }
+
   Size? _animationRigFrameSize() {
     final ui.Image? frameImage = _layerImage;
     if (frameImage == null) {
@@ -546,9 +662,14 @@ class _LayoutState extends State<Layout> {
     if (animation == null || frameSize == null || imageCoords == null) {
       return -1;
     }
-    for (int i = animation.hitBoxes.length - 1; i >= 0; i--) {
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    for (int i = activeRig.hitBoxes.length - 1; i >= 0; i--) {
       final Rect rect = _animationRigHitBoxRectImage(
-        animation.hitBoxes[i],
+        activeRig.hitBoxes[i],
         frameSize,
       );
       if (rect.contains(imageCoords)) {
@@ -572,9 +693,14 @@ class _LayoutState extends State<Layout> {
     if (animation == null || frameSize == null || imageCoords == null) {
       return -1;
     }
-    for (int i = animation.hitBoxes.length - 1; i >= 0; i--) {
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    for (int i = activeRig.hitBoxes.length - 1; i >= 0; i--) {
       final Rect rect = _animationRigHitBoxRectImage(
-        animation.hitBoxes[i],
+        activeRig.hitBoxes[i],
         frameSize,
       );
       final double handleSize =
@@ -619,9 +745,14 @@ class _LayoutState extends State<Layout> {
     if (animation == null || frameSize == null || imageCoords == null) {
       return false;
     }
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
     final Offset anchorCenter = Offset(
-      animation.anchorX.clamp(0.0, 1.0) * frameSize.width,
-      animation.anchorY.clamp(0.0, 1.0) * frameSize.height,
+      activeRig.anchorX.clamp(0.0, 1.0) * frameSize.width,
+      activeRig.anchorY.clamp(0.0, 1.0) * frameSize.height,
     );
     final double radius = _animationRigAnchorGrabRadiusImage(appData);
     return (imageCoords - anchorCenter).distance <= radius;
@@ -641,17 +772,32 @@ class _LayoutState extends State<Layout> {
     if (animation == null || frameSize == null || imageCoords == null) {
       return false;
     }
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
     final double nextAnchorX =
         (imageCoords.dx / frameSize.width).clamp(0.0, 1.0);
     final double nextAnchorY =
         (imageCoords.dy / frameSize.height).clamp(0.0, 1.0);
-    final bool changedX = (animation.anchorX - nextAnchorX).abs() > 0.0005;
-    final bool changedY = (animation.anchorY - nextAnchorY).abs() > 0.0005;
+    final bool changedX = (activeRig.anchorX - nextAnchorX).abs() > 0.0005;
+    final bool changedY = (activeRig.anchorY - nextAnchorY).abs() > 0.0005;
     if (!changedX && !changedY) {
       return false;
     }
-    animation.anchorX = nextAnchorX;
-    animation.anchorY = nextAnchorY;
+    final GameAnimationFrameRig nextRig = activeRig.copyWith(
+      anchorX: nextAnchorX,
+      anchorY: nextAnchorY,
+    );
+    animation.setRigForFrames(
+      _animationRigSelectedFrames(
+        appData,
+        animation,
+        writeBack: true,
+      ),
+      nextRig,
+    );
     return true;
   }
 
@@ -670,11 +816,18 @@ class _LayoutState extends State<Layout> {
     if (animation == null ||
         frameSize == null ||
         imageCoords == null ||
-        selected < 0 ||
-        selected >= animation.hitBoxes.length) {
+        selected < 0) {
       return false;
     }
-    final GameAnimationHitBox current = animation.hitBoxes[selected];
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    if (selected >= activeRig.hitBoxes.length) {
+      return false;
+    }
+    final GameAnimationHitBox current = activeRig.hitBoxes[selected];
     final double rawX =
         (imageCoords.dx - _animationRigHitBoxDragOffset.dx) / frameSize.width;
     final double rawY =
@@ -687,9 +840,22 @@ class _LayoutState extends State<Layout> {
     if (!changedX && !changedY) {
       return false;
     }
-    animation.hitBoxes[selected] = current.copyWith(
+    final List<GameAnimationHitBox> nextHitBoxes = activeRig.hitBoxes
+        .map((item) => item.copyWith())
+        .toList(growable: true);
+    nextHitBoxes[selected] = current.copyWith(
       x: nextX,
       y: nextY,
+    );
+    final GameAnimationFrameRig nextRig =
+        activeRig.copyWith(hitBoxes: nextHitBoxes);
+    animation.setRigForFrames(
+      _animationRigSelectedFrames(
+        appData,
+        animation,
+        writeBack: true,
+      ),
+      nextRig,
     );
     return true;
   }
@@ -709,11 +875,18 @@ class _LayoutState extends State<Layout> {
     if (animation == null ||
         frameSize == null ||
         imageCoords == null ||
-        selected < 0 ||
-        selected >= animation.hitBoxes.length) {
+        selected < 0) {
       return false;
     }
-    final GameAnimationHitBox current = animation.hitBoxes[selected];
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    if (selected >= activeRig.hitBoxes.length) {
+      return false;
+    }
+    final GameAnimationHitBox current = activeRig.hitBoxes[selected];
     final double rightNorm = (imageCoords.dx / frameSize.width).clamp(0.0, 1.0);
     final double bottomNorm =
         (imageCoords.dy / frameSize.height).clamp(0.0, 1.0);
@@ -726,9 +899,22 @@ class _LayoutState extends State<Layout> {
     if (!changedW && !changedH) {
       return false;
     }
-    animation.hitBoxes[selected] = current.copyWith(
+    final List<GameAnimationHitBox> nextHitBoxes = activeRig.hitBoxes
+        .map((item) => item.copyWith())
+        .toList(growable: true);
+    nextHitBoxes[selected] = current.copyWith(
       width: nextWidth,
       height: nextHeight,
+    );
+    final GameAnimationFrameRig nextRig =
+        activeRig.copyWith(hitBoxes: nextHitBoxes);
+    animation.setRigForFrames(
+      _animationRigSelectedFrames(
+        appData,
+        animation,
+        writeBack: true,
+      ),
+      nextRig,
     );
     return true;
   }
@@ -1812,6 +1998,248 @@ class _LayoutState extends State<Layout> {
     );
   }
 
+  Widget _buildAnimationRigGridOverlay(AppData appData) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    final bool enabled = animation != null;
+    return Align(
+      alignment: Alignment.topRight,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: CDKButton(
+          style: CDKButtonStyle.normal,
+          onPressed: !enabled
+              ? null
+              : () {
+                  appData.animationRigShowPixelGrid =
+                      !appData.animationRigShowPixelGrid;
+                  appData.update();
+                },
+          child: Text(
+            appData.animationRigShowPixelGrid ? 'Grid: On' : 'Grid: Off',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimationRigFrameStripOverlay(AppData appData) {
+    final GameAnimation? animation = _selectedAnimationForRig(appData);
+    if (animation == null) {
+      return const SizedBox.shrink();
+    }
+    final int animationStart =
+        animation.startFrame < 0 ? 0 : animation.startFrame;
+    final int animationEnd = animation.endFrame < animationStart
+        ? animationStart
+        : animation.endFrame;
+    final List<int> selectedFrames = _animationRigSelectedFrames(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    final int selectedStart =
+        selectedFrames.isEmpty ? animationStart : selectedFrames.first;
+    final int selectedEnd =
+        selectedFrames.isEmpty ? animationEnd : selectedFrames.last;
+    final int activeFrame = _animationRigActiveFrame(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    final ui.Image? sourceImage = appData.imagesCache[animation.mediaFile];
+    final mediaAsset = appData.mediaAssetByFileName(animation.mediaFile);
+    final bool canDrawFramePreview = sourceImage != null &&
+        mediaAsset != null &&
+        mediaAsset.tileWidth > 0 &&
+        mediaAsset.tileHeight > 0;
+    final double frameWidth =
+        canDrawFramePreview ? mediaAsset.tileWidth.toDouble() : 0.0;
+    final double frameHeight =
+        canDrawFramePreview ? mediaAsset.tileHeight.toDouble() : 0.0;
+    final int columns = canDrawFramePreview
+        ? ((sourceImage.width / mediaAsset.tileWidth).floor().clamp(1, 99999))
+        : 1;
+    final cdkColors = CDKThemeNotifier.colorTokensOf(context);
+    const Color selectionColor = Color(0xFFFFC94A);
+    const Color activeColor = Color(0xFFFFA928);
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+        child: Container(
+          height: _animationRigFrameStripReservedHeight,
+          padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+          decoration: BoxDecoration(
+            color: cdkColors.background,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            border: Border(
+              top: BorderSide(
+                color: cdkColors.colorTextSecondary.withValues(alpha: 0.30),
+              ),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  CDKButton(
+                    style: CDKButtonStyle.normal,
+                    onPressed: () {
+                      _setAnimationRigFrameSelection(
+                        appData,
+                        animation,
+                        startFrame: animationStart,
+                        endFrame: animationEnd,
+                      );
+                      appData.update();
+                      layoutAnimationRigsKey.currentState?.updateForm(appData);
+                    },
+                    child: const Text('All'),
+                  ),
+                  const SizedBox(width: 10),
+                  CDKText(
+                    selectedStart == selectedEnd
+                        ? 'Frame $selectedStart selected'
+                        : 'Frames $selectedStart-$selectedEnd selected',
+                    role: CDKTextRole.caption,
+                    secondary: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List<Widget>.generate(
+                      animationEnd - animationStart + 1,
+                      (index) {
+                        final int frame = animationStart + index;
+                        final bool inSelection =
+                            frame >= selectedStart && frame <= selectedEnd;
+                        final bool isActive = frame == activeFrame;
+                        final Color borderColor = isActive
+                            ? activeColor
+                            : (inSelection
+                                ? selectionColor
+                                : cdkColors.colorTextSecondary
+                                    .withValues(alpha: 0.35));
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: GestureDetector(
+                            onTap: () {
+                              final bool expandSelection =
+                                  _isLayerSelectionModifierPressed();
+                              if (expandSelection) {
+                                final int baseStart =
+                                    appData.animationRigSelectionStartFrame >= 0
+                                        ? appData
+                                            .animationRigSelectionStartFrame
+                                        : frame;
+                                _setAnimationRigFrameSelection(
+                                  appData,
+                                  animation,
+                                  startFrame: baseStart,
+                                  endFrame: frame,
+                                );
+                              } else if (selectedStart == selectedEnd &&
+                                  selectedStart != frame) {
+                                _setAnimationRigFrameSelection(
+                                  appData,
+                                  animation,
+                                  startFrame: selectedStart,
+                                  endFrame: frame,
+                                );
+                              } else {
+                                _setAnimationRigFrameSelection(
+                                  appData,
+                                  animation,
+                                  startFrame: frame,
+                                  endFrame: frame,
+                                );
+                              }
+                              appData.update();
+                              layoutAnimationRigsKey.currentState
+                                  ?.updateForm(appData);
+                            },
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: cdkColors.backgroundSecondary1,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: borderColor,
+                                  width: isActive
+                                      ? 2.2
+                                      : (inSelection ? 1.8 : 1.0),
+                                ),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(3),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: canDrawFramePreview
+                                            ? CustomPaint(
+                                                painter:
+                                                    _AnimationRigFramePreviewPainter(
+                                                  image: sourceImage,
+                                                  frameWidth: frameWidth,
+                                                  frameHeight: frameHeight,
+                                                  columns: columns,
+                                                  frameIndex: frame,
+                                                ),
+                                              )
+                                            : Center(
+                                                child: CDKText(
+                                                  '$frame',
+                                                  role: CDKTextRole.caption,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 2,
+                                    bottom: 2,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 1,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xAA000000),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: CDKText(
+                                        '$frame',
+                                        role: CDKTextRole.caption,
+                                        color: CupertinoColors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appData = Provider.of<AppData>(context);
@@ -1908,6 +2336,10 @@ class _LayoutState extends State<Layout> {
                                 child: Stack(
                                   children: [
                                     Positioned.fill(
+                                      bottom: appData.selectedSection ==
+                                              "animation_rigs"
+                                          ? _animationRigFrameStripReservedHeight
+                                          : 0,
                                       child: Listener(
                                         onPointerDown: (_) =>
                                             _isPointerDown = true,
@@ -2412,13 +2844,22 @@ class _LayoutState extends State<Layout> {
                                                         animation =
                                                         _selectedAnimationForRig(
                                                             appData);
-                                                    if (animation != null &&
-                                                        hitBoxIndex <
-                                                            animation.hitBoxes
-                                                                .length) {
+                                                    if (animation != null) {
+                                                      final GameAnimationFrameRig
+                                                          activeRig =
+                                                          _activeAnimationRig(
+                                                        appData,
+                                                        animation,
+                                                        writeBack: true,
+                                                      );
+                                                      if (hitBoxIndex >=
+                                                          activeRig.hitBoxes
+                                                              .length) {
+                                                        return;
+                                                      }
                                                       final Rect hitRect =
                                                           _animationRigHitBoxRectImage(
-                                                        animation.hitBoxes[
+                                                        activeRig.hitBoxes[
                                                             hitBoxIndex],
                                                         frameSize,
                                                       );
@@ -3260,6 +3701,14 @@ class _LayoutState extends State<Layout> {
                                         appData,
                                         viewportSize,
                                       ),
+                                    if (appData.selectedSection ==
+                                        "animation_rigs")
+                                      _buildAnimationRigGridOverlay(appData),
+                                    if (appData.selectedSection ==
+                                        "animation_rigs")
+                                      _buildAnimationRigFrameStripOverlay(
+                                        appData,
+                                      ),
                                   ],
                                 ),
                               );
@@ -3292,6 +3741,81 @@ class _LayoutState extends State<Layout> {
         ),
       ),
     );
+  }
+}
+
+class _AnimationRigFramePreviewPainter extends CustomPainter {
+  const _AnimationRigFramePreviewPainter({
+    required this.image,
+    required this.frameWidth,
+    required this.frameHeight,
+    required this.columns,
+    required this.frameIndex,
+  });
+
+  final ui.Image image;
+  final double frameWidth;
+  final double frameHeight;
+  final int columns;
+  final int frameIndex;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint bgA = Paint()..color = const Color(0xFFE8E8E8);
+    final Paint bgB = Paint()..color = const Color(0xFFD8D8D8);
+    const double checker = 8.0;
+    for (double y = 0; y < size.height; y += checker) {
+      for (double x = 0; x < size.width; x += checker) {
+        final bool even =
+            ((x / checker).floor() + (y / checker).floor()) % 2 == 0;
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, checker, checker),
+          even ? bgA : bgB,
+        );
+      }
+    }
+
+    if (frameWidth <= 0 || frameHeight <= 0 || columns <= 0) {
+      return;
+    }
+    final int row = frameIndex ~/ columns;
+    final int col = frameIndex % columns;
+    final Rect src = Rect.fromLTWH(
+      col * frameWidth,
+      row * frameHeight,
+      frameWidth,
+      frameHeight,
+    );
+    if (src.right > image.width || src.bottom > image.height) {
+      return;
+    }
+    final double fitScale =
+        (size.width / frameWidth) < (size.height / frameHeight)
+            ? (size.width / frameWidth)
+            : (size.height / frameHeight);
+    final double drawWidth = frameWidth * fitScale;
+    final double drawHeight = frameHeight * fitScale;
+    final Rect dst = Rect.fromLTWH(
+      (size.width - drawWidth) / 2,
+      (size.height - drawHeight) / 2,
+      drawWidth,
+      drawHeight,
+    );
+    canvas.drawImageRect(
+      image,
+      src,
+      dst,
+      Paint()..filterQuality = FilterQuality.none,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnimationRigFramePreviewPainter oldDelegate) {
+    return oldDelegate.image != image ||
+        oldDelegate.frameWidth != frameWidth ||
+        oldDelegate.frameHeight != frameHeight ||
+        oldDelegate.columns != columns ||
+        oldDelegate.frameIndex != frameIndex;
   }
 }
 

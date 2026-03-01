@@ -448,6 +448,73 @@ class LayoutUtils {
     return start + offset;
   }
 
+  static _AnimationFrameRange _animationRigSelectedFrameRange({
+    required AppData appData,
+    required GameAnimation animation,
+    required int totalFrames,
+    bool writeBack = false,
+  }) {
+    final int safeTotal = math.max(1, totalFrames);
+    final int animationStart = animation.startFrame.clamp(0, safeTotal - 1);
+    final int animationEnd =
+        animation.endFrame.clamp(animationStart, safeTotal - 1);
+
+    int selectedStart = appData.animationRigSelectionStartFrame;
+    int selectedEnd = appData.animationRigSelectionEndFrame;
+    if (selectedStart < 0 || selectedEnd < 0) {
+      selectedStart = animationStart;
+      selectedEnd = animationEnd;
+    }
+    selectedStart = selectedStart.clamp(animationStart, animationEnd);
+    selectedEnd = selectedEnd.clamp(animationStart, animationEnd);
+    final int normalizedStart = math.min(selectedStart, selectedEnd);
+    final int normalizedEnd = math.max(selectedStart, selectedEnd);
+
+    if (writeBack &&
+        (appData.animationRigSelectionStartFrame != normalizedStart ||
+            appData.animationRigSelectionEndFrame != normalizedEnd)) {
+      appData.animationRigSelectionStartFrame = normalizedStart;
+      appData.animationRigSelectionEndFrame = normalizedEnd;
+    }
+    return _AnimationFrameRange(
+      start: normalizedStart,
+      end: normalizedEnd,
+    );
+  }
+
+  static List<int> animationRigSelectedFrames({
+    required AppData appData,
+    required GameAnimation animation,
+    required int totalFrames,
+    bool writeBack = false,
+  }) {
+    final _AnimationFrameRange range = _animationRigSelectedFrameRange(
+      appData: appData,
+      animation: animation,
+      totalFrames: totalFrames,
+      writeBack: writeBack,
+    );
+    return List<int>.generate(
+      range.end - range.start + 1,
+      (index) => range.start + index,
+      growable: false,
+    );
+  }
+
+  static int animationRigPlaybackFrameIndex({
+    required AppData appData,
+    required GameAnimation animation,
+    required int totalFrames,
+  }) {
+    final _AnimationFrameRange range = _animationRigSelectedFrameRange(
+      appData: appData,
+      animation: animation,
+      totalFrames: totalFrames,
+      writeBack: true,
+    );
+    return range.start;
+  }
+
   static Future<ui.Image> drawCanvasImageEmpty(AppData appData) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -751,15 +818,16 @@ class LayoutUtils {
     final _AnimationGridInfo? gridInfo =
         await _selectedAnimationGridInfo(appData);
     if (gridInfo == null) {
+      appData.animationRigActiveFrame = -1;
       return await drawCanvasImageEmpty(appData);
     }
 
-    final int frameIndex = animationPlaybackFrameIndex(
+    final int frameIndex = animationRigPlaybackFrameIndex(
       appData: appData,
       animation: gridInfo.animation,
       totalFrames: gridInfo.totalFrames,
-      forceLoop: true,
     );
+    appData.animationRigActiveFrame = frameIndex;
     final int row = frameIndex ~/ gridInfo.cols;
     final int col = frameIndex % gridInfo.cols;
     final double frameWidth = gridInfo.media.tileWidth.toDouble();
@@ -1627,4 +1695,14 @@ class _AnimationGridInfo {
   final int cols;
   final int rows;
   final int totalFrames;
+}
+
+class _AnimationFrameRange {
+  const _AnimationFrameRange({
+    required this.start,
+    required this.end,
+  });
+
+  final int start;
+  final int end;
 }

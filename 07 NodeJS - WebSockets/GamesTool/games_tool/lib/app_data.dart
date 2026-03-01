@@ -101,6 +101,9 @@ class AppData extends ChangeNotifier {
   int selectedAnimation = -1;
   int selectedAnimationHitBox = -1;
   bool animationRigShowPixelGrid = true;
+  int animationRigSelectionStartFrame = -1;
+  int animationRigSelectionEndFrame = -1;
+  int animationRigActiveFrame = -1;
   int selectedMedia = -1;
   int animationSelectionStartFrame = -1;
   int animationSelectionEndFrame = -1;
@@ -1699,6 +1702,10 @@ class AppData extends ChangeNotifier {
     selectedSprite = -1;
     selectedSpriteIndices = <int>{};
     selectedAnimation = -1;
+    selectedAnimationHitBox = -1;
+    animationRigSelectionStartFrame = -1;
+    animationRigSelectionEndFrame = -1;
+    animationRigActiveFrame = -1;
     selectedMedia = -1;
     animationSelectionStartFrame = -1;
     animationSelectionEndFrame = -1;
@@ -1809,6 +1816,10 @@ class AppData extends ChangeNotifier {
     selectedSprite = -1;
     selectedSpriteIndices = <int>{};
     selectedAnimation = -1;
+    selectedAnimationHitBox = -1;
+    animationRigSelectionStartFrame = -1;
+    animationRigSelectionEndFrame = -1;
+    animationRigActiveFrame = -1;
     selectedMedia = -1;
     animationSelectionStartFrame = -1;
     animationSelectionEndFrame = -1;
@@ -2216,6 +2227,10 @@ class AppData extends ChangeNotifier {
       selectedSprite = -1;
       selectedSpriteIndices = <int>{};
       selectedAnimation = -1;
+      selectedAnimationHitBox = -1;
+      animationRigSelectionStartFrame = -1;
+      animationRigSelectionEndFrame = -1;
+      animationRigActiveFrame = -1;
       selectedMedia = -1;
       animationSelectionStartFrame = -1;
       animationSelectionEndFrame = -1;

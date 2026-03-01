@@ -132,6 +132,10 @@ class CanvasPainter extends CustomPainter {
     }
     final GameAnimation animation =
         appData.gameData.animations[appData.selectedAnimation];
+    final int activeFrame = appData.animationRigActiveFrame >= 0
+        ? appData.animationRigActiveFrame
+        : animation.startFrame;
+    final GameAnimationFrameRig rig = animation.rigForFrame(activeFrame);
 
     if (appData.animationRigShowPixelGrid) {
       _paintAnimationRigPixelGrid(
@@ -143,14 +147,13 @@ class CanvasPainter extends CustomPainter {
       );
     }
 
-    final double anchorX = animation.anchorX.clamp(0.0, 1.0);
-    final double anchorY = animation.anchorY.clamp(0.0, 1.0);
+    final double anchorX = rig.anchorX.clamp(0.0, 1.0);
+    final double anchorY = rig.anchorY.clamp(0.0, 1.0);
     final Offset anchorCenter = Offset(
       dx + scaledWidth * anchorX,
       dy + scaledHeight * anchorY,
     );
-    final Color anchorColor =
-        LayoutUtils.getColorFromName(animation.anchorColor);
+    final Color anchorColor = LayoutUtils.getColorFromName(rig.anchorColor);
     const double anchorRadius = 6.0;
     canvas.drawCircle(
       anchorCenter,
@@ -176,8 +179,8 @@ class CanvasPainter extends CustomPainter {
     );
 
     final int selectedIndex = appData.selectedAnimationHitBox;
-    for (int i = 0; i < animation.hitBoxes.length; i++) {
-      final GameAnimationHitBox hitBox = animation.hitBoxes[i];
+    for (int i = 0; i < rig.hitBoxes.length; i++) {
+      final GameAnimationHitBox hitBox = rig.hitBoxes[i];
       final Rect rect = Rect.fromLTWH(
         dx + scaledWidth * hitBox.x.clamp(0.0, 1.0),
         dy + scaledHeight * hitBox.y.clamp(0.0, 1.0),

@@ -51,8 +51,10 @@ class EditorFormDialogScaffold extends StatelessWidget {
             children: [
               CDKText(title, role: CDKTextRole.title),
               SizedBox(height: spacing.md),
-              CDKText(description, role: CDKTextRole.body),
-              SizedBox(height: spacing.md),
+              if (description.trim().isNotEmpty) ...[
+                CDKText(description, role: CDKTextRole.body),
+                SizedBox(height: spacing.md),
+              ],
               body,
               SizedBox(height: spacing.lg + spacing.sm),
               Row(

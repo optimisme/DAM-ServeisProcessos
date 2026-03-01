@@ -18,6 +18,8 @@ class LayoutProjectsMain extends StatefulWidget {
 
 enum _MissingProjectAction { relink, remove }
 
+enum _ProjectDeleteAction { deleteFolder, unlinkOnly }
+
 class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
   final GlobalKey _selectedEditAnchorKey = GlobalKey();
   bool _isResolvingMissingProjects = false;
@@ -139,6 +141,8 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
     String? editingProjectId,
     GlobalKey? anchorKey,
     bool useArrowedPopover = false,
+    bool liveEditMode = false,
+    Future<void> Function(String value)? onNameAutoSave,
     VoidCallback? onDelete,
     VoidCallback? onChangeFolder,
   }) async {
@@ -157,7 +161,9 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
       confirmLabel: confirmLabel,
       initialName: initialName,
       projectPath: projectPath,
+      liveEditMode: liveEditMode,
       existingNames: existingNames,
+      onNameAutoSave: onNameAutoSave,
       onConfirm: (value) {
         result = value;
         controller.close();
@@ -243,7 +249,8 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
     StoredProject project,
     GlobalKey anchorKey,
   ) async {
-    final _ProjectDialogData? data = await _promptProjectData(
+    String currentProjectId = project.id;
+    await _promptProjectData(
       title: "Edit project",
       confirmLabel: "Save",
       initialName: project.name,
@@ -251,13 +258,25 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
       editingProjectId: project.id,
       anchorKey: anchorKey,
       useArrowedPopover: true,
+      liveEditMode: true,
+      onNameAutoSave: (String value) async {
+        final AppData appData = Provider.of<AppData>(context, listen: false);
+        await appData.updateProjectInfo(
+          currentProjectId,
+          newName: value,
+        );
+      },
       onDelete: () async {
-        final bool confirmed = await _confirmDelete(context, project.name);
-        if (!confirmed || !mounted) {
+        final _ProjectDeleteAction? deleteAction =
+            await _promptDeleteAction(project);
+        if (deleteAction == null || !mounted) {
           return;
         }
         final AppData appData = Provider.of<AppData>(context, listen: false);
-        await appData.deleteProject(project.id);
+        await appData.deleteProject(
+          project.id,
+          deleteFolder: deleteAction == _ProjectDeleteAction.deleteFolder,
+        );
       },
       onChangeFolder: () async {
         final AppData appData = Provider.of<AppData>(context, listen: false);
@@ -285,29 +304,48 @@ class _LayoutProjectsMainState extends State<LayoutProjectsMain> {
           destinationRootPath: destinationRootPath,
           deleteOldFolderIfCopied: !keepOldFolder,
         );
+        final String selectedId = appData.selectedProjectId.trim();
+        if (selectedId.isNotEmpty) {
+          currentProjectId = selectedId;
+        }
       },
-    );
-    if (data == null || !mounted) {
-      return;
-    }
-    final AppData appData = Provider.of<AppData>(context, listen: false);
-    await appData.updateProjectInfo(
-      project.id,
-      newName: data.name,
     );
   }
 
-  Future<bool> _confirmDelete(BuildContext context, String projectName) async {
-    final bool? confirmed = await CDKDialogsManager.showConfirm(
+  Future<_ProjectDeleteAction?> _promptDeleteAction(
+    StoredProject project,
+  ) async {
+    final CDKDialogController controller = CDKDialogController();
+    final Completer<_ProjectDeleteAction?> completer =
+        Completer<_ProjectDeleteAction?>();
+    _ProjectDeleteAction? result;
+
+    CDKDialogsManager.showModal(
       context: context,
-      title: "Delete project",
-      message: "Delete \"$projectName\" permanently?",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      isDestructive: true,
+      dismissOnEscape: true,
+      dismissOnOutsideTap: true,
       showBackgroundShade: true,
+      controller: controller,
+      onHide: () {
+        if (!completer.isCompleted) {
+          completer.complete(result);
+        }
+      },
+      child: _DeleteProjectDialog(
+        projectName: project.name,
+        projectPath: project.folderPath,
+        onDeleteFolder: () {
+          result = _ProjectDeleteAction.deleteFolder;
+          controller.close();
+        },
+        onUnlinkOnly: () {
+          result = _ProjectDeleteAction.unlinkOnly;
+          controller.close();
+        },
+        onCancel: controller.close,
+      ),
     );
-    return confirmed ?? false;
+    return completer.future;
   }
 
   String _formatLastModified(String updatedAtRaw) {
@@ -516,7 +554,9 @@ class _ProjectFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialName,
     this.projectPath,
+    this.liveEditMode = false,
     required this.existingNames,
+    this.onNameAutoSave,
     required this.onConfirm,
     required this.onCancel,
     this.onDelete,
@@ -527,7 +567,9 @@ class _ProjectFormDialog extends StatefulWidget {
   final String confirmLabel;
   final String initialName;
   final String? projectPath;
+  final bool liveEditMode;
   final Set<String> existingNames;
+  final Future<void> Function(String value)? onNameAutoSave;
   final ValueChanged<_ProjectDialogData> onConfirm;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
@@ -541,6 +583,8 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
   late final TextEditingController _nameController =
       TextEditingController(text: widget.initialName);
   final FocusNode _nameFocusNode = FocusNode();
+  late String _lastSavedName = widget.initialName.trim();
+  bool _savingName = false;
   String? _errorText;
 
   bool get _isValid {
@@ -575,9 +619,36 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
     );
   }
 
+  Future<void> _saveNameIfNeeded() async {
+    if (!widget.liveEditMode || widget.onNameAutoSave == null || _savingName) {
+      return;
+    }
+    final String cleaned = _nameController.text.trim();
+    _validateName(cleaned);
+    if (!_isValid || cleaned == _lastSavedName) {
+      return;
+    }
+    setState(() {
+      _savingName = true;
+    });
+    await widget.onNameAutoSave!(cleaned);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _lastSavedName = cleaned;
+      _savingName = false;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    _nameFocusNode.addListener(() {
+      if (!_nameFocusNode.hasFocus) {
+        _saveNameIfNeeded();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _nameFocusNode.requestFocus();
@@ -598,11 +669,12 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
     final typography = CDKThemeNotifier.typographyTokensOf(context);
     return EditorFormDialogScaffold(
       title: widget.title,
-      description: 'Set project name.',
+      description: widget.liveEditMode ? '' : 'Set project name.',
       confirmLabel: widget.confirmLabel,
       confirmEnabled: _isValid,
       onConfirm: _confirm,
       onCancel: widget.onCancel,
+      liveEditMode: widget.liveEditMode,
       onDelete: widget.onDelete,
       minWidth: 340,
       maxWidth: 460,
@@ -610,15 +682,29 @@ class _ProjectFormDialogState extends State<_ProjectFormDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           EditorLabeledField(
-            label: 'Name',
+            label: 'Project name',
             child: CDKFieldText(
               placeholder: 'Project name',
               controller: _nameController,
               focusNode: _nameFocusNode,
               onChanged: _validateName,
-              onSubmitted: (_) => _confirm(),
+              onSubmitted: (_) {
+                if (widget.liveEditMode) {
+                  _saveNameIfNeeded();
+                  return;
+                }
+                _confirm();
+              },
             ),
           ),
+          if (widget.liveEditMode && _savingName) ...[
+            SizedBox(height: spacing.xs),
+            const CDKText(
+              'Saving...',
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+          ],
           if (_errorText != null) ...[
             SizedBox(height: spacing.xs),
             CDKText(
@@ -722,6 +808,89 @@ class _MissingProjectDialog extends StatelessWidget {
                   style: CDKButtonStyle.action,
                   onPressed: onRelink,
                   child: const Text("Relink"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteProjectDialog extends StatelessWidget {
+  const _DeleteProjectDialog({
+    required this.projectName,
+    required this.projectPath,
+    required this.onDeleteFolder,
+    required this.onUnlinkOnly,
+    required this.onCancel,
+  });
+
+  final String projectName;
+  final String projectPath;
+  final VoidCallback onDeleteFolder;
+  final VoidCallback onUnlinkOnly;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = CDKThemeNotifier.spacingTokensOf(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 420, maxWidth: 560),
+      child: Padding(
+        padding: EdgeInsets.all(spacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CDKText(
+              'Delete "$projectName"',
+              role: CDKTextRole.bodyStrong,
+            ),
+            SizedBox(height: spacing.sm),
+            const CDKText(
+              'Choose what to do with the project folder contents:',
+              role: CDKTextRole.body,
+            ),
+            SizedBox(height: spacing.xs),
+            CDKText(
+              projectPath,
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+            SizedBox(height: spacing.md),
+            const CDKText(
+              'Delete folder: remove project from list and permanently delete the folder and files.',
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+            SizedBox(height: spacing.xs),
+            const CDKText(
+              'Unlink only: remove project from list but keep folder and files on disk.',
+              role: CDKTextRole.caption,
+              secondary: true,
+            ),
+            SizedBox(height: spacing.lg),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  onPressed: onCancel,
+                  child: const Text('Cancel'),
+                ),
+                SizedBox(width: spacing.sm),
+                CDKButton(
+                  style: CDKButtonStyle.normal,
+                  onPressed: onUnlinkOnly,
+                  child: const Text('Unlink Only'),
+                ),
+                SizedBox(width: spacing.sm),
+                CDKButton(
+                  style: CDKButtonStyle.destructive,
+                  onPressed: onDeleteFolder,
+                  child: const Text('Delete Folder'),
                 ),
               ],
             ),

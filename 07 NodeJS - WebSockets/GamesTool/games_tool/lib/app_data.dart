@@ -2117,7 +2117,10 @@ class AppData extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteProject(String projectId) async {
+  Future<bool> deleteProject(
+    String projectId, {
+    bool deleteFolder = true,
+  }) async {
     await flushPendingAutosave();
     final StoredProject? project = _findProjectById(projectId);
     if (project == null) {
@@ -2125,9 +2128,11 @@ class AppData extends ChangeNotifier {
     }
 
     try {
-      final Directory projectDirectory = Directory(project.folderPath);
-      if (await projectDirectory.exists()) {
-        await projectDirectory.delete(recursive: true);
+      if (deleteFolder) {
+        final Directory projectDirectory = Directory(project.folderPath);
+        if (await projectDirectory.exists()) {
+          await projectDirectory.delete(recursive: true);
+        }
       }
       _knownProjectPaths.removeWhere((path) => path == project.folderPath);
       _projectBookmarksByPath.remove(project.folderPath);
@@ -2138,7 +2143,9 @@ class AppData extends ChangeNotifier {
         _resetWorkingProjectData();
       }
       await _saveProjectsIndex();
-      projectStatusMessage = "Deleted project \"${project.name}\"";
+      projectStatusMessage = deleteFolder
+          ? "Deleted project \"${project.name}\" and its folder"
+          : "Unlinked project \"${project.name}\" (folder kept)";
       notifyListeners();
       return true;
     } catch (e) {

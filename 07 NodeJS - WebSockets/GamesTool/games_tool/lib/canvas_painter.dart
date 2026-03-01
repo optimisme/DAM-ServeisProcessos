@@ -137,15 +137,13 @@ class CanvasPainter extends CustomPainter {
         : animation.startFrame;
     final GameAnimationFrameRig rig = animation.rigForFrame(activeFrame);
 
-    if (appData.animationRigShowPixelGrid) {
-      _paintAnimationRigPixelGrid(
-        canvas,
-        dx: dx,
-        dy: dy,
-        scaledWidth: scaledWidth,
-        scaledHeight: scaledHeight,
-      );
-    }
+    _paintAnimationRigPixelGrid(
+      canvas,
+      dx: dx,
+      dy: dy,
+      scaledWidth: scaledWidth,
+      scaledHeight: scaledHeight,
+    );
 
     final int selectedIndex = appData.selectedAnimationHitBox;
     for (int i = 0; i < rig.hitBoxes.length; i++) {

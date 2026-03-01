@@ -1,6 +1,6 @@
 part of 'layout.dart';
 
-/// Animation-rig canvas overlay widgets (grid toggle & frame strip).
+/// Animation-rig canvas overlay widgets (frame strip).
 extension _LayoutAnimationRigUI on _LayoutState {
   int? _animationRigFrameFromGlobalPosition({
     required Offset globalPosition,
@@ -57,11 +57,6 @@ extension _LayoutAnimationRigUI on _LayoutState {
       writeBack: true,
     );
     final Set<int> selectedSet = selectedFrames.toSet();
-    final List<int> sortedSelected = selectedSet.toList(growable: false)
-      ..sort();
-    final String selectionLabel = sortedSelected.length <= 1
-        ? 'Frame selected: ${sortedSelected.isEmpty ? animationStart : sortedSelected.first}'
-        : 'Frames selected: ${sortedSelected.join(',')}';
     final int primarySelectedFrame =
         selectedFrames.isEmpty ? activeFrame : selectedFrames.first;
     final ui.Image? sourceImage = appData.imagesCache[animation.mediaFile];
@@ -79,7 +74,7 @@ extension _LayoutAnimationRigUI on _LayoutState {
         : 1;
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
     const Color selectionColor = Color(0xFFFF9800);
-    const double frameTileExtent = 74.0;
+    const double frameTileExtent = 58.0;
     const double frameSpacing = 0.0;
 
     return Align(
@@ -88,7 +83,7 @@ extension _LayoutAnimationRigUI on _LayoutState {
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
         child: Container(
           height: _LayoutState._animationRigFrameStripReservedHeight,
-          padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+          padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
           decoration: BoxDecoration(
             color: cdkColors.background,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
@@ -101,54 +96,6 @@ extension _LayoutAnimationRigUI on _LayoutState {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  CDKText(
-                    'Show Grid',
-                    role: CDKTextRole.caption,
-                    color: cdkColors.colorText,
-                  ),
-                  const SizedBox(width: 8),
-                  CDKButtonSwitch(
-                    value: appData.animationRigShowPixelGrid,
-                    size: 18,
-                    onChanged: (value) {
-                      appData.animationRigShowPixelGrid = value;
-                      appData.update();
-                    },
-                  ),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: CDKText(
-                        selectionLabel,
-                        role: CDKTextRole.caption,
-                        secondary: true,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  CupertinoButton(
-                    key: _animationRigEditorAnchorKey,
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: const Size(20, 20),
-                    onPressed: () {
-                      layoutAnimationRigsKey.currentState
-                          ?.showSelectedAnimationRigEditorPopover(
-                        appData,
-                        _animationRigEditorAnchorKey,
-                      );
-                    },
-                    child: Icon(
-                      CupertinoIcons.ellipsis_circle,
-                      size: 18,
-                      color: cdkColors.colorText,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {

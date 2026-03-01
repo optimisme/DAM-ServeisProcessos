@@ -56,7 +56,7 @@ class Layout extends StatefulWidget {
 enum _LayersCanvasTool { arrow, hand }
 
 class _LayoutState extends State<Layout> {
-  static const double _animationRigFrameStripReservedHeight = 120.0;
+  static const double _animationRigFrameStripReservedHeight = 74.0;
 
   // Clau del layout escollit
   final GlobalKey<LayoutSpritesState> layoutSpritesKey =
@@ -68,7 +68,6 @@ class _LayoutState extends State<Layout> {
   final GlobalKey<LayoutAnimationRigsState> layoutAnimationRigsKey =
       GlobalKey<LayoutAnimationRigsState>();
   final GlobalKey _animationRigFrameStripRowKey = GlobalKey();
-  final GlobalKey _animationRigEditorAnchorKey = GlobalKey();
 
   // ignore: unused_field
   Timer? _timer;
@@ -578,15 +577,14 @@ class _LayoutState extends State<Layout> {
                                           ),
                                         ),
                                       ),
-                                    if (appData.selectedSection == "layers" ||
+                                    if (_usesWorldViewportSection(
+                                          appData.selectedSection,
+                                        ) ||
+                                        appData.selectedSection == "layers" ||
                                         appData.selectedSection == "zones" ||
                                         appData.selectedSection == "tilemap" ||
                                         appData.selectedSection == "sprites")
-                                      _buildLayersToolPickerOverlay(),
-                                    if (_usesWorldViewportSection(
-                                      appData.selectedSection,
-                                    ))
-                                      _buildWorldResetOverlay(
+                                      _buildWorldTopControlsOverlay(
                                         appData,
                                         viewportSize,
                                       ),

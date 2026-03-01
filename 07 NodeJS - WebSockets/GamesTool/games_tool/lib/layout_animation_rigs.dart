@@ -23,6 +23,7 @@ class LayoutAnimationRigs extends StatefulWidget {
 
 class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _selectedEditAnchorKey = GlobalKey();
 
   void updateForm(AppData appData) {
     if (!mounted) {
@@ -41,22 +42,6 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
       return 'Frame selected: ${sorted.first}';
     }
     return 'Frames selected: ${sorted.join(',')}';
-  }
-
-  void showSelectedAnimationRigEditorPopover(
-    AppData appData,
-    GlobalKey anchorKey,
-  ) {
-    if (!mounted) {
-      return;
-    }
-    final int selectedIndex = appData.selectedAnimation;
-    if (selectedIndex < 0 ||
-        selectedIndex >= appData.gameData.animations.length) {
-      return;
-    }
-    final GameAnimation animation = appData.gameData.animations[selectedIndex];
-    unawaited(_showAnimationRigPopover(appData, animation, anchorKey));
   }
 
   List<GameListGroup> _animationGroups(AppData appData) {
@@ -726,6 +711,29 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
                                       ],
                                     ),
                                   ),
+                                  if (isSelected)
+                                    MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      child: CupertinoButton(
+                                        key: _selectedEditAnchorKey,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                        ),
+                                        minimumSize: const Size(20, 20),
+                                        onPressed: () async {
+                                          await _showAnimationRigPopover(
+                                            appData,
+                                            animation,
+                                            _selectedEditAnchorKey,
+                                          );
+                                        },
+                                        child: Icon(
+                                          CupertinoIcons.ellipsis_circle,
+                                          size: 16,
+                                          color: cdkColors.colorText,
+                                        ),
+                                      ),
+                                    ),
                                   ReorderableDragStartListener(
                                     index: index,
                                     child: Padding(

@@ -173,30 +173,64 @@ extension _LayoutViewportTools on _LayoutState {
       _layersCanvasTool == _LayersCanvasTool.arrow;
   bool get _layersHandToolActive => _layersCanvasTool == _LayersCanvasTool.hand;
 
-  Widget _buildLayersToolPickerOverlay() {
+  Widget _buildLayersToolPicker() {
+    return SizedBox(
+      width: 80,
+      child: CDKPickerButtonsBar(
+        selectedStates: <bool>[_layersArrowToolActive, _layersHandToolActive],
+        options: const [
+          Icon(CupertinoIcons.cursor_rays),
+          Icon(CupertinoIcons.hand_raised),
+        ],
+        onChanged: (states) {
+          setState(() {
+            _layersCanvasTool = states.length > 1 && states[1] == true
+                ? _LayersCanvasTool.hand
+                : _LayersCanvasTool.arrow;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildWorldResetButton(AppData appData, Size viewportSize) {
+    final bool canReset = _usesWorldViewportSection(appData.selectedSection) &&
+        appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length;
+    return CDKButton(
+      style: CDKButtonStyle.normal,
+      onPressed:
+          canReset ? () => _resetWorldViewport(appData, viewportSize) : null,
+      child: const Icon(CupertinoIcons.viewfinder),
+    );
+  }
+
+  Widget _buildWorldTopControlsOverlay(AppData appData, Size viewportSize) {
+    final bool showToolPicker = appData.selectedSection == 'layers' ||
+        appData.selectedSection == 'tilemap' ||
+        appData.selectedSection == 'zones' ||
+        appData.selectedSection == 'sprites';
+    final bool showReset = _usesWorldViewportSection(appData.selectedSection);
+    if (!showToolPicker && !showReset) {
+      return const SizedBox.shrink();
+    }
     return Align(
-      alignment: Alignment.topRight,
+      alignment: Alignment.topCenter,
       child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: SizedBox(
-          width: 80,
-          child: CDKPickerButtonsBar(
-            selectedStates: <bool>[
-              _layersArrowToolActive,
-              _layersHandToolActive
-            ],
-            options: const [
-              Icon(CupertinoIcons.cursor_rays),
-              Icon(CupertinoIcons.hand_raised),
-            ],
-            onChanged: (states) {
-              setState(() {
-                _layersCanvasTool = states.length > 1 && states[1] == true
-                    ? _LayersCanvasTool.hand
-                    : _LayersCanvasTool.arrow;
-              });
-            },
-          ),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (showReset)
+              _buildWorldResetButton(appData, viewportSize)
+            else
+              const SizedBox.shrink(),
+            const Spacer(),
+            if (showToolPicker)
+              _buildLayersToolPicker()
+            else
+              const SizedBox.shrink(),
+          ],
         ),
       ),
     );
@@ -221,24 +255,5 @@ extension _LayoutViewportTools on _LayoutState {
     }
     _fitLevelLayersToViewport(appData, levelIndex, viewportSize);
     _lastAutoFramedLevelIndex = levelIndex;
-  }
-
-  Widget _buildWorldResetOverlay(AppData appData, Size viewportSize) {
-    final bool canReset = _usesWorldViewportSection(appData.selectedSection) &&
-        appData.selectedLevel >= 0 &&
-        appData.selectedLevel < appData.gameData.levels.length;
-    return Align(
-      alignment: Alignment.topLeft,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: CDKButton(
-          style: CDKButtonStyle.normal,
-          onPressed: canReset
-              ? () => _resetWorldViewport(appData, viewportSize)
-              : null,
-          child: const Icon(CupertinoIcons.viewfinder),
-        ),
-      ),
-    );
   }
 }

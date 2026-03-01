@@ -44,19 +44,69 @@ dades.sqlite
 __pycache__
 
 # Flutter/Dart/Pub related
+# Keep platform source/config folders (android/ios/macos/linux/windows/web) tracked.
+# Ignore only generated, machine-local, and build artifacts.
 **/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-build/
-*/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/build/
+**/coverage/
 .casperr/
-android/
-ios/
-web/
-windows/
-macos/
-linux/
+
+# Android generated/local files
+**/android/.gradle/
+**/android/local.properties
+**/android/**/captures/
+
+# iOS generated files
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Runner.xcworkspace/xcuserdata/
+
+# macOS generated files
+**/macos/Flutter/ephemeral/
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/Pods/
+**/macos/Runner.xcworkspace/xcuserdata/
+**/macos/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Linux generated files
+**/linux/flutter/ephemeral/
+**/linux/flutter/generated_plugin_registrant.*
+
+# Windows generated files
+**/windows/flutter/ephemeral/
+**/windows/flutter/generated_plugin_registrant.*
+
+# GamesTool policy: commit only personalized OS code/config, not full generated
+# platform scaffolding.
+**/GamesTool/game_example/android/
+**/GamesTool/game_example/ios/
+**/GamesTool/game_example/linux/
+**/GamesTool/game_example/macos/
+**/GamesTool/game_example/web/
+**/GamesTool/game_example/windows/
+
+**/GamesTool/games_tool/android/
+**/GamesTool/games_tool/ios/
+**/GamesTool/games_tool/linux/
+**/GamesTool/games_tool/web/
+**/GamesTool/games_tool/windows/
+
+# macOS in games_tool: keep only custom Runner files versioned.
+**/GamesTool/games_tool/macos/**
+!**/GamesTool/games_tool/macos/
+!**/GamesTool/games_tool/macos/Runner/
+!**/GamesTool/games_tool/macos/Runner/MainFlutterWindow.swift
+!**/GamesTool/games_tool/macos/Runner/DebugProfile.entitlements
+!**/GamesTool/games_tool/macos/Runner/Release.entitlements

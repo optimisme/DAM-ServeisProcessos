@@ -318,6 +318,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     required AppData appData,
     required String name,
     required String description,
+    required String gameplayData,
     required String backgroundColorHex,
     required double parallaxSensitivity,
     required String groupId,
@@ -329,6 +330,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     final newLevel = GameLevel(
       name: name,
       description: description,
+      gameplayData: gameplayData,
       layers: [],
       zones: [],
       sprites: [],
@@ -347,6 +349,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     required String confirmLabel,
     String initialName = "",
     String initialDescription = "",
+    String initialGameplayData = "",
     String initialBackgroundColorHex = "#DCDCE1",
     double initialParallaxSensitivity = GameLevel.defaultParallaxSensitivity,
     String initialGroupId = GameListGroup.mainId,
@@ -381,6 +384,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       confirmLabel: confirmLabel,
       initialName: initialName,
       initialDescription: initialDescription,
+      initialGameplayData: initialGameplayData,
       initialBackgroundColorHex: initialBackgroundColorHex,
       initialParallaxSensitivity: initialParallaxSensitivity,
       initialGroupId: initialGroupId,
@@ -463,6 +467,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       appData: appData,
       name: levelData.name,
       description: levelData.description,
+      gameplayData: levelData.gameplayData,
       backgroundColorHex: levelData.backgroundColorHex,
       parallaxSensitivity: levelData.parallaxSensitivity,
       groupId: levelData.groupId,
@@ -510,6 +515,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       confirmLabel: "Save",
       initialName: selected.name,
       initialDescription: selected.description,
+      initialGameplayData: selected.gameplayData,
       initialBackgroundColorHex: selected.backgroundColorHex,
       initialParallaxSensitivity: selected.parallaxSensitivity,
       initialGroupId: _effectiveLevelGroupId(appData, selected),
@@ -527,6 +533,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
               index: index,
               name: value.name,
               description: value.description,
+              gameplayData: value.gameplayData,
               backgroundColorHex: value.backgroundColorHex,
               parallaxSensitivity: value.parallaxSensitivity,
             );
@@ -542,6 +549,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
     required int index,
     required String name,
     required String description,
+    required String gameplayData,
     required String backgroundColorHex,
     required double parallaxSensitivity,
   }) {
@@ -550,6 +558,7 @@ class LayoutLevelsState extends State<LayoutLevels> {
       appData.gameData.levels[index] = GameLevel(
         name: name,
         description: description,
+        gameplayData: gameplayData,
         layers: previous.layers,
         layerGroups: previous.layerGroups,
         zones: previous.zones,
@@ -973,7 +982,8 @@ class LayoutLevelsState extends State<LayoutLevels> {
                                                   );
                                                 },
                                                 child: Icon(
-                                                  CupertinoIcons.ellipsis_circle,
+                                                  CupertinoIcons
+                                                      .ellipsis_circle,
                                                   size: 16,
                                                   color: cdkColors.colorText,
                                                 ),
@@ -1014,6 +1024,7 @@ class _LevelDialogData {
   const _LevelDialogData({
     required this.name,
     required this.description,
+    required this.gameplayData,
     required this.backgroundColorHex,
     required this.parallaxSensitivity,
     required this.groupId,
@@ -1021,6 +1032,7 @@ class _LevelDialogData {
 
   final String name;
   final String description;
+  final String gameplayData;
   final String backgroundColorHex;
   final double parallaxSensitivity;
   final String groupId;
@@ -1032,6 +1044,7 @@ class _LevelFormDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.initialName,
     required this.initialDescription,
+    required this.initialGameplayData,
     required this.initialBackgroundColorHex,
     required this.initialParallaxSensitivity,
     required this.initialGroupId,
@@ -1051,6 +1064,7 @@ class _LevelFormDialog extends StatefulWidget {
   final String confirmLabel;
   final String initialName;
   final String initialDescription;
+  final String initialGameplayData;
   final String initialBackgroundColorHex;
   final double initialParallaxSensitivity;
   final String initialGroupId;
@@ -1075,6 +1089,8 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
   );
   late final TextEditingController _descriptionController =
       TextEditingController(text: widget.initialDescription);
+  late final TextEditingController _gameplayDataController =
+      TextEditingController(text: widget.initialGameplayData);
   late final TextEditingController _parallaxSensitivityController =
       TextEditingController(
     text: widget.initialParallaxSensitivity.toString(),
@@ -1166,6 +1182,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
     return _LevelDialogData(
       name: _nameController.text.trim(),
       description: _descriptionController.text.trim(),
+      gameplayData: _gameplayDataController.text,
       backgroundColorHex: _backgroundColorHex,
       parallaxSensitivity:
           parsedParallaxSensitivity ?? GameLevel.defaultParallaxSensitivity,
@@ -1244,6 +1261,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
       _LevelDialogData(
         name: cleanedName,
         description: _descriptionController.text.trim(),
+        gameplayData: _gameplayDataController.text,
         backgroundColorHex: _backgroundColorHex,
         parallaxSensitivity: parsedParallaxSensitivity,
         groupId: _selectedGroupId,
@@ -1262,6 +1280,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
         areEqual: (a, b) =>
             a.name == b.name &&
             a.description == b.description &&
+            a.gameplayData == b.gameplayData &&
             a.backgroundColorHex == b.backgroundColorHex &&
             a.parallaxSensitivity == b.parallaxSensitivity &&
             a.groupId == b.groupId,
@@ -1282,6 +1301,7 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
     }
     _nameController.dispose();
     _descriptionController.dispose();
+    _gameplayDataController.dispose();
     _parallaxSensitivityController.dispose();
     _nameFocusNode.dispose();
     super.dispose();
@@ -1389,34 +1409,69 @@ class _LevelFormDialogState extends State<_LevelFormDialog> {
               ),
             ],
           ),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            SizedBox(height: spacing.sm),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 240,
-                child: EditorLabeledField(
-                  label: widget.groupFieldLabel,
-                  child: CDKButtonSelect(
-                    selectedIndex: widget.groupOptions
-                        .indexWhere((group) => group.id == _selectedGroupId)
-                        .clamp(0, widget.groupOptions.length - 1),
-                    options: widget.groupOptions
-                        .map((group) => group.name.trim().isEmpty
-                            ? GameListGroup.defaultMainName
-                            : group.name)
-                        .toList(growable: false),
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedGroupId = widget.groupOptions[index].id;
-                      });
-                      _onInputChanged();
-                    },
+          SizedBox(height: spacing.sm),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: EditorLabeledField(
+                    label: widget.groupFieldLabel,
+                    child: CDKButtonSelect(
+                      selectedIndex: widget.groupOptions
+                          .indexWhere((group) => group.id == _selectedGroupId)
+                          .clamp(0, widget.groupOptions.length - 1),
+                      options: widget.groupOptions
+                          .map((group) => group.name.trim().isEmpty
+                              ? GameListGroup.defaultMainName
+                              : group.name)
+                          .toList(growable: false),
+                      onSelected: (int index) {
+                        setState(() {
+                          _selectedGroupId = widget.groupOptions[index].id;
+                        });
+                        _onInputChanged();
+                      },
+                    ),
                   ),
                 ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: EditorLabeledField(
+                    label: 'Gameplay data',
+                    child: CDKFieldText(
+                      placeholder: 'Gameplay data',
+                      controller: _gameplayDataController,
+                      onChanged: (_) => _onInputChanged(),
+                      onSubmitted: (_) {
+                        if (widget.liveEdit) {
+                          _onInputChanged();
+                          return;
+                        }
+                        _confirm();
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            EditorLabeledField(
+              label: 'Gameplay data',
+              child: CDKFieldText(
+                placeholder: 'Gameplay data',
+                controller: _gameplayDataController,
+                onChanged: (_) => _onInputChanged(),
+                onSubmitted: (_) {
+                  if (widget.liveEdit) {
+                    _onInputChanged();
+                    return;
+                  }
+                  _confirm();
+                },
               ),
             ),
-          ],
           if (_errorText != null) ...[
             SizedBox(height: spacing.sm),
             Text(

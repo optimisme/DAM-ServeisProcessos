@@ -4,7 +4,12 @@ part of 'layout.dart';
 extension _LayoutLayerSelection on _LayoutState {
   bool _isLayerSelectionModifierPressed() {
     final HardwareKeyboard keyboard = HardwareKeyboard.instance;
-    return keyboard.isShiftPressed ||
+    return _selectionModifierShiftPressed ||
+        _selectionModifierAltPressed ||
+        _selectionModifierControlPressed ||
+        _selectionModifierMetaPressed ||
+        keyboard.isShiftPressed ||
+        keyboard.isAltPressed ||
         keyboard.isControlPressed ||
         keyboard.isMetaPressed;
   }
@@ -273,6 +278,7 @@ extension _LayoutLayerSelection on _LayoutState {
       }
       layers[layerIndex] = GameLayer(
         name: oldLayer.name,
+        gameplayData: oldLayer.gameplayData,
         x: newX,
         y: newY,
         depth: oldLayer.depth,

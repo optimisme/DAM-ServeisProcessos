@@ -4,7 +4,8 @@ part of 'layout.dart';
 
 /// Gesture handlers extracted from the build() GestureDetector closures.
 extension _LayoutGestures on _LayoutState {
-  Future<void> _handlePanStart(AppData appData, DragStartDetails details) async {
+  Future<void> _handlePanStart(
+      AppData appData, DragStartDetails details) async {
     if (!_isPointerDown) {
       return;
     }
@@ -88,7 +89,13 @@ extension _LayoutGestures on _LayoutState {
         appData.update();
       }
     } else if (appData.selectedSection == "tilemap") {
+      _consumeTilemapTapUp = false;
       if (_layersHandToolActive) {
+        _isPaintingTilemap = false;
+        _didModifyTilemapDuringGesture = false;
+        return;
+      }
+      if (_isLayerSelectionModifierPressed()) {
         _isPaintingTilemap = false;
         _didModifyTilemapDuringGesture = false;
         return;
@@ -105,8 +112,7 @@ extension _LayoutGestures on _LayoutState {
           LayoutUtils.hasTilePatternSelection(appData);
       final bool startsInsideLayer =
           LayoutUtils.getTilemapCoords(appData, details.localPosition) != null;
-      _isPaintingTilemap =
-          startsInsideLayer && (useEraser || hasTileSelection);
+      _isPaintingTilemap = startsInsideLayer && (useEraser || hasTileSelection);
       _didModifyTilemapDuringGesture = false;
       if (_isPaintingTilemap) {
         final bool changed = useEraser
@@ -166,8 +172,7 @@ extension _LayoutGestures on _LayoutState {
                 ..._selectedZoneIndices,
               }
             : <int>{};
-        final bool selectionChanged =
-            _applyZoneMarqueeSelection(appData);
+        final bool selectionChanged = _applyZoneMarqueeSelection(appData);
         setState(() {});
         if (selectionChanged) {
           appData.update();
@@ -281,6 +286,22 @@ extension _LayoutGestures on _LayoutState {
         return;
       }
 
+      final bool anchorGrabbed = _animationRigAnchorHitFromLocalPosition(
+        appData,
+        details.localPosition,
+      );
+      if (anchorGrabbed) {
+        final bool selectionChanged = appData.selectedAnimationHitBox != -1;
+        appData.selectedAnimationHitBox = -1;
+        appData.pushUndo();
+        _isDraggingAnimationRigAnchor = true;
+        if (selectionChanged) {
+          appData.update();
+          layoutAnimationRigsKey.currentState?.updateForm(appData);
+        }
+        return;
+      }
+
       final int resizeHitBoxIndex =
           _animationRigResizeHitBoxIndexFromLocalPosition(
         appData,
@@ -308,8 +329,7 @@ extension _LayoutGestures on _LayoutState {
           requireInside: false,
         );
         if (frameSize != null && imageCoords != null) {
-          final GameAnimation? animation =
-              _selectedAnimationForRig(appData);
+          final GameAnimation? animation = _selectedAnimationForRig(appData);
           if (animation != null) {
             final GameAnimationFrameRig activeRig = _activeAnimationRig(
               appData,
@@ -323,8 +343,7 @@ extension _LayoutGestures on _LayoutState {
               activeRig.hitBoxes[hitBoxIndex],
               frameSize,
             );
-            _animationRigHitBoxDragOffset =
-                imageCoords - hitRect.topLeft;
+            _animationRigHitBoxDragOffset = imageCoords - hitRect.topLeft;
             appData.pushUndo();
             _isDraggingAnimationRigHitBox = true;
           }
@@ -333,27 +352,11 @@ extension _LayoutGestures on _LayoutState {
         layoutAnimationRigsKey.currentState?.updateForm(appData);
         return;
       }
-
-      final bool anchorGrabbed =
-          _animationRigAnchorHitFromLocalPosition(
-        appData,
-        details.localPosition,
-      );
-      if (anchorGrabbed) {
-        final bool selectionChanged =
-            appData.selectedAnimationHitBox != -1;
-        appData.selectedAnimationHitBox = -1;
-        appData.pushUndo();
-        _isDraggingAnimationRigAnchor = true;
-        if (selectionChanged) {
-          appData.update();
-          layoutAnimationRigsKey.currentState?.updateForm(appData);
-        }
-      }
     }
   }
 
-  Future<void> _handlePanUpdate(AppData appData, DragUpdateDetails details) async {
+  Future<void> _handlePanUpdate(
+      AppData appData, DragUpdateDetails details) async {
     if (appData.selectedSection == "levels") {
       if (_isPointerDown) {
         appData.layersViewOffset += details.delta;
@@ -363,12 +366,10 @@ extension _LayoutGestures on _LayoutState {
       if (!_isPointerDown) {
         // scroll-triggered pan — ignore
       } else if (_isResizingViewport) {
-        LayoutUtils.resizeViewportFromCanvas(
-            appData, details.localPosition);
+        LayoutUtils.resizeViewportFromCanvas(appData, details.localPosition);
         appData.update();
       } else if (_isDraggingViewport) {
-        LayoutUtils.dragViewportFromCanvas(
-            appData, details.localPosition);
+        LayoutUtils.dragViewportFromCanvas(appData, details.localPosition);
         appData.update();
       } else {
         appData.layersViewOffset += details.delta;
@@ -418,8 +419,7 @@ extension _LayoutGestures on _LayoutState {
       } else if (_isPaintingTilemap) {
         final bool useEraser = appData.tilemapEraserEnabled;
         final bool isInsideLayer =
-            LayoutUtils.getTilemapCoords(
-                    appData, details.localPosition) !=
+            LayoutUtils.getTilemapCoords(appData, details.localPosition) !=
                 null;
         if (!isInsideLayer) {
           _isPaintingTilemap = false;
@@ -457,13 +457,11 @@ extension _LayoutGestures on _LayoutState {
           layoutZonesKey.currentState?.updateForm(appData);
         }
       } else if (_isResizingZone && appData.selectedZone != -1) {
-        LayoutUtils.resizeZoneFromCanvas(
-            appData, details.localPosition);
+        LayoutUtils.resizeZoneFromCanvas(appData, details.localPosition);
         _didModifyZoneDuringGesture = true;
         appData.update();
         layoutZonesKey.currentState?.updateForm(appData);
-      } else if (_isDraggingZone &&
-          _selectedZoneIndices.isNotEmpty) {
+      } else if (_isDraggingZone && _selectedZoneIndices.isNotEmpty) {
         final bool changed = _dragSelectedZones(
           appData,
           details.localPosition,
@@ -492,8 +490,7 @@ extension _LayoutGestures on _LayoutState {
           appData.update();
           layoutSpritesKey.currentState?.updateForm(appData);
         }
-      } else if (_isDraggingSprite &&
-          _selectedSpriteIndices.isNotEmpty) {
+      } else if (_isDraggingSprite && _selectedSpriteIndices.isNotEmpty) {
         final bool changed = _dragSelectedSprites(
           appData,
           details.localPosition,
@@ -713,6 +710,37 @@ extension _LayoutGestures on _LayoutState {
       if (selectionChanged) {
         appData.update();
       }
+    } else if (appData.selectedSection == "tilemap") {
+      if (_layersHandToolActive) {
+        return;
+      }
+      final bool additiveSelection = _isLayerSelectionModifierPressed();
+      _consumeTilemapTapUp = false;
+      if (!additiveSelection) {
+        return;
+      }
+      _consumeTilemapTapUp = true;
+      final int hitLayerIndex = LayoutUtils.selectLayerFromPosition(
+        appData,
+        details.localPosition,
+      );
+      if (hitLayerIndex == -1) {
+        return;
+      }
+      final Set<int> nextSelection = <int>{
+        ..._selectedLayerIndices,
+      };
+      if (!nextSelection.remove(hitLayerIndex)) {
+        nextSelection.add(hitLayerIndex);
+      }
+      final bool selectionChanged = _setLayerSelection(
+        appData,
+        nextSelection,
+        preferredPrimary: hitLayerIndex,
+      );
+      if (selectionChanged) {
+        appData.update();
+      }
     } else if (appData.selectedSection == "zones") {
       if (_layersHandToolActive) {
         return;
@@ -843,6 +871,18 @@ extension _LayoutGestures on _LayoutState {
         }
       }());
     } else if (appData.selectedSection == "animation_rigs") {
+      final bool anchorHit = _animationRigAnchorHitFromLocalPosition(
+        appData,
+        details.localPosition,
+      );
+      if (anchorHit) {
+        if (appData.selectedAnimationHitBox != -1) {
+          appData.selectedAnimationHitBox = -1;
+          appData.update();
+          layoutAnimationRigsKey.currentState?.updateForm(appData);
+        }
+        return;
+      }
       final int hitBoxIndex = _animationRigHitBoxIndexFromLocalPosition(
         appData,
         details.localPosition,
@@ -868,7 +908,14 @@ extension _LayoutGestures on _LayoutState {
 
   void _handleTapUp(AppData appData, TapUpDetails details) {
     if (appData.selectedSection == "tilemap") {
+      if (_consumeTilemapTapUp) {
+        _consumeTilemapTapUp = false;
+        return;
+      }
       if (_layersHandToolActive) {
+        return;
+      }
+      if (_isLayerSelectionModifierPressed()) {
         return;
       }
       if (_hasMultipleLayersSelected(

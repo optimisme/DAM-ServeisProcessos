@@ -66,8 +66,10 @@ class AppData extends ChangeNotifier {
   static const String mediaFolderName = "media";
   static const String tilemapsFolderName = "tilemaps";
   static const String zonesFolderName = "zones";
+  static const String animationsFolderName = "animations";
   static const String tileMapFileFieldName = "tileMapFile";
   static const String zonesFileFieldName = "zonesFile";
+  static const String animationsFileFieldName = "animationsFile";
   static const Color defaultTilesetSelectionColor = Color(0xFFFFCC00);
   int frame = 0;
   final gameFileName = "game_data.json";
@@ -101,6 +103,8 @@ class AppData extends ChangeNotifier {
   int selectedAnimation = -1;
   int selectedAnimationHitBox = -1;
   bool animationRigShowPixelGrid = true;
+  String animationRigSelectionAnimationId = "";
+  List<int> animationRigSelectedFrames = <int>[];
   int animationRigSelectionStartFrame = -1;
   int animationRigSelectionEndFrame = -1;
   int animationRigActiveFrame = -1;
@@ -1013,6 +1017,10 @@ class AppData extends ChangeNotifier {
     return '$zonesFolderName/level_${level}_zones.json';
   }
 
+  String _defaultAnimationsRelativePath() {
+    return '$animationsFolderName/animations.json';
+  }
+
   bool _isMediaRelativePath(String value) {
     final String normalized = _normalizeProjectRelativePath(value);
     if (normalized.isEmpty) {
@@ -1072,6 +1080,15 @@ class AppData extends ChangeNotifier {
       return normalized;
     }
     return _defaultZonesRelativePath(levelIndex);
+  }
+
+  String _normalizedAnimationsRelativePath(dynamic rawValue) {
+    final String candidate = rawValue is String ? rawValue : '';
+    final String normalized = _normalizeProjectRelativePath(candidate);
+    if (normalized.isNotEmpty && normalized.toLowerCase().endsWith('.json')) {
+      return normalized;
+    }
+    return _defaultAnimationsRelativePath();
   }
 
   String _relativePathFromProjectAbsolutePath(
@@ -1164,6 +1181,39 @@ class AppData extends ChangeNotifier {
     return <String, dynamic>{
       'zones': <Map<String, dynamic>>[],
       'zoneGroups': <Map<String, dynamic>>[],
+    };
+  }
+
+  Future<Map<String, dynamic>> _readExternalAnimationsData(
+    String absolutePath,
+  ) async {
+    final File file = File(absolutePath);
+    if (!await file.exists()) {
+      throw Exception("Missing animations file: ${file.path}");
+    }
+    final dynamic decoded = jsonDecode(await file.readAsString());
+    if (decoded is Map<String, dynamic>) {
+      return <String, dynamic>{
+        'animations': _parseObjectList(decoded['animations']),
+        'animationGroups': _parseObjectList(decoded['animationGroups']),
+      };
+    }
+    if (decoded is Map) {
+      final Map<String, dynamic> asMap = Map<String, dynamic>.from(decoded);
+      return <String, dynamic>{
+        'animations': _parseObjectList(asMap['animations']),
+        'animationGroups': _parseObjectList(asMap['animationGroups']),
+      };
+    }
+    if (decoded is List) {
+      return <String, dynamic>{
+        'animations': _parseObjectList(decoded),
+        'animationGroups': <Map<String, dynamic>>[],
+      };
+    }
+    return <String, dynamic>{
+      'animations': <Map<String, dynamic>>[],
+      'animationGroups': <Map<String, dynamic>>[],
     };
   }
 
@@ -1296,6 +1346,7 @@ class AppData extends ChangeNotifier {
         if (next != layer.tilesSheetFile) {
           level.layers[layerIndex] = GameLayer(
             name: layer.name,
+            gameplayData: layer.gameplayData,
             x: layer.x,
             y: layer.y,
             depth: layer.depth,
@@ -1345,6 +1396,62 @@ class AppData extends ChangeNotifier {
   }) {
     final Map<String, dynamic> normalized = gameData.toJson();
     return _canonicalJsonValue(decoded) != _canonicalJsonValue(normalized);
+  }
+
+  bool _decodedGameplayDataMigrationNeeded({
+    required Map<String, dynamic> decoded,
+  }) {
+    final dynamic rawLevels = decoded['levels'];
+    if (rawLevels is! List) {
+      return false;
+    }
+    for (final dynamic rawLevel in rawLevels) {
+      if (rawLevel is! Map<String, dynamic>) {
+        continue;
+      }
+      if (rawLevel['gameplayData'] is! String) {
+        return true;
+      }
+
+      final dynamic rawLayers = rawLevel['layers'];
+      if (rawLayers is List) {
+        for (final dynamic rawLayer in rawLayers) {
+          if (rawLayer is! Map) {
+            continue;
+          }
+          if (rawLayer['gameplayData'] is! String) {
+            return true;
+          }
+        }
+      }
+
+      final dynamic rawSprites = rawLevel['sprites'];
+      if (rawSprites is List) {
+        for (final dynamic rawSprite in rawSprites) {
+          if (rawSprite is! Map) {
+            continue;
+          }
+          if (rawSprite['gameplayData'] is! String) {
+            return true;
+          }
+        }
+      }
+
+      final dynamic rawZones = rawLevel['zones'];
+      if (rawZones is! List) {
+        continue;
+      }
+      for (final dynamic rawZone in rawZones) {
+        if (rawZone is! Map) {
+          continue;
+        }
+        final dynamic gameplayData = rawZone['gameplayData'];
+        if (gameplayData is! String) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   Future<void> _hydrateExternalTileMapsIntoDecodedGameData({
@@ -1433,6 +1540,44 @@ class AppData extends ChangeNotifier {
       rawLevel['zones'] = zonesData['zones'];
       rawLevel['zoneGroups'] = zonesData['zoneGroups'];
     }
+  }
+
+  Future<bool> _hydrateExternalAnimationsIntoDecodedGameData({
+    required Map<String, dynamic> decoded,
+    required String projectDirectoryPath,
+  }) async {
+    final dynamic rawReference = decoded[animationsFileFieldName];
+    if (rawReference is String) {
+      final String relativePath = _normalizeProjectRelativePath(rawReference);
+      if (relativePath.isEmpty ||
+          !relativePath.toLowerCase().endsWith('.json')) {
+        throw Exception('Invalid "$animationsFileFieldName" value.');
+      }
+      final Map<String, dynamic> animationsData =
+          await _readExternalAnimationsData(
+        _projectAbsolutePathForRelativePath(
+          projectDirectoryPath,
+          relativePath,
+        ),
+      );
+      decoded[animationsFileFieldName] = relativePath;
+      decoded['animations'] = animationsData['animations'];
+      decoded['animationGroups'] = animationsData['animationGroups'];
+      return false;
+    }
+    if (rawReference != null) {
+      throw Exception(
+        'Unsupported project format: "$animationsFileFieldName" must be a string.',
+      );
+    }
+
+    if (!decoded.containsKey('animations')) {
+      decoded['animations'] = <Map<String, dynamic>>[];
+    }
+    if (!decoded.containsKey('animationGroups')) {
+      decoded['animationGroups'] = <Map<String, dynamic>>[];
+    }
+    return true;
   }
 
   Future<Set<String>> _writeExternalTileMapsAndStripInlineFromGameData({
@@ -1529,6 +1674,36 @@ class AppData extends ChangeNotifier {
     return writtenRelativePaths;
   }
 
+  Future<String> _writeExternalAnimationsAndStripInlineFromGameData({
+    required Map<String, dynamic> encoded,
+    required String projectDirectoryPath,
+  }) async {
+    final List<Map<String, dynamic>> animations =
+        _parseObjectList(encoded['animations']);
+    final List<Map<String, dynamic>> animationGroups =
+        _parseObjectList(encoded['animationGroups']);
+    final String relativePath = _normalizedAnimationsRelativePath(
+      encoded[animationsFileFieldName],
+    );
+    final String absolutePath = _projectAbsolutePathForRelativePath(
+      projectDirectoryPath,
+      relativePath,
+    );
+    final File animationsFile = File(absolutePath);
+    await animationsFile.parent.create(recursive: true);
+    final String animationsOutput = await _formatMapAsGameJson(
+      <String, dynamic>{
+        'animationGroups': animationGroups,
+        'animations': animations,
+      },
+    );
+    await animationsFile.writeAsString(animationsOutput);
+    encoded[animationsFileFieldName] = relativePath;
+    encoded.remove('animations');
+    encoded.remove('animationGroups');
+    return relativePath;
+  }
+
   Future<void> _cleanupStaleExternalTileMapFiles({
     required String projectDirectoryPath,
     required Set<String> keepRelativePaths,
@@ -1572,6 +1747,37 @@ class AppData extends ChangeNotifier {
     }
     await for (final FileSystemEntity entity
         in zonesDirectory.list(recursive: true, followLinks: false)) {
+      if (entity is! File) {
+        continue;
+      }
+      if (!entity.path.toLowerCase().endsWith('.json')) {
+        continue;
+      }
+      final String relativePath = _relativePathFromProjectAbsolutePath(
+        projectDirectoryPath,
+        entity.path,
+      );
+      if (relativePath.isEmpty || keepRelativePaths.contains(relativePath)) {
+        continue;
+      }
+      try {
+        await entity.delete();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _cleanupStaleExternalAnimationFiles({
+    required String projectDirectoryPath,
+    required Set<String> keepRelativePaths,
+  }) async {
+    final Directory animationsDirectory = Directory(
+      '$projectDirectoryPath${Platform.pathSeparator}$animationsFolderName',
+    );
+    if (!await animationsDirectory.exists()) {
+      return;
+    }
+    await for (final FileSystemEntity entity
+        in animationsDirectory.list(recursive: true, followLinks: false)) {
       if (entity is! File) {
         continue;
       }
@@ -1703,6 +1909,8 @@ class AppData extends ChangeNotifier {
     selectedSpriteIndices = <int>{};
     selectedAnimation = -1;
     selectedAnimationHitBox = -1;
+    animationRigSelectionAnimationId = "";
+    animationRigSelectedFrames = <int>[];
     animationRigSelectionStartFrame = -1;
     animationRigSelectionEndFrame = -1;
     animationRigActiveFrame = -1;
@@ -1817,6 +2025,8 @@ class AppData extends ChangeNotifier {
     selectedSpriteIndices = <int>{};
     selectedAnimation = -1;
     selectedAnimationHitBox = -1;
+    animationRigSelectionAnimationId = "";
+    animationRigSelectedFrames = <int>[];
     animationRigSelectionStartFrame = -1;
     animationRigSelectionEndFrame = -1;
     animationRigActiveFrame = -1;
@@ -2205,11 +2415,22 @@ class AppData extends ChangeNotifier {
         decoded: decoded,
         projectDirectoryPath: projectPath,
       );
-
-      gameData = GameData.fromJson(decoded);
-      final bool migratedStructure = _projectNeedsStructureMigration(
+      final bool needsAnimationsExternalization =
+          await _hydrateExternalAnimationsIntoDecodedGameData(
+        decoded: decoded,
+        projectDirectoryPath: projectPath,
+      );
+      final bool needsGameplayDataMigration =
+          _decodedGameplayDataMigrationNeeded(
         decoded: decoded,
       );
+
+      gameData = GameData.fromJson(decoded);
+      final bool migratedStructure = needsAnimationsExternalization ||
+          needsGameplayDataMigration ||
+          _projectNeedsStructureMigration(
+            decoded: decoded,
+          );
       selectedProjectId = projectId;
       filePath = projectPath;
       fileName = gameFileName;
@@ -2228,6 +2449,8 @@ class AppData extends ChangeNotifier {
       selectedSpriteIndices = <int>{};
       selectedAnimation = -1;
       selectedAnimationHitBox = -1;
+      animationRigSelectionAnimationId = "";
+      animationRigSelectedFrames = <int>[];
       animationRigSelectionStartFrame = -1;
       animationRigSelectionEndFrame = -1;
       animationRigActiveFrame = -1;
@@ -2411,6 +2634,11 @@ class AppData extends ChangeNotifier {
       encoded: encoded,
       projectDirectoryPath: filePath,
     );
+    final String animationsPath =
+        await _writeExternalAnimationsAndStripInlineFromGameData(
+      encoded: encoded,
+      projectDirectoryPath: filePath,
+    );
     final String output = await _formatMapAsGameJson(encoded);
     await file.writeAsString(output);
     await _cleanupStaleExternalTileMapFiles(
@@ -2420,6 +2648,10 @@ class AppData extends ChangeNotifier {
     await _cleanupStaleExternalZoneFiles(
       projectDirectoryPath: filePath,
       keepRelativePaths: zonePaths,
+    );
+    await _cleanupStaleExternalAnimationFiles(
+      projectDirectoryPath: filePath,
+      keepRelativePaths: <String>{animationsPath},
     );
 
     if (gameData.name.trim().isNotEmpty) {

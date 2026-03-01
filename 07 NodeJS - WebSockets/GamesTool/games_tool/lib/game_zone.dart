@@ -2,6 +2,7 @@ class GameZone {
   static const String defaultGroupId = '__main__';
 
   String type;
+  String gameplayData;
   int x;
   int y;
   int width;
@@ -11,6 +12,7 @@ class GameZone {
 
   GameZone(
       {required this.type,
+      this.gameplayData = '',
       required this.x,
       required this.y,
       required this.width,
@@ -20,8 +22,12 @@ class GameZone {
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
   factory GameZone.fromJson(Map<String, dynamic> json) {
+    final dynamic rawGameplayData = json['gameplayData'];
     return GameZone(
         type: json['type'] as String,
+        gameplayData: rawGameplayData is String
+            ? rawGameplayData
+            : (rawGameplayData?.toString() ?? ''),
         x: json['x'] as int,
         y: json['y'] as int,
         width: json['width'] as int,
@@ -36,6 +42,7 @@ class GameZone {
   Map<String, dynamic> toJson() {
     return {
       'type': type,
+      'gameplayData': gameplayData,
       'x': x,
       'y': y,
       'width': width,
@@ -47,6 +54,6 @@ class GameZone {
 
   @override
   String toString() {
-    return 'GameZone(type: $type, x: $x, y: $y, width: $width, height: $height, color: $color, groupId: $groupId)';
+    return 'GameZone(type: $type, gameplayData: $gameplayData, x: $x, y: $y, width: $width, height: $height, color: $color, groupId: $groupId)';
   }
 }

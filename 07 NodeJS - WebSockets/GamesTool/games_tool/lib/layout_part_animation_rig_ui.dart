@@ -2,28 +2,38 @@ part of 'layout.dart';
 
 /// Animation-rig canvas overlay widgets (grid toggle & frame strip).
 extension _LayoutAnimationRigUI on _LayoutState {
-  Widget _buildAnimationRigGridOverlay(AppData appData) {
-    final GameAnimation? animation = _selectedAnimationForRig(appData);
-    final bool enabled = animation != null;
-    return Align(
-      alignment: Alignment.topRight,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: CDKButton(
-          style: CDKButtonStyle.normal,
-          onPressed: !enabled
-              ? null
-              : () {
-                  appData.animationRigShowPixelGrid =
-                      !appData.animationRigShowPixelGrid;
-                  appData.update();
-                },
-          child: Text(
-            appData.animationRigShowPixelGrid ? 'Grid: On' : 'Grid: Off',
-          ),
-        ),
-      ),
-    );
+  int? _animationRigFrameFromGlobalPosition({
+    required Offset globalPosition,
+    required int animationStart,
+    required int animationEnd,
+    required double frameTileExtent,
+    required double frameSpacing,
+  }) {
+    final BuildContext? rowContext =
+        _animationRigFrameStripRowKey.currentContext;
+    if (rowContext == null) {
+      return null;
+    }
+    final RenderObject? renderObject = rowContext.findRenderObject();
+    if (renderObject is! RenderBox) {
+      return null;
+    }
+    final Offset localPosition = renderObject.globalToLocal(globalPosition);
+    final int frameCount = animationEnd - animationStart + 1;
+    if (frameCount <= 0) {
+      return null;
+    }
+    final double step = frameTileExtent + frameSpacing;
+    if (step <= 0) {
+      return null;
+    }
+    int frameOffset = (localPosition.dx / step).floor();
+    if (frameOffset < 0) {
+      frameOffset = 0;
+    } else if (frameOffset >= frameCount) {
+      frameOffset = frameCount - 1;
+    }
+    return animationStart + frameOffset;
   }
 
   Widget _buildAnimationRigFrameStripOverlay(AppData appData) {
@@ -41,15 +51,19 @@ extension _LayoutAnimationRigUI on _LayoutState {
       animation,
       writeBack: true,
     );
-    final int selectedStart =
-        selectedFrames.isEmpty ? animationStart : selectedFrames.first;
-    final int selectedEnd =
-        selectedFrames.isEmpty ? animationEnd : selectedFrames.last;
     final int activeFrame = _animationRigActiveFrame(
       appData,
       animation,
       writeBack: true,
     );
+    final Set<int> selectedSet = selectedFrames.toSet();
+    final List<int> sortedSelected = selectedSet.toList(growable: false)
+      ..sort();
+    final String selectionLabel = sortedSelected.length <= 1
+        ? 'Frame selected: ${sortedSelected.isEmpty ? animationStart : sortedSelected.first}'
+        : 'Frames selected: ${sortedSelected.join(',')}';
+    final int primarySelectedFrame =
+        selectedFrames.isEmpty ? activeFrame : selectedFrames.first;
     final ui.Image? sourceImage = appData.imagesCache[animation.mediaFile];
     final mediaAsset = appData.mediaAssetByFileName(animation.mediaFile);
     final bool canDrawFramePreview = sourceImage != null &&
@@ -64,8 +78,9 @@ extension _LayoutAnimationRigUI on _LayoutState {
         ? ((sourceImage.width / mediaAsset.tileWidth).floor().clamp(1, 99999))
         : 1;
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
-    const Color selectionColor = Color(0xFFFFC94A);
-    const Color activeColor = Color(0xFFFFA928);
+    const Color selectionColor = Color(0xFFFF9800);
+    const double frameTileExtent = 74.0;
+    const double frameSpacing = 0.0;
 
     return Align(
       alignment: Alignment.bottomCenter,
@@ -88,153 +103,266 @@ extension _LayoutAnimationRigUI on _LayoutState {
             children: [
               Row(
                 children: [
-                  CDKButton(
-                    style: CDKButtonStyle.normal,
-                    onPressed: () {
-                      _setAnimationRigFrameSelection(
-                        appData,
-                        animation,
-                        startFrame: animationStart,
-                        endFrame: animationEnd,
-                      );
-                      appData.update();
-                      layoutAnimationRigsKey.currentState?.updateForm(appData);
-                    },
-                    child: const Text('All'),
-                  ),
-                  const SizedBox(width: 10),
                   CDKText(
-                    selectedStart == selectedEnd
-                        ? 'Frame $selectedStart selected'
-                        : 'Frames $selectedStart-$selectedEnd selected',
+                    'Show Grid',
                     role: CDKTextRole.caption,
-                    secondary: true,
+                    color: cdkColors.colorText,
+                  ),
+                  const SizedBox(width: 8),
+                  CDKButtonSwitch(
+                    value: appData.animationRigShowPixelGrid,
+                    size: 18,
+                    onChanged: (value) {
+                      appData.animationRigShowPixelGrid = value;
+                      appData.update();
+                    },
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: CDKText(
+                        selectionLabel,
+                        role: CDKTextRole.caption,
+                        secondary: true,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  CupertinoButton(
+                    key: _animationRigEditorAnchorKey,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    minimumSize: const Size(20, 20),
+                    onPressed: () {
+                      layoutAnimationRigsKey.currentState
+                          ?.showSelectedAnimationRigEditorPopover(
+                        appData,
+                        _animationRigEditorAnchorKey,
+                      );
+                    },
+                    child: Icon(
+                      CupertinoIcons.ellipsis_circle,
+                      size: 18,
+                      color: cdkColors.colorText,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
               Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List<Widget>.generate(
-                      animationEnd - animationStart + 1,
-                      (index) {
-                        final int frame = animationStart + index;
-                        final bool inSelection =
-                            frame >= selectedStart && frame <= selectedEnd;
-                        final bool isActive = frame == activeFrame;
-                        final Color borderColor = isActive
-                            ? activeColor
-                            : (inSelection
-                                ? selectionColor
-                                : cdkColors.colorTextSecondary
-                                    .withValues(alpha: 0.35));
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: GestureDetector(
-                            onTap: () {
-                              final bool expandSelection =
-                                  _isLayerSelectionModifierPressed();
-                              if (expandSelection) {
-                                final int baseStart =
-                                    appData.animationRigSelectionStartFrame >= 0
-                                        ? appData
-                                            .animationRigSelectionStartFrame
-                                        : frame;
-                                _setAnimationRigFrameSelection(
-                                  appData,
-                                  animation,
-                                  startFrame: baseStart,
-                                  endFrame: frame,
-                                );
-                              } else if (selectedStart == selectedEnd &&
-                                  selectedStart != frame) {
-                                _setAnimationRigFrameSelection(
-                                  appData,
-                                  animation,
-                                  startFrame: selectedStart,
-                                  endFrame: frame,
-                                );
-                              } else {
-                                _setAnimationRigFrameSelection(
-                                  appData,
-                                  animation,
-                                  startFrame: frame,
-                                  endFrame: frame,
-                                );
-                              }
-                              appData.update();
-                              layoutAnimationRigsKey.currentState
-                                  ?.updateForm(appData);
-                            },
-                            child: Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: cdkColors.backgroundSecondary1,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: borderColor,
-                                  width: isActive
-                                      ? 2.2
-                                      : (inSelection ? 1.8 : 1.0),
-                                ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(3),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(4),
-                                        child: canDrawFramePreview
-                                            ? CustomPaint(
-                                                painter:
-                                                    _AnimationRigFramePreviewPainter(
-                                                  image: sourceImage,
-                                                  frameWidth: frameWidth,
-                                                  frameHeight: frameHeight,
-                                                  columns: columns,
-                                                  frameIndex: frame,
-                                                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minWidth: constraints.maxWidth),
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Row(
+                            key: _animationRigFrameStripRowKey,
+                            mainAxisSize: MainAxisSize.min,
+                            children: List<Widget>.generate(
+                              animationEnd - animationStart + 1,
+                              (index) {
+                                final int frame = animationStart + index;
+                                final bool inSelection =
+                                    selectedSet.contains(frame);
+                                final bool isPrimary =
+                                    frame == primarySelectedFrame;
+                                final Color borderColor = inSelection
+                                    ? selectionColor
+                                    : cdkColors.colorTextSecondary
+                                        .withValues(alpha: 0.35);
+                                return GestureDetector(
+                                  onTap: () {
+                                    final bool additiveSelection =
+                                        _isAnimationRigFrameSelectionModifierPressed();
+                                    if (!additiveSelection) {
+                                      if (_setAnimationRigFrameSelectionFrames(
+                                        appData,
+                                        animation,
+                                        frames: <int>[frame],
+                                        setActiveToFirst: true,
+                                      )) {
+                                        appData.update();
+                                        layoutAnimationRigsKey.currentState
+                                            ?.updateForm(appData);
+                                      }
+                                      return;
+                                    }
+                                    final List<int> nextSelection =
+                                        List<int>.from(selectedFrames);
+                                    if (nextSelection.contains(frame)) {
+                                      if (nextSelection.length > 1) {
+                                        nextSelection.remove(frame);
+                                      }
+                                    } else {
+                                      nextSelection.add(frame);
+                                    }
+                                    if (_setAnimationRigFrameSelectionFrames(
+                                      appData,
+                                      animation,
+                                      frames: nextSelection,
+                                      setActiveToFirst: true,
+                                    )) {
+                                      appData.update();
+                                      layoutAnimationRigsKey.currentState
+                                          ?.updateForm(appData);
+                                    }
+                                  },
+                                  onPanStart: (details) {
+                                    _isSelectingAnimationRigFramesFromStrip =
+                                        true;
+                                    _animationRigFrameStripDragAnchorFrame =
+                                        _animationRigFrameFromGlobalPosition(
+                                              globalPosition:
+                                                  details.globalPosition,
+                                              animationStart: animationStart,
+                                              animationEnd: animationEnd,
+                                              frameTileExtent: frameTileExtent,
+                                              frameSpacing: frameSpacing,
+                                            ) ??
+                                            frame;
+                                    _animationRigFrameStripDragAdditive =
+                                        _isAnimationRigFrameSelectionModifierPressed();
+                                    _animationRigFrameStripDragBaseSelection =
+                                        _animationRigFrameStripDragAdditive
+                                            ? List<int>.from(selectedFrames)
+                                            : <int>[];
+                                    final List<int> dragFrames = <int>[frame];
+                                    final List<int> nextSelection =
+                                        _animationRigFrameStripDragAdditive
+                                            ? <int>[
+                                                ..._animationRigFrameStripDragBaseSelection,
+                                                ...dragFrames.where((item) =>
+                                                    !_animationRigFrameStripDragBaseSelection
+                                                        .contains(item)),
+                                              ]
+                                            : dragFrames;
+                                    if (_setAnimationRigFrameSelectionFrames(
+                                      appData,
+                                      animation,
+                                      frames: nextSelection,
+                                      setActiveToFirst: true,
+                                    )) {
+                                      appData.update();
+                                      layoutAnimationRigsKey.currentState
+                                          ?.updateForm(appData);
+                                    }
+                                  },
+                                  onPanUpdate: (details) {
+                                    if (!_isSelectingAnimationRigFramesFromStrip ||
+                                        _animationRigFrameStripDragAnchorFrame ==
+                                            null) {
+                                      return;
+                                    }
+                                    final int? hitFrame =
+                                        _animationRigFrameFromGlobalPosition(
+                                      globalPosition: details.globalPosition,
+                                      animationStart: animationStart,
+                                      animationEnd: animationEnd,
+                                      frameTileExtent: frameTileExtent,
+                                      frameSpacing: frameSpacing,
+                                    );
+                                    if (hitFrame == null) {
+                                      return;
+                                    }
+                                    final int nextFrame = hitFrame;
+                                    final int anchorFrame =
+                                        _animationRigFrameStripDragAnchorFrame!;
+                                    final List<int> dragFrames =
+                                        anchorFrame <= nextFrame
+                                            ? List<int>.generate(
+                                                nextFrame - anchorFrame + 1,
+                                                (int rangeIndex) =>
+                                                    anchorFrame + rangeIndex,
+                                                growable: false,
                                               )
-                                            : Center(
-                                                child: CDKText(
-                                                  '$frame',
-                                                  role: CDKTextRole.caption,
-                                                ),
-                                              ),
+                                            : List<int>.generate(
+                                                anchorFrame - nextFrame + 1,
+                                                (int rangeIndex) =>
+                                                    anchorFrame - rangeIndex,
+                                                growable: false,
+                                              );
+                                    final List<int> nextSelection =
+                                        _animationRigFrameStripDragAdditive
+                                            ? <int>[
+                                                ..._animationRigFrameStripDragBaseSelection,
+                                                ...dragFrames.where((item) =>
+                                                    !_animationRigFrameStripDragBaseSelection
+                                                        .contains(item)),
+                                              ]
+                                            : dragFrames;
+                                    if (_setAnimationRigFrameSelectionFrames(
+                                      appData,
+                                      animation,
+                                      frames: nextSelection,
+                                      setActiveToFirst: true,
+                                    )) {
+                                      appData.update();
+                                      layoutAnimationRigsKey.currentState
+                                          ?.updateForm(appData);
+                                    }
+                                  },
+                                  onPanEnd: (_) {
+                                    _isSelectingAnimationRigFramesFromStrip =
+                                        false;
+                                    _animationRigFrameStripDragAnchorFrame =
+                                        null;
+                                    _animationRigFrameStripDragAdditive = false;
+                                    _animationRigFrameStripDragBaseSelection =
+                                        <int>[];
+                                  },
+                                  onPanCancel: () {
+                                    _isSelectingAnimationRigFramesFromStrip =
+                                        false;
+                                    _animationRigFrameStripDragAnchorFrame =
+                                        null;
+                                    _animationRigFrameStripDragAdditive = false;
+                                    _animationRigFrameStripDragBaseSelection =
+                                        <int>[];
+                                  },
+                                  child: Container(
+                                    width: frameTileExtent,
+                                    height: frameTileExtent,
+                                    decoration: BoxDecoration(
+                                      color: cdkColors.background,
+                                      borderRadius: BorderRadius.circular(1),
+                                      border: Border.all(
+                                        color: borderColor,
+                                        width: isPrimary && inSelection
+                                            ? 2.8
+                                            : (inSelection ? 2.2 : 0.8),
                                       ),
                                     ),
+                                    child: canDrawFramePreview
+                                        ? CustomPaint(
+                                            painter:
+                                                _AnimationRigFramePreviewPainter(
+                                              image: sourceImage,
+                                              frameWidth: frameWidth,
+                                              frameHeight: frameHeight,
+                                              columns: columns,
+                                              frameIndex: frame,
+                                              drawCheckerboard: false,
+                                            ),
+                                          )
+                                        : Center(
+                                            child: CDKText(
+                                              '$frame',
+                                              role: CDKTextRole.caption,
+                                            ),
+                                          ),
                                   ),
-                                  Positioned(
-                                    right: 2,
-                                    bottom: 2,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 1,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xAA000000),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: CDKText(
-                                        '$frame',
-                                        role: CDKTextRole.caption,
-                                        color: CupertinoColors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],

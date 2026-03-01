@@ -147,37 +147,6 @@ class CanvasPainter extends CustomPainter {
       );
     }
 
-    final double anchorX = rig.anchorX.clamp(0.0, 1.0);
-    final double anchorY = rig.anchorY.clamp(0.0, 1.0);
-    final Offset anchorCenter = Offset(
-      dx + scaledWidth * anchorX,
-      dy + scaledHeight * anchorY,
-    );
-    final Color anchorColor = LayoutUtils.getColorFromName(rig.anchorColor);
-    const double anchorRadius = 6.0;
-    canvas.drawCircle(
-      anchorCenter,
-      anchorRadius + 1.0,
-      Paint()
-        ..color = const Color(0xB3FFFFFF)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      anchorCenter,
-      anchorRadius,
-      Paint()
-        ..color = anchorColor
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawCircle(
-      anchorCenter,
-      anchorRadius,
-      Paint()
-        ..color = const Color(0xB3000000)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0,
-    );
-
     final int selectedIndex = appData.selectedAnimationHitBox;
     for (int i = 0; i < rig.hitBoxes.length; i++) {
       final GameAnimationHitBox hitBox = rig.hitBoxes[i];
@@ -235,6 +204,38 @@ class CanvasPainter extends CustomPainter {
         ),
       );
     }
+
+    // Draw anchor last so it remains visible/draggable above overlapping hit boxes.
+    final double anchorX = rig.anchorX.clamp(0.0, 1.0);
+    final double anchorY = rig.anchorY.clamp(0.0, 1.0);
+    final Offset anchorCenter = Offset(
+      dx + scaledWidth * anchorX,
+      dy + scaledHeight * anchorY,
+    );
+    final Color anchorColor = LayoutUtils.getColorFromName(rig.anchorColor);
+    const double anchorRadius = 6.0;
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius + 1.0,
+      Paint()
+        ..color = const Color(0xB3FFFFFF)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius,
+      Paint()
+        ..color = anchorColor
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius,
+      Paint()
+        ..color = const Color(0xB3000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
   }
 
   void _paintAnimationRigPixelGrid(

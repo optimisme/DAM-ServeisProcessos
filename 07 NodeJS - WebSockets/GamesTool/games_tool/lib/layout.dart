@@ -4,7 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/services.dart'
-    show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
+    show
+        HardwareKeyboard,
+        KeyDownEvent,
+        KeyEvent,
+        KeyRepeatEvent,
+        KeyUpEvent,
+        LogicalKeyboardKey;
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
@@ -61,6 +67,8 @@ class _LayoutState extends State<Layout> {
       GlobalKey<LayoutViewportState>();
   final GlobalKey<LayoutAnimationRigsState> layoutAnimationRigsKey =
       GlobalKey<LayoutAnimationRigsState>();
+  final GlobalKey _animationRigFrameStripRowKey = GlobalKey();
+  final GlobalKey _animationRigEditorAnchorKey = GlobalKey();
 
   // ignore: unused_field
   Timer? _timer;
@@ -73,6 +81,7 @@ class _LayoutState extends State<Layout> {
   bool _isDraggingSprite = false;
   bool _isSelectingAnimationFrames = false;
   bool _isPaintingTilemap = false;
+  bool _consumeTilemapTapUp = false;
   bool _didModifyZoneDuringGesture = false;
   bool _didModifySpriteDuringGesture = false;
   bool _didModifyLayerDuringGesture = false;
@@ -83,6 +92,10 @@ class _LayoutState extends State<Layout> {
   bool _isDraggingAnimationRigAnchor = false;
   bool _isDraggingAnimationRigHitBox = false;
   bool _isResizingAnimationRigHitBox = false;
+  bool _isSelectingAnimationRigFramesFromStrip = false;
+  bool _animationRigFrameStripDragAdditive = false;
+  int? _animationRigFrameStripDragAnchorFrame;
+  List<int> _animationRigFrameStripDragBaseSelection = <int>[];
   Offset _animationRigHitBoxDragOffset = Offset.zero;
   int _drawCanvasRequestId = 0;
   bool _isPointerDown = false;
@@ -91,6 +104,10 @@ class _LayoutState extends State<Layout> {
   bool _pendingLayersViewportCenter = false;
   int? _pendingLevelsViewportFitLevelIndex;
   int? _lastAutoFramedLevelIndex;
+  bool _selectionModifierShiftPressed = false;
+  bool _selectionModifierAltPressed = false;
+  bool _selectionModifierControlPressed = false;
+  bool _selectionModifierMetaPressed = false;
   final Set<int> _selectedLayerIndices = <int>{};
   final Map<int, Offset> _layerDragOffsetsByIndex = <int, Offset>{};
   int _layerSelectionLevelIndex = -1;
@@ -133,6 +150,8 @@ class _LayoutState extends State<Layout> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
+    _refreshSelectionModifierState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appData = Provider.of<AppData>(context, listen: false);
@@ -156,6 +175,7 @@ class _LayoutState extends State<Layout> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     try {
       final appData = Provider.of<AppData>(context, listen: false);
       unawaited(appData.flushPendingAutosave());
@@ -163,6 +183,83 @@ class _LayoutState extends State<Layout> {
     _timer?.cancel();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  bool _handleGlobalKeyEvent(KeyEvent event) {
+    _updateSelectionModifierStateFromEvent(event);
+    return false;
+  }
+
+  void _updateSelectionModifierStateFromEvent(KeyEvent event) {
+    final bool? pressed = switch (event) {
+      KeyDownEvent() => true,
+      KeyRepeatEvent() => true,
+      KeyUpEvent() => false,
+      _ => null,
+    };
+    if (pressed == null) {
+      return;
+    }
+    final LogicalKeyboardKey key = event.logicalKey;
+    if (_isShiftModifierKey(key)) {
+      _selectionModifierShiftPressed = pressed;
+    }
+    if (_isAltModifierKey(key)) {
+      _selectionModifierAltPressed = pressed;
+    }
+    if (_isControlModifierKey(key)) {
+      _selectionModifierControlPressed = pressed;
+    }
+    if (_isMetaModifierKey(key)) {
+      _selectionModifierMetaPressed = pressed;
+    }
+  }
+
+  bool _isShiftModifierKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.shift ||
+        key == LogicalKeyboardKey.shiftLeft ||
+        key == LogicalKeyboardKey.shiftRight;
+  }
+
+  bool _isAltModifierKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.alt ||
+        key == LogicalKeyboardKey.altLeft ||
+        key == LogicalKeyboardKey.altRight;
+  }
+
+  bool _isControlModifierKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.control ||
+        key == LogicalKeyboardKey.controlLeft ||
+        key == LogicalKeyboardKey.controlRight;
+  }
+
+  bool _isMetaModifierKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.meta ||
+        key == LogicalKeyboardKey.metaLeft ||
+        key == LogicalKeyboardKey.metaRight ||
+        key == LogicalKeyboardKey.superKey;
+  }
+
+  void _refreshSelectionModifierState() {
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    final Set<LogicalKeyboardKey> pressed = keyboard.logicalKeysPressed;
+    _selectionModifierShiftPressed = keyboard.isShiftPressed ||
+        pressed.contains(LogicalKeyboardKey.shift) ||
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+    _selectionModifierAltPressed = keyboard.isAltPressed ||
+        pressed.contains(LogicalKeyboardKey.alt) ||
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight);
+    _selectionModifierControlPressed = keyboard.isControlPressed ||
+        pressed.contains(LogicalKeyboardKey.control) ||
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight);
+    _selectionModifierMetaPressed = keyboard.isMetaPressed ||
+        pressed.contains(LogicalKeyboardKey.meta) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.superKey);
   }
 
   Future<void> _drawCanvasImage(AppData appData) async {
@@ -283,6 +380,7 @@ class _LayoutState extends State<Layout> {
         focusNode: _focusNode,
         autofocus: true,
         onKeyEvent: (node, event) {
+          _updateSelectionModifierStateFromEvent(event);
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final AppData appData = Provider.of<AppData>(context, listen: false);
           final bool isDeleteKey =
@@ -340,8 +438,11 @@ class _LayoutState extends State<Layout> {
                                           ? _animationRigFrameStripReservedHeight
                                           : 0,
                                       child: Listener(
-                                        onPointerDown: (_) =>
-                                            _isPointerDown = true,
+                                        onPointerDown: (_) => {
+                                          _isPointerDown = true,
+                                          _focusNode.requestFocus(),
+                                          _refreshSelectionModifierState(),
+                                        },
                                         onPointerUp: (_) =>
                                             _isPointerDown = false,
                                         onPointerCancel: (_) =>
@@ -420,13 +521,16 @@ class _LayoutState extends State<Layout> {
                                           child: GestureDetector(
                                             behavior: HitTestBehavior.opaque,
                                             onPanStart: (details) =>
-                                                _handlePanStart(appData, details),
+                                                _handlePanStart(
+                                                    appData, details),
                                             onPanUpdate: (details) =>
-                                                _handlePanUpdate(appData, details),
+                                                _handlePanUpdate(
+                                                    appData, details),
                                             onPanEnd: (details) =>
                                                 _handlePanEnd(appData, details),
                                             onTapDown: (details) =>
-                                                _handleTapDown(appData, details),
+                                                _handleTapDown(
+                                                    appData, details),
                                             onTapUp: (details) =>
                                                 _handleTapUp(appData, details),
                                             child: CustomPaint(
@@ -486,9 +590,6 @@ class _LayoutState extends State<Layout> {
                                         appData,
                                         viewportSize,
                                       ),
-                                    if (appData.selectedSection ==
-                                        "animation_rigs")
-                                      _buildAnimationRigGridOverlay(appData),
                                     if (appData.selectedSection ==
                                         "animation_rigs")
                                       _buildAnimationRigFrameStripOverlay(

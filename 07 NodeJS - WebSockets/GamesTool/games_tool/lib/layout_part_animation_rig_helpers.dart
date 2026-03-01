@@ -15,44 +15,45 @@ extension _LayoutAnimationRigHelpers on _LayoutState {
     GameAnimation animation, {
     bool writeBack = false,
   }) {
-    final int animationStart =
-        animation.startFrame < 0 ? 0 : animation.startFrame;
-    final int animationEnd = animation.endFrame < animationStart
-        ? animationStart
-        : animation.endFrame;
-    int selectedStart = appData.animationRigSelectionStartFrame;
-    int selectedEnd = appData.animationRigSelectionEndFrame;
-    if (selectedStart < 0 || selectedEnd < 0) {
-      selectedStart = animationStart;
-      selectedEnd = animationEnd;
-    }
-    if (selectedStart < animationStart) {
-      selectedStart = animationStart;
-    }
-    if (selectedStart > animationEnd) {
-      selectedStart = animationEnd;
-    }
-    if (selectedEnd < animationStart) {
-      selectedEnd = animationStart;
-    }
-    if (selectedEnd > animationEnd) {
-      selectedEnd = animationEnd;
-    }
-    final int normalizedStart =
-        selectedStart <= selectedEnd ? selectedStart : selectedEnd;
-    final int normalizedEnd =
-        selectedStart <= selectedEnd ? selectedEnd : selectedStart;
-    if (writeBack &&
-        (appData.animationRigSelectionStartFrame != normalizedStart ||
-            appData.animationRigSelectionEndFrame != normalizedEnd)) {
-      appData.animationRigSelectionStartFrame = normalizedStart;
-      appData.animationRigSelectionEndFrame = normalizedEnd;
-    }
-    return List<int>.generate(
-      normalizedEnd - normalizedStart + 1,
-      (index) => normalizedStart + index,
-      growable: false,
+    final int totalFrames =
+        (animation.endFrame < 0 ? 0 : animation.endFrame) + 1;
+    return LayoutUtils.animationRigSelectedFrames(
+      appData: appData,
+      animation: animation,
+      totalFrames: totalFrames,
+      writeBack: writeBack,
     );
+  }
+
+  bool _isAnimationRigFrameSelectionModifierPressed() {
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    return keyboard.isMetaPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isControlPressed;
+  }
+
+  bool _setAnimationRigFrameSelectionFrames(
+    AppData appData,
+    GameAnimation animation, {
+    required Iterable<int> frames,
+    bool setActiveToFirst = true,
+  }) {
+    final bool changed = LayoutUtils.setAnimationRigSelectedFrames(
+      appData: appData,
+      animation: animation,
+      frames: frames,
+      totalFrames: (animation.endFrame < 0 ? 0 : animation.endFrame) + 1,
+      setActiveToFirst: setActiveToFirst,
+    );
+    final GameAnimationFrameRig activeRig = _activeAnimationRig(
+      appData,
+      animation,
+      writeBack: true,
+    );
+    if (appData.selectedAnimationHitBox >= activeRig.hitBoxes.length) {
+      appData.selectedAnimationHitBox = -1;
+    }
+    return changed;
   }
 
   int _animationRigActiveFrame(
@@ -68,9 +69,7 @@ extension _LayoutAnimationRigHelpers on _LayoutState {
     if (selectedFrames.isEmpty) {
       return animation.startFrame;
     }
-    final int current = appData.animationRigActiveFrame;
-    final int active =
-        selectedFrames.contains(current) ? current : selectedFrames.first;
+    final int active = selectedFrames.first;
     if (writeBack && appData.animationRigActiveFrame != active) {
       appData.animationRigActiveFrame = active;
     }
@@ -88,40 +87,6 @@ extension _LayoutAnimationRigHelpers on _LayoutState {
       writeBack: writeBack,
     );
     return animation.rigForFrame(frame);
-  }
-
-  void _setAnimationRigFrameSelection(
-    AppData appData,
-    GameAnimation animation, {
-    required int startFrame,
-    required int endFrame,
-    bool setActiveToStart = true,
-  }) {
-    final int animationStart =
-        animation.startFrame < 0 ? 0 : animation.startFrame;
-    final int animationEnd = animation.endFrame < animationStart
-        ? animationStart
-        : animation.endFrame;
-    int nextStart = startFrame.clamp(animationStart, animationEnd);
-    int nextEnd = endFrame.clamp(animationStart, animationEnd);
-    if (nextStart > nextEnd) {
-      final int swap = nextStart;
-      nextStart = nextEnd;
-      nextEnd = swap;
-    }
-    appData.animationRigSelectionStartFrame = nextStart;
-    appData.animationRigSelectionEndFrame = nextEnd;
-    if (setActiveToStart) {
-      appData.animationRigActiveFrame = nextStart;
-    }
-    final GameAnimationFrameRig activeRig = _activeAnimationRig(
-      appData,
-      animation,
-      writeBack: true,
-    );
-    if (appData.selectedAnimationHitBox >= activeRig.hitBoxes.length) {
-      appData.selectedAnimationHitBox = -1;
-    }
   }
 
   Size? _animationRigFrameSize() {

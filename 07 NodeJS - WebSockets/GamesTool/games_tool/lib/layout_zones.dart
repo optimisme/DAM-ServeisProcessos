@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
@@ -60,6 +62,32 @@ class LayoutZonesState extends State<LayoutZones> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  bool _isMultiSelectModifierPressed() {
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    final Set<LogicalKeyboardKey> pressed = keyboard.logicalKeysPressed;
+    return keyboard.isMetaPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isControlPressed ||
+        pressed.contains(LogicalKeyboardKey.meta) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.superKey) ||
+        pressed.contains(LogicalKeyboardKey.alt) ||
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight) ||
+        pressed.contains(LogicalKeyboardKey.control) ||
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight);
+  }
+
+  int _firstSelectedIndex(Set<int> selection) {
+    if (selection.isEmpty) {
+      return -1;
+    }
+    final List<int> sorted = selection.toList()..sort();
+    return sorted.first;
   }
 
   List<GameZoneType> _zoneTypes(AppData appData) {
@@ -592,6 +620,7 @@ class LayoutZonesState extends State<LayoutZones> {
     level.zones.add(
       GameZone(
         type: data.type,
+        gameplayData: data.gameplayData,
         x: data.x,
         y: data.y,
         width: data.width,
@@ -619,6 +648,7 @@ class LayoutZonesState extends State<LayoutZones> {
     final String existingGroupId = zones[index].groupId;
     zones[index] = GameZone(
       type: data.type,
+      gameplayData: data.gameplayData,
       x: data.x,
       y: data.y,
       width: data.width,
@@ -735,6 +765,7 @@ class LayoutZonesState extends State<LayoutZones> {
       confirmLabel: "Add",
       initialData: _ZoneDialogData(
         type: zoneTypes.first.name,
+        gameplayData: '',
         x: 0,
         y: 0,
         width: 50,
@@ -804,6 +835,7 @@ class LayoutZonesState extends State<LayoutZones> {
         final GameZone source = zones[index];
         final GameZone duplicate = GameZone(
           type: source.type,
+          gameplayData: source.gameplayData,
           x: source.x,
           y: source.y,
           width: source.width,
@@ -837,6 +869,7 @@ class LayoutZonesState extends State<LayoutZones> {
       confirmLabel: "Save",
       initialData: _ZoneDialogData(
         type: typeExists ? zone.type : zoneTypes.first.name,
+        gameplayData: zone.gameplayData,
         x: zone.x,
         y: zone.y,
         width: zone.width,
@@ -866,7 +899,44 @@ class LayoutZonesState extends State<LayoutZones> {
     );
   }
 
-  void _selectZone(AppData appData, int index, bool isSelected) {
+  void _selectZone(
+    AppData appData,
+    int index,
+    bool isSelected, {
+    bool additive = false,
+  }) {
+    if (additive &&
+        appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length) {
+      final int zoneCount =
+          appData.gameData.levels[appData.selectedLevel].zones.length;
+      final Set<int> nextSelection = appData.selectedZoneIndices
+          .where((value) => value >= 0 && value < zoneCount)
+          .toSet();
+      final int currentPrimary = appData.selectedZone;
+      if (currentPrimary >= 0 && currentPrimary < zoneCount) {
+        nextSelection.add(currentPrimary);
+      }
+      final bool removed = nextSelection.remove(index);
+      if (!removed) {
+        nextSelection.add(index);
+      }
+      final int nextPrimary;
+      if (nextSelection.isEmpty) {
+        nextPrimary = -1;
+      } else if (!removed) {
+        nextPrimary = index;
+      } else if (currentPrimary >= 0 &&
+          nextSelection.contains(currentPrimary)) {
+        nextPrimary = currentPrimary;
+      } else {
+        nextPrimary = _firstSelectedIndex(nextSelection);
+      }
+      appData.selectedZone = nextPrimary;
+      appData.selectedZoneIndices = nextSelection;
+      appData.update();
+      return;
+    }
     if (isSelected) {
       appData.selectedZone = -1;
       appData.selectedZoneIndices = <int>{};
@@ -1382,8 +1452,12 @@ class LayoutZonesState extends State<LayoutZones> {
                         child: IgnorePointer(
                           ignoring: hiddenByCollapse,
                           child: GestureDetector(
-                            onTap: () =>
-                                _selectZone(appData, zoneIndex, isSelected),
+                            onTap: () => _selectZone(
+                              appData,
+                              zoneIndex,
+                              isSelected,
+                              additive: _isMultiSelectModifierPressed(),
+                            ),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 vertical: 6,
@@ -1553,6 +1627,7 @@ class _ZoneListRow {
 class _ZoneDialogData {
   const _ZoneDialogData({
     required this.type,
+    required this.gameplayData,
     required this.x,
     required this.y,
     required this.width,
@@ -1561,6 +1636,7 @@ class _ZoneDialogData {
   });
 
   final String type;
+  final String gameplayData;
   final int x;
   final int y;
   final int width;
@@ -1608,6 +1684,10 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
   late final TextEditingController _xController = TextEditingController(
     text: widget.initialData.x.toString(),
   );
+  late final TextEditingController _gameplayDataController =
+      TextEditingController(
+    text: widget.initialData.gameplayData,
+  );
   late final TextEditingController _yController = TextEditingController(
     text: widget.initialData.y.toString(),
   );
@@ -1649,6 +1729,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
   _ZoneDialogData _currentData() {
     return _ZoneDialogData(
       type: _selectedType,
+      gameplayData: _gameplayDataController.text,
       x: int.tryParse(_xController.text.trim()) ?? 0,
       y: int.tryParse(_yController.text.trim()) ?? 0,
       width: int.tryParse(_widthController.text.trim()) ?? 50,
@@ -1714,6 +1795,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
     widget.onConfirm(
       _ZoneDialogData(
         type: _selectedType,
+        gameplayData: _gameplayDataController.text,
         x: int.tryParse(_xController.text.trim()) ?? 0,
         y: int.tryParse(_yController.text.trim()) ?? 0,
         width: int.tryParse(_widthController.text.trim()) ?? 50,
@@ -1733,6 +1815,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
         onPersist: widget.onLiveChanged!,
         areEqual: (a, b) =>
             a.type == b.type &&
+            a.gameplayData == b.gameplayData &&
             a.x == b.x &&
             a.y == b.y &&
             a.width == b.width &&
@@ -1749,6 +1832,7 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
       _editSession!.dispose();
     }
     _xController.dispose();
+    _gameplayDataController.dispose();
     _yController.dispose();
     _widthController.dispose();
     _heightController.dispose();
@@ -1779,45 +1863,42 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
             label: 'Zone Category',
             child: Align(
               alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 280),
-                child: CDKButton(
-                  key: _typePickerAnchorKey,
-                  style: CDKButtonStyle.normal,
-                  enabled: widget.zoneTypes.isNotEmpty,
-                  onPressed: _showTypePickerPopover,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (selectedType != null) ...[
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: LayoutUtils.getColorFromName(
-                              selectedType.color,
-                            ),
-                            shape: BoxShape.circle,
+              child: CDKButton(
+                key: _typePickerAnchorKey,
+                style: CDKButtonStyle.normal,
+                enabled: widget.zoneTypes.isNotEmpty,
+                onPressed: _showTypePickerPopover,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (selectedType != null) ...[
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: LayoutUtils.getColorFromName(
+                            selectedType.color,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Flexible(
-                        child: CDKText(
-                          selectedType?.name ?? 'Select a category',
-                          role: CDKTextRole.caption,
-                          color: cdkColors.colorText,
-                          overflow: TextOverflow.ellipsis,
+                          shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Icon(
-                        CupertinoIcons.chevron_down,
-                        size: 14,
-                        color: cdkColors.colorText,
-                      ),
                     ],
-                  ),
+                    Flexible(
+                      child: CDKText(
+                        selectedType?.name ?? 'Select a category',
+                        role: CDKTextRole.caption,
+                        color: cdkColors.colorText,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      CupertinoIcons.chevron_down,
+                      size: 14,
+                      color: cdkColors.colorText,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1902,34 +1983,69 @@ class _ZoneFormDialogState extends State<_ZoneFormDialog> {
               ),
             ],
           ),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            SizedBox(height: spacing.sm),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 240,
-                child: EditorLabeledField(
-                  label: widget.groupFieldLabel,
-                  child: CDKButtonSelect(
-                    selectedIndex: widget.groupOptions
-                        .indexWhere((group) => group.id == _selectedGroupId)
-                        .clamp(0, widget.groupOptions.length - 1),
-                    options: widget.groupOptions
-                        .map((group) => group.name.trim().isEmpty
-                            ? GameZoneGroup.defaultMainName
-                            : group.name)
-                        .toList(growable: false),
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedGroupId = widget.groupOptions[index].id;
-                      });
-                      _onInputChanged();
-                    },
+          SizedBox(height: spacing.sm),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: EditorLabeledField(
+                    label: widget.groupFieldLabel,
+                    child: CDKButtonSelect(
+                      selectedIndex: widget.groupOptions
+                          .indexWhere((group) => group.id == _selectedGroupId)
+                          .clamp(0, widget.groupOptions.length - 1),
+                      options: widget.groupOptions
+                          .map((group) => group.name.trim().isEmpty
+                              ? GameZoneGroup.defaultMainName
+                              : group.name)
+                          .toList(growable: false),
+                      onSelected: (int index) {
+                        setState(() {
+                          _selectedGroupId = widget.groupOptions[index].id;
+                        });
+                        _onInputChanged();
+                      },
+                    ),
                   ),
                 ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: EditorLabeledField(
+                    label: 'Gameplay data',
+                    child: CDKFieldText(
+                      placeholder: 'Gameplay data',
+                      controller: _gameplayDataController,
+                      onChanged: (_) => _onInputChanged(),
+                      onSubmitted: (_) {
+                        if (widget.liveEdit) {
+                          _onInputChanged();
+                          return;
+                        }
+                        _confirm();
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            EditorLabeledField(
+              label: 'Gameplay data',
+              child: CDKFieldText(
+                placeholder: 'Gameplay data',
+                controller: _gameplayDataController,
+                onChanged: (_) => _onInputChanged(),
+                onSubmitted: (_) {
+                  if (widget.liveEdit) {
+                    _onInputChanged();
+                    return;
+                  }
+                  _confirm();
+                },
               ),
             ),
-          ],
         ],
       ),
     );

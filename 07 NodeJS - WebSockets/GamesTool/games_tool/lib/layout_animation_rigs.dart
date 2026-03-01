@@ -23,14 +23,40 @@ class LayoutAnimationRigs extends StatefulWidget {
 
 class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _selectedRigAnchorKey = GlobalKey();
-  final GlobalKey _selectedRigDuplicateAnchorKey = GlobalKey();
 
   void updateForm(AppData appData) {
     if (!mounted) {
       return;
     }
     setState(() {});
+  }
+
+  String? _selectedFramesLabel(List<int> selectedFrames) {
+    if (selectedFrames.isEmpty) {
+      return null;
+    }
+    final List<int> sorted = selectedFrames.toSet().toList(growable: false)
+      ..sort();
+    if (sorted.length == 1) {
+      return 'Frame selected: ${sorted.first}';
+    }
+    return 'Frames selected: ${sorted.join(',')}';
+  }
+
+  void showSelectedAnimationRigEditorPopover(
+    AppData appData,
+    GlobalKey anchorKey,
+  ) {
+    if (!mounted) {
+      return;
+    }
+    final int selectedIndex = appData.selectedAnimation;
+    if (selectedIndex < 0 ||
+        selectedIndex >= appData.gameData.animations.length) {
+      return;
+    }
+    final GameAnimation animation = appData.gameData.animations[selectedIndex];
+    unawaited(_showAnimationRigPopover(appData, animation, anchorKey));
   }
 
   List<GameListGroup> _animationGroups(AppData appData) {
@@ -202,33 +228,13 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
     GameAnimation animation, {
     bool writeBack = false,
   }) {
-    final int animationStart =
-        animation.startFrame < 0 ? 0 : animation.startFrame;
-    final int animationEnd = animation.endFrame < animationStart
-        ? animationStart
-        : animation.endFrame;
-    int selectedStart = appData.animationRigSelectionStartFrame;
-    int selectedEnd = appData.animationRigSelectionEndFrame;
-    if (selectedStart < 0 || selectedEnd < 0) {
-      selectedStart = animationStart;
-      selectedEnd = animationEnd;
-    }
-    selectedStart = selectedStart.clamp(animationStart, animationEnd);
-    selectedEnd = selectedEnd.clamp(animationStart, animationEnd);
-    final int normalizedStart =
-        selectedStart <= selectedEnd ? selectedStart : selectedEnd;
-    final int normalizedEnd =
-        selectedStart <= selectedEnd ? selectedEnd : selectedStart;
-    if (writeBack &&
-        (appData.animationRigSelectionStartFrame != normalizedStart ||
-            appData.animationRigSelectionEndFrame != normalizedEnd)) {
-      appData.animationRigSelectionStartFrame = normalizedStart;
-      appData.animationRigSelectionEndFrame = normalizedEnd;
-    }
-    return List<int>.generate(
-      normalizedEnd - normalizedStart + 1,
-      (index) => normalizedStart + index,
-      growable: false,
+    final int totalFrames =
+        (animation.endFrame < 0 ? 0 : animation.endFrame) + 1;
+    return LayoutUtils.animationRigSelectedFrames(
+      appData: appData,
+      animation: animation,
+      totalFrames: totalFrames,
+      writeBack: writeBack,
     );
   }
 
@@ -245,9 +251,7 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
     if (selectedFrames.isEmpty) {
       return animation.startFrame;
     }
-    final int current = appData.animationRigActiveFrame;
-    final int active =
-        selectedFrames.contains(current) ? current : selectedFrames.first;
+    final int active = selectedFrames.first;
     if (writeBack && appData.animationRigActiveFrame != active) {
       appData.animationRigActiveFrame = active;
     }
@@ -364,100 +368,6 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
     updateForm(appData);
   }
 
-  Future<void> _applyRigConfigurationToAnimation(
-    AppData appData, {
-    required String sourceAnimationId,
-    required String targetAnimationId,
-  }) async {
-    if (sourceAnimationId == targetAnimationId) {
-      return;
-    }
-    await appData.runProjectMutation(
-      debugLabel: 'animation-rig-apply-configuration',
-      mutate: () {
-        final List<GameAnimation> animations = appData.gameData.animations;
-        final int sourceIndex = animations
-            .indexWhere((animation) => animation.id == sourceAnimationId);
-        final int targetIndex = animations
-            .indexWhere((animation) => animation.id == targetAnimationId);
-        if (sourceIndex == -1 || targetIndex == -1) {
-          return;
-        }
-        final GameAnimation source = animations[sourceIndex];
-        final GameAnimation target = animations[targetIndex];
-        target.anchorX = source.anchorX;
-        target.anchorY = source.anchorY;
-        target.anchorColor = source.anchorColor;
-        target.hitBoxes = source.hitBoxes
-            .map((item) => item.copyWith())
-            .toList(growable: true);
-        target.frameRigs = source.frameRigs
-            .map(
-              (item) => item.copyWith(
-                hitBoxes: item.hitBoxes
-                    .map((hitBox) => hitBox.copyWith())
-                    .toList(growable: true),
-              ),
-            )
-            .toList(growable: true);
-        target.ensureFrameRigsForRange();
-        if (appData.selectedAnimation == targetIndex &&
-            appData.selectedAnimationHitBox >=
-                target
-                    .rigForFrame(_activeRigFrame(appData, target))
-                    .hitBoxes
-                    .length) {
-          appData.selectedAnimationHitBox = -1;
-        }
-      },
-    );
-    updateForm(appData);
-  }
-
-  Future<void> _showApplyRigConfigurationPopover(
-    AppData appData,
-    GameAnimation sourceAnimation,
-    GlobalKey anchorKey,
-  ) async {
-    if (Overlay.maybeOf(context) == null) {
-      return;
-    }
-    final CDKDialogController controller = CDKDialogController();
-    final List<_RigTargetOption> options = appData.gameData.animations
-        .where((animation) => animation.id != sourceAnimation.id)
-        .map(
-          (animation) => _RigTargetOption(
-            id: animation.id,
-            label: animation.name.trim().isEmpty ? '(Unnamed)' : animation.name,
-          ),
-        )
-        .toList(growable: false);
-
-    CDKDialogsManager.showPopoverArrowed(
-      context: context,
-      anchorKey: anchorKey,
-      isAnimated: true,
-      animateContentResize: false,
-      dismissOnEscape: true,
-      dismissOnOutsideTap: true,
-      showBackgroundShade: false,
-      controller: controller,
-      child: _ApplyRigConfigurationPopover(
-        options: options,
-        onApply: (targetAnimationId) async {
-          await _applyRigConfigurationToAnimation(
-            appData,
-            sourceAnimationId: sourceAnimation.id,
-            targetAnimationId: targetAnimationId,
-          );
-        },
-        onApplied: () {
-          controller.close();
-        },
-      ),
-    );
-  }
-
   Future<void> _showAnimationRigPopover(
     AppData appData,
     GameAnimation animation,
@@ -477,26 +387,8 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
       animation,
       writeBack: true,
     );
-    final int animationStart =
-        animation.startFrame < 0 ? 0 : animation.startFrame;
-    final int animationEnd = animation.endFrame < animationStart
-        ? animationStart
-        : animation.endFrame;
-    final int selectedStart =
-        selectedFrames.isEmpty ? animationStart : selectedFrames.first;
-    final int selectedEnd =
-        selectedFrames.isEmpty ? animationEnd : selectedFrames.last;
-    final int activeFrame = _activeRigFrame(
-      appData,
-      animation,
-      writeBack: true,
-    );
-    final bool allFramesSelected =
-        selectedStart == animationStart && selectedEnd == animationEnd;
-    final bool currentFrameSelected =
-        selectedStart == activeFrame && selectedEnd == activeFrame;
-    final int initialFrameSelectionIndex =
-        allFramesSelected ? 0 : (currentFrameSelected ? 1 : 2);
+    final String selectedFramesLabel =
+        _selectedFramesLabel(selectedFrames) ?? 'No frames selected';
 
     CDKDialogsManager.showPopoverArrowed(
       context: context,
@@ -512,33 +404,7 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
         initialSelectedHitBoxIndex: appData.selectedAnimationHitBox,
         hitBoxColorPalette: GameAnimationHitBox.colorPalette,
         anchorColorPalette: GameAnimation.anchorColorPalette,
-        frameSelectionOptions: <String>[
-          'All Frames ($animationStart-$animationEnd)',
-          'Current Frame ($activeFrame)',
-          'Selected Range ($selectedStart-$selectedEnd)',
-        ],
-        initialFrameSelectionIndex: initialFrameSelectionIndex,
-        onFrameSelectionChanged: (selectedIndex) {
-          if (selectedIndex == 0) {
-            appData.animationRigSelectionStartFrame = animationStart;
-            appData.animationRigSelectionEndFrame = animationEnd;
-            appData.animationRigActiveFrame = animationStart;
-          } else if (selectedIndex == 1) {
-            final int frame = _activeRigFrame(
-              appData,
-              animation,
-              writeBack: true,
-            );
-            appData.animationRigSelectionStartFrame = frame;
-            appData.animationRigSelectionEndFrame = frame;
-            appData.animationRigActiveFrame = frame;
-          } else {
-            _selectedRigFrames(appData, animation, writeBack: true);
-          }
-          _syncSelectedAnimationHitBox(appData);
-          appData.update();
-          updateForm(appData);
-        },
+        selectedFramesLabel: selectedFramesLabel,
         onSelectedHitBoxChanged: (int index) {
           if (appData.selectedAnimationHitBox == index) {
             return;
@@ -583,6 +449,8 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
     if (isSelected) {
       appData.selectedAnimation = -1;
       appData.selectedAnimationHitBox = -1;
+      appData.animationRigSelectionAnimationId = '';
+      appData.animationRigSelectedFrames = <int>[];
       appData.animationRigSelectionStartFrame = -1;
       appData.animationRigSelectionEndFrame = -1;
       appData.animationRigActiveFrame = -1;
@@ -594,13 +462,15 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
       return;
     }
     final GameAnimation animation = animations[index];
-    final int start = animation.startFrame < 0 ? 0 : animation.startFrame;
-    final int end = animation.endFrame < start ? start : animation.endFrame;
     appData.selectedAnimation = index;
     appData.selectedAnimationHitBox = -1;
-    appData.animationRigSelectionStartFrame = start;
-    appData.animationRigSelectionEndFrame = end;
-    appData.animationRigActiveFrame = start;
+    LayoutUtils.setAnimationRigSelectedFrames(
+      appData: appData,
+      animation: animation,
+      frames: const <int>[],
+      totalFrames: (animation.endFrame < 0 ? 0 : animation.endFrame) + 1,
+      setActiveToFirst: true,
+    );
     appData.update();
   }
 
@@ -653,6 +523,7 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
             selectedAnimation,
             writeBack: true,
           );
+    final String? selectedFramesLabel = _selectedFramesLabel(selectedFrames);
     final GameAnimationHitBox? selectedHitBox = selectedAnimation != null &&
             selectedRig != null &&
             appData.selectedAnimationHitBox >= 0 &&
@@ -698,11 +569,9 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
                       role: CDKTextRole.bodyStrong,
                     ),
                     SizedBox(height: spacing.xs),
-                    if (selectedFrames.isNotEmpty)
+                    if (selectedFramesLabel != null)
                       CDKText(
-                        selectedFrames.first == selectedFrames.last
-                            ? 'Frame: ${selectedFrames.first}'
-                            : 'Frames: ${selectedFrames.first}-${selectedFrames.last}',
+                        selectedFramesLabel,
                         role: CDKTextRole.caption,
                         secondary: true,
                       ),
@@ -857,46 +726,6 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
                                       ],
                                     ),
                                   ),
-                                  if (isSelected)
-                                    CupertinoButton(
-                                      key: _selectedRigDuplicateAnchorKey,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                      ),
-                                      minimumSize: const Size(20, 20),
-                                      onPressed: () async {
-                                        await _showApplyRigConfigurationPopover(
-                                          appData,
-                                          animation,
-                                          _selectedRigDuplicateAnchorKey,
-                                        );
-                                      },
-                                      child: Icon(
-                                        CupertinoIcons.doc_on_doc,
-                                        size: 16,
-                                        color: cdkColors.colorText,
-                                      ),
-                                    ),
-                                  if (isSelected)
-                                    CupertinoButton(
-                                      key: _selectedRigAnchorKey,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                      ),
-                                      minimumSize: const Size(20, 20),
-                                      onPressed: () async {
-                                        await _showAnimationRigPopover(
-                                          appData,
-                                          animation,
-                                          _selectedRigAnchorKey,
-                                        );
-                                      },
-                                      child: Icon(
-                                        CupertinoIcons.ellipsis_circle,
-                                        size: 16,
-                                        color: cdkColors.colorText,
-                                      ),
-                                    ),
                                   ReorderableDragStartListener(
                                     index: index,
                                     child: Padding(
@@ -924,146 +753,6 @@ class LayoutAnimationRigsState extends State<LayoutAnimationRigs> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _RigTargetOption {
-  const _RigTargetOption({
-    required this.id,
-    required this.label,
-  });
-
-  final String id;
-  final String label;
-}
-
-class _ApplyRigConfigurationPopover extends StatefulWidget {
-  const _ApplyRigConfigurationPopover({
-    required this.options,
-    required this.onApply,
-    required this.onApplied,
-  });
-
-  final List<_RigTargetOption> options;
-  final Future<void> Function(String targetAnimationId) onApply;
-  final VoidCallback onApplied;
-
-  @override
-  State<_ApplyRigConfigurationPopover> createState() =>
-      _ApplyRigConfigurationPopoverState();
-}
-
-class _ApplyRigConfigurationPopoverState
-    extends State<_ApplyRigConfigurationPopover> {
-  String? _selectedTargetId;
-  bool _isApplying = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedTargetId =
-        widget.options.isNotEmpty ? widget.options.first.id : null;
-  }
-
-  bool get _canApply => !_isApplying && _selectedTargetId != null;
-
-  int get _selectedTargetIndex {
-    if (widget.options.isEmpty || _selectedTargetId == null) {
-      return 0;
-    }
-    final int index =
-        widget.options.indexWhere((option) => option.id == _selectedTargetId);
-    if (index < 0) {
-      return 0;
-    }
-    return index.clamp(0, widget.options.length - 1);
-  }
-
-  Future<void> _apply() async {
-    final String? targetId = _selectedTargetId;
-    if (targetId == null || _isApplying) {
-      return;
-    }
-    setState(() {
-      _isApplying = true;
-    });
-    try {
-      await widget.onApply(targetId);
-      widget.onApplied();
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isApplying = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = CDKThemeNotifier.spacingTokensOf(context);
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 360, maxWidth: 420),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.md),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const CDKText('Apply Rig Configuration To',
-                  role: CDKTextRole.title),
-              SizedBox(height: spacing.md),
-              const CDKText('Animation', role: CDKTextRole.caption),
-              const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerLeft,
-                widthFactor: 1,
-                child: widget.options.isEmpty
-                    ? const CDKText(
-                        'No other animations available.',
-                        role: CDKTextRole.caption,
-                        secondary: true,
-                      )
-                    : IntrinsicWidth(
-                        child: CDKButtonSelect(
-                          selectedIndex: _selectedTargetIndex,
-                          options: widget.options
-                              .map((option) => option.label)
-                              .toList(growable: false),
-                          onSelected: (int index) {
-                            if (index < 0 || index >= widget.options.length) {
-                              return;
-                            }
-                            setState(() {
-                              _selectedTargetId = widget.options[index].id;
-                            });
-                          },
-                        ),
-                      ),
-              ),
-              SizedBox(height: spacing.sm),
-              Row(
-                children: [
-                  const Spacer(),
-                  CDKButton(
-                    style: CDKButtonStyle.action,
-                    enabled: _canApply,
-                    onPressed: _canApply ? _apply : null,
-                    child: Text(_isApplying ? 'Applying...' : 'Apply'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1142,9 +831,7 @@ class _AnimationRigEditorPopover extends StatefulWidget {
     required this.initialSelectedHitBoxIndex,
     required this.hitBoxColorPalette,
     required this.anchorColorPalette,
-    required this.frameSelectionOptions,
-    required this.initialFrameSelectionIndex,
-    required this.onFrameSelectionChanged,
+    required this.selectedFramesLabel,
     required this.onSelectedHitBoxChanged,
     required this.onDraftChanged,
   });
@@ -1153,9 +840,7 @@ class _AnimationRigEditorPopover extends StatefulWidget {
   final int initialSelectedHitBoxIndex;
   final List<String> hitBoxColorPalette;
   final List<String> anchorColorPalette;
-  final List<String> frameSelectionOptions;
-  final int initialFrameSelectionIndex;
-  final ValueChanged<int> onFrameSelectionChanged;
+  final String selectedFramesLabel;
   final ValueChanged<int> onSelectedHitBoxChanged;
   final Future<void> Function(_AnimationRigDraft draft) onDraftChanged;
 
@@ -1188,12 +873,6 @@ class _AnimationRigEditorPopoverState
   int _selectedIndex = -1;
   int _newKeyCounter = 0;
   int _selectedPanelIndex = 0;
-  late int _frameSelectionIndex = widget.frameSelectionOptions.isEmpty
-      ? 0
-      : widget.initialFrameSelectionIndex.clamp(
-          0,
-          widget.frameSelectionOptions.length - 1,
-        );
   late String _newHitBoxColor;
 
   @override
@@ -1731,38 +1410,19 @@ class _AnimationRigEditorPopoverState
             children: [
               const CDKText('Animation Rigs', role: CDKTextRole.title),
               SizedBox(height: spacing.md),
-              const CDKText('Frame Selection', role: CDKTextRole.caption),
+              const CDKText('Selected Frames', role: CDKTextRole.caption),
               const SizedBox(height: 4),
-              if (widget.frameSelectionOptions.isEmpty)
-                const CDKText(
-                  'No frame selection presets available.',
-                  role: CDKTextRole.caption,
-                  secondary: true,
-                )
-              else
-                Align(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: 1,
-                  child: IntrinsicWidth(
-                    child: CDKButtonSelect(
-                      selectedIndex: _frameSelectionIndex,
-                      options: widget.frameSelectionOptions,
-                      onSelected: (selectedIndex) {
-                        if (selectedIndex < 0 ||
-                            selectedIndex >=
-                                widget.frameSelectionOptions.length) {
-                          return;
-                        }
-                        setState(() {
-                          _frameSelectionIndex = selectedIndex;
-                        });
-                        widget.onFrameSelectionChanged(selectedIndex);
-                      },
-                    ),
-                  ),
-                ),
+              CDKText(
+                widget.selectedFramesLabel,
+                role: CDKTextRole.bodyStrong,
+              ),
+              const SizedBox(height: 2),
+              const CDKText(
+                'Changes in this editor are applied to the selected frames.',
+                role: CDKTextRole.caption,
+                secondary: true,
+              ),
               SizedBox(height: spacing.md),
-              SizedBox(height: spacing.sm),
               CDKPickerButtonsSegmented(
                 selectedIndex: _selectedPanelIndex,
                 options: const [

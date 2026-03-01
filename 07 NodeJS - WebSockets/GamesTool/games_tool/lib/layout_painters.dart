@@ -7,6 +7,7 @@ class _AnimationRigFramePreviewPainter extends CustomPainter {
     required this.frameHeight,
     required this.columns,
     required this.frameIndex,
+    this.drawCheckerboard = true,
   });
 
   final ui.Image image;
@@ -14,20 +15,23 @@ class _AnimationRigFramePreviewPainter extends CustomPainter {
   final double frameHeight;
   final int columns;
   final int frameIndex;
+  final bool drawCheckerboard;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint bgA = Paint()..color = const Color(0xFFE8E8E8);
-    final Paint bgB = Paint()..color = const Color(0xFFD8D8D8);
-    const double checker = 8.0;
-    for (double y = 0; y < size.height; y += checker) {
-      for (double x = 0; x < size.width; x += checker) {
-        final bool even =
-            ((x / checker).floor() + (y / checker).floor()) % 2 == 0;
-        canvas.drawRect(
-          Rect.fromLTWH(x, y, checker, checker),
-          even ? bgA : bgB,
-        );
+    if (drawCheckerboard) {
+      final Paint bgA = Paint()..color = const Color(0xFFE8E8E8);
+      final Paint bgB = Paint()..color = const Color(0xFFD8D8D8);
+      const double checker = 8.0;
+      for (double y = 0; y < size.height; y += checker) {
+        for (double x = 0; x < size.width; x += checker) {
+          final bool even =
+              ((x / checker).floor() + (y / checker).floor()) % 2 == 0;
+          canvas.drawRect(
+            Rect.fromLTWH(x, y, checker, checker),
+            even ? bgA : bgB,
+          );
+        }
       }
     }
 
@@ -71,7 +75,8 @@ class _AnimationRigFramePreviewPainter extends CustomPainter {
         oldDelegate.frameWidth != frameWidth ||
         oldDelegate.frameHeight != frameHeight ||
         oldDelegate.columns != columns ||
-        oldDelegate.frameIndex != frameIndex;
+        oldDelegate.frameIndex != frameIndex ||
+        oldDelegate.drawCheckerboard != drawCheckerboard;
   }
 }
 

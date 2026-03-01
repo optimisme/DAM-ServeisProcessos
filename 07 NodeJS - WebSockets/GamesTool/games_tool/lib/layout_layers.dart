@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
@@ -45,6 +47,32 @@ class LayoutLayersState extends State<LayoutLayers> {
       return;
     }
     appData.queueAutosave();
+  }
+
+  bool _isMultiSelectModifierPressed() {
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    final Set<LogicalKeyboardKey> pressed = keyboard.logicalKeysPressed;
+    return keyboard.isMetaPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isControlPressed ||
+        pressed.contains(LogicalKeyboardKey.meta) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.superKey) ||
+        pressed.contains(LogicalKeyboardKey.alt) ||
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight) ||
+        pressed.contains(LogicalKeyboardKey.control) ||
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight);
+  }
+
+  int _firstSelectedIndex(Set<int> selection) {
+    if (selection.isEmpty) {
+      return -1;
+    }
+    final List<int> sorted = selection.toList()..sort();
+    return sorted.first;
   }
 
   List<GameListGroup> _layerGroups(GameLevel level) {
@@ -354,6 +382,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     level.layers.add(
       GameLayer(
         name: data.name,
+        gameplayData: data.gameplayData,
         x: data.x,
         y: data.y,
         depth: data.depth,
@@ -407,6 +436,7 @@ class LayoutLayersState extends State<LayoutLayers> {
 
     layers[index] = GameLayer(
       name: data.name,
+      gameplayData: data.gameplayData,
       x: data.x,
       y: data.y,
       depth: data.depth,
@@ -525,6 +555,7 @@ class LayoutLayersState extends State<LayoutLayers> {
       confirmLabel: 'Add',
       initialData: _LayerDialogData(
         name: '',
+        gameplayData: '',
         x: 0,
         y: 0,
         depth: 0.0,
@@ -576,6 +607,7 @@ class LayoutLayersState extends State<LayoutLayers> {
       confirmLabel: 'Save',
       initialData: _LayerDialogData(
         name: layer.name,
+        gameplayData: layer.gameplayData,
         x: layer.x,
         y: layer.y,
         depth: layer.depth,
@@ -645,6 +677,7 @@ class LayoutLayersState extends State<LayoutLayers> {
     appData.pushUndo();
     layers[index] = GameLayer(
       name: layer.name,
+      gameplayData: layer.gameplayData,
       x: layer.x,
       y: layer.y,
       depth: layer.depth,
@@ -659,7 +692,44 @@ class LayoutLayersState extends State<LayoutLayers> {
     await _autoSaveIfPossible(appData);
   }
 
-  void _selectLayer(AppData appData, int index, bool isSelected) {
+  void _selectLayer(
+    AppData appData,
+    int index,
+    bool isSelected, {
+    bool additive = false,
+  }) {
+    if (additive &&
+        appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length) {
+      final int layerCount =
+          appData.gameData.levels[appData.selectedLevel].layers.length;
+      final Set<int> nextSelection = appData.selectedLayerIndices
+          .where((value) => value >= 0 && value < layerCount)
+          .toSet();
+      final int currentPrimary = appData.selectedLayer;
+      if (currentPrimary >= 0 && currentPrimary < layerCount) {
+        nextSelection.add(currentPrimary);
+      }
+      final bool removed = nextSelection.remove(index);
+      if (!removed) {
+        nextSelection.add(index);
+      }
+      final int nextPrimary;
+      if (nextSelection.isEmpty) {
+        nextPrimary = -1;
+      } else if (!removed) {
+        nextPrimary = index;
+      } else if (currentPrimary >= 0 &&
+          nextSelection.contains(currentPrimary)) {
+        nextPrimary = currentPrimary;
+      } else {
+        nextPrimary = _firstSelectedIndex(nextSelection);
+      }
+      appData.selectedLayer = nextPrimary;
+      appData.selectedLayerIndices = nextSelection;
+      appData.update();
+      return;
+    }
     if (isSelected) {
       appData.selectedLayer = -1;
       appData.selectedLayerIndices = <int>{};
@@ -1074,6 +1144,7 @@ class LayoutLayersState extends State<LayoutLayers> {
                                     appData,
                                     layerIndex,
                                     isSelected,
+                                    additive: _isMultiSelectModifierPressed(),
                                   ),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
@@ -1198,6 +1269,7 @@ class LayoutLayersState extends State<LayoutLayers> {
 class _LayerDialogData {
   const _LayerDialogData({
     required this.name,
+    required this.gameplayData,
     required this.x,
     required this.y,
     required this.depth,
@@ -1211,6 +1283,7 @@ class _LayerDialogData {
   });
 
   final String name;
+  final String gameplayData;
   final int x;
   final int y;
   final double depth;
@@ -1261,6 +1334,10 @@ class _LayerFormDialog extends StatefulWidget {
 class _LayerFormDialogState extends State<_LayerFormDialog> {
   late final TextEditingController _nameController = TextEditingController(
     text: widget.initialData.name,
+  );
+  late final TextEditingController _gameplayDataController =
+      TextEditingController(
+    text: widget.initialData.gameplayData,
   );
   late final TextEditingController _xController = TextEditingController(
     text: widget.initialData.x.toString(),
@@ -1334,6 +1411,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
     final double parsedDepth = _parseDepthValue(_depthController.text) ?? 0.0;
     return _LayerDialogData(
       name: _nameController.text.trim(),
+      gameplayData: _gameplayDataController.text,
       x: int.tryParse(_xController.text.trim()) ?? 0,
       y: int.tryParse(_yController.text.trim()) ?? 0,
       depth: parsedDepth,
@@ -1373,6 +1451,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
     widget.onConfirm(
       _LayerDialogData(
         name: _nameController.text.trim(),
+        gameplayData: _gameplayDataController.text,
         x: int.tryParse(_xController.text.trim()) ?? 0,
         y: int.tryParse(_yController.text.trim()) ?? 0,
         depth: parsedDepth,
@@ -1397,6 +1476,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
         onPersist: widget.onLiveChanged!,
         areEqual: (a, b) =>
             a.name == b.name &&
+            a.gameplayData == b.gameplayData &&
             a.x == b.x &&
             a.y == b.y &&
             a.depth == b.depth &&
@@ -1416,6 +1496,7 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
       _editSession!.dispose();
     }
     _nameController.dispose();
+    _gameplayDataController.dispose();
     _xController.dispose();
     _yController.dispose();
     _depthController.dispose();
@@ -1604,34 +1685,69 @@ class _LayerFormDialogState extends State<_LayerFormDialog> {
               ],
             ),
           ),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            SizedBox(height: spacing.xs),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 240,
-                child: EditorLabeledField(
-                  label: widget.groupFieldLabel,
-                  child: CDKButtonSelect(
-                    selectedIndex: widget.groupOptions
-                        .indexWhere((group) => group.id == _selectedGroupId)
-                        .clamp(0, widget.groupOptions.length - 1),
-                    options: widget.groupOptions
-                        .map((group) => group.name.trim().isEmpty
-                            ? GameListGroup.defaultMainName
-                            : group.name)
-                        .toList(growable: false),
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedGroupId = widget.groupOptions[index].id;
-                      });
-                      _onInputChanged();
-                    },
+          SizedBox(height: spacing.xs),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: EditorLabeledField(
+                    label: widget.groupFieldLabel,
+                    child: CDKButtonSelect(
+                      selectedIndex: widget.groupOptions
+                          .indexWhere((group) => group.id == _selectedGroupId)
+                          .clamp(0, widget.groupOptions.length - 1),
+                      options: widget.groupOptions
+                          .map((group) => group.name.trim().isEmpty
+                              ? GameListGroup.defaultMainName
+                              : group.name)
+                          .toList(growable: false),
+                      onSelected: (int index) {
+                        setState(() {
+                          _selectedGroupId = widget.groupOptions[index].id;
+                        });
+                        _onInputChanged();
+                      },
+                    ),
                   ),
                 ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: EditorLabeledField(
+                    label: 'Gameplay data',
+                    child: CDKFieldText(
+                      placeholder: 'Gameplay data',
+                      controller: _gameplayDataController,
+                      onChanged: (_) => _onInputChanged(),
+                      onSubmitted: (_) {
+                        if (widget.liveEdit) {
+                          _onInputChanged();
+                          return;
+                        }
+                        _confirm();
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            EditorLabeledField(
+              label: 'Gameplay data',
+              child: CDKFieldText(
+                placeholder: 'Gameplay data',
+                controller: _gameplayDataController,
+                onChanged: (_) => _onInputChanged(),
+                onSubmitted: (_) {
+                  if (widget.liveEdit) {
+                    _onInputChanged();
+                    return;
+                  }
+                  _confirm();
+                },
               ),
             ),
-          ],
         ],
       ),
     );

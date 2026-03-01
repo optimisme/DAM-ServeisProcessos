@@ -29,6 +29,7 @@
   "zones": [
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 629,
       "y": 277,
       "width": 71,
@@ -38,6 +39,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 611,
       "y": 292,
       "width": 136,
@@ -47,6 +49,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 531,
       "y": 308,
       "width": 201,
@@ -56,6 +59,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 732,
       "y": 300,
       "width": 17,
@@ -65,6 +69,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 749,
       "y": 307,
       "width": 15,
@@ -74,6 +79,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 516,
       "y": 324,
       "width": 15,
@@ -83,6 +89,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 501,
       "y": 340,
       "width": 15,
@@ -92,6 +99,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 547,
       "y": 395,
       "width": 152,
@@ -101,6 +109,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 563,
       "y": 412,
       "width": 122,
@@ -110,6 +119,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 272,
       "y": 48,
       "width": 16,
@@ -119,6 +129,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 113,
       "y": 417,
       "width": 31,
@@ -128,6 +139,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 465,
       "y": 256,
       "width": 15,
@@ -137,6 +149,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 929,
       "y": 65,
       "width": 14,
@@ -146,6 +159,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 881,
       "y": 97,
       "width": 14,
@@ -155,6 +169,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 913,
       "y": 369,
       "width": 14,
@@ -164,6 +179,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 945,
       "y": 401,
       "width": 14,
@@ -173,6 +189,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 881,
       "y": 449,
       "width": 14,
@@ -182,6 +199,7 @@
     },
     {
       "type": "Pont",
+      "gameplayData": "",
       "x": 304,
       "y": 400,
       "width": 16,
@@ -191,6 +209,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 0,
       "y": 0,
       "width": 10,
@@ -200,6 +219,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 0,
       "y": 0,
       "width": 1024,
@@ -209,6 +229,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 0,
       "y": 505,
       "width": 1024,
@@ -218,6 +239,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 1014,
       "y": 0,
       "width": 10,
@@ -227,6 +249,7 @@
     },
     {
       "type": "Mur",
+      "gameplayData": "",
       "x": 743,
       "y": 121,
       "width": 115,
@@ -236,6 +259,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 35,
       "y": 32,
       "width": 10,
@@ -245,6 +269,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 83,
       "y": 112,
       "width": 10,
@@ -254,6 +279,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 67,
       "y": 144,
       "width": 10,
@@ -263,6 +289,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 51,
       "y": 161,
       "width": 10,
@@ -272,6 +299,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 115,
       "y": 177,
       "width": 10,
@@ -281,6 +309,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 83,
       "y": 224,
       "width": 10,
@@ -290,6 +319,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 35,
       "y": 257,
       "width": 10,
@@ -299,6 +329,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 67,
       "y": 304,
       "width": 10,
@@ -308,6 +339,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 19,
       "y": 352,
       "width": 10,
@@ -317,6 +349,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 19,
       "y": 368,
       "width": 10,
@@ -326,6 +359,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 67,
       "y": 448,
       "width": 10,
@@ -335,6 +369,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 146,
       "y": 481,
       "width": 10,
@@ -344,6 +379,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 291,
       "y": 48,
       "width": 10,
@@ -353,6 +389,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 243,
       "y": 48,
       "width": 10,
@@ -362,6 +399,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 292,
       "y": 65,
       "width": 10,
@@ -371,6 +409,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 355,
       "y": 47,
       "width": 10,
@@ -380,6 +419,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 435,
       "y": 97,
       "width": 10,
@@ -389,6 +429,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 547,
       "y": 208,
       "width": 10,
@@ -398,6 +439,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 531,
       "y": 224,
       "width": 10,
@@ -407,6 +449,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 563,
       "y": 240,
       "width": 10,
@@ -416,6 +459,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 612,
       "y": 176,
       "width": 10,
@@ -425,6 +469,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 674,
       "y": 64,
       "width": 10,
@@ -434,6 +479,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 803,
       "y": 257,
       "width": 10,
@@ -443,6 +489,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 786,
       "y": 416,
       "width": 10,
@@ -452,6 +499,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 803,
       "y": 433,
       "width": 10,
@@ -461,6 +509,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 850,
       "y": 464,
       "width": 10,
@@ -470,6 +519,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 932,
       "y": 448,
       "width": 10,
@@ -479,6 +529,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 899,
       "y": 401,
       "width": 10,
@@ -488,6 +539,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 978,
       "y": 433,
       "width": 10,
@@ -497,6 +549,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 979,
       "y": 368,
       "width": 10,
@@ -506,6 +559,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 979,
       "y": 271,
       "width": 10,
@@ -515,6 +569,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 963,
       "y": 145,
       "width": 10,
@@ -524,6 +579,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 931,
       "y": 48,
       "width": 10,
@@ -533,6 +589,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 915,
       "y": 64,
       "width": 10,
@@ -542,6 +599,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 867,
       "y": 64,
       "width": 10,
@@ -551,6 +609,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 883,
       "y": 209,
       "width": 10,
@@ -560,6 +619,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 867,
       "y": 288,
       "width": 10,
@@ -569,6 +629,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 867,
       "y": 320,
       "width": 10,
@@ -578,6 +639,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 853,
       "y": 296,
       "width": 39,
@@ -587,6 +649,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 562,
       "y": 49,
       "width": 10,
@@ -596,6 +659,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 563,
       "y": 79,
       "width": 10,
@@ -605,6 +669,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 531,
       "y": 161,
       "width": 10,
@@ -614,6 +679,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 547,
       "y": 54,
       "width": 42,
@@ -623,6 +689,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 339,
       "y": 129,
       "width": 10,
@@ -632,6 +699,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 387,
       "y": 144,
       "width": 10,
@@ -641,6 +709,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 354,
       "y": 224,
       "width": 10,
@@ -650,6 +719,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 371,
       "y": 304,
       "width": 10,
@@ -659,6 +729,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 467,
       "y": 448,
       "width": 10,
@@ -668,6 +739,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 243,
       "y": 401,
       "width": 10,
@@ -677,6 +749,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 355,
       "y": 416,
       "width": 10,
@@ -686,6 +759,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 355,
       "y": 416,
       "width": 10,
@@ -695,6 +769,7 @@
     },
     {
       "type": "Arbre",
+      "gameplayData": "",
       "x": 243,
       "y": 289,
       "width": 43,
@@ -704,6 +779,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 277,
       "y": 420,
       "width": 25,
@@ -713,6 +789,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 322,
       "y": 420,
       "width": 24,
@@ -722,6 +799,7 @@
     },
     {
       "type": "Aigua",
+      "gameplayData": "",
       "x": 292,
       "y": 460,
       "width": 10,

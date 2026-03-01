@@ -30,6 +30,7 @@ class GameLevel {
 
   final String name;
   final String description;
+  final String gameplayData;
   final List<GameLayer> layers;
   final List<GameListGroup> layerGroups;
   final List<GameZone> zones;
@@ -52,6 +53,7 @@ class GameLevel {
   GameLevel({
     required this.name,
     required this.description,
+    this.gameplayData = '',
     required this.layers,
     List<GameListGroup>? layerGroups,
     required this.zones,
@@ -86,6 +88,7 @@ class GameLevel {
 
   // Constructor de fàbrica per crear una instància des d'un Map (JSON)
   factory GameLevel.fromJson(Map<String, dynamic> json) {
+    final dynamic rawGameplayData = json['gameplayData'];
     final List<GameListGroup> parsedLayerGroups =
         ((json['layerGroups'] as List<dynamic>?) ?? const <dynamic>[])
             .whereType<Map<String, dynamic>>()
@@ -202,6 +205,9 @@ class GameLevel {
     return GameLevel(
       name: json['name'] as String,
       description: json['description'] as String,
+      gameplayData: rawGameplayData is String
+          ? rawGameplayData
+          : (rawGameplayData?.toString() ?? ''),
       layers: parsedLayers,
       layerGroups: parsedLayerGroups,
       zones: parsedZones,
@@ -234,6 +240,7 @@ class GameLevel {
     return {
       'name': name,
       'description': description,
+      'gameplayData': gameplayData,
       'layers': layers.map((layer) => layer.toJson()).toList(),
       'layerGroups': layerGroups.map((group) => group.toJson()).toList(),
       'zones': zones.map((zone) => zone.toJson()).toList(),
@@ -263,7 +270,7 @@ class GameLevel {
 
   @override
   String toString() {
-    return 'GameLevel(name: $name, description: $description, layers: $layers, layerGroups: $layerGroups, zones: $zones, zoneGroups: $zoneGroups, sprites: $sprites, spriteGroups: $spriteGroups, groupId: $groupId, viewport: ${viewportWidth}x$viewportHeight at ($viewportX,$viewportY) [$viewportAdaptation], background: $backgroundColorHex, parallaxSensitivity: $parallaxSensitivity)';
+    return 'GameLevel(name: $name, description: $description, gameplayData: $gameplayData, layers: $layers, layerGroups: $layerGroups, zones: $zones, zoneGroups: $zoneGroups, sprites: $sprites, spriteGroups: $spriteGroups, groupId: $groupId, viewport: ${viewportWidth}x$viewportHeight at ($viewportX,$viewportY) [$viewportAdaptation], background: $backgroundColorHex, parallaxSensitivity: $parallaxSensitivity)';
   }
 
   static String _normalizeGroupId(String? rawGroupId) {

@@ -448,38 +448,196 @@ class LayoutUtils {
     return start + offset;
   }
 
-  static _AnimationFrameRange _animationRigSelectedFrameRange({
-    required AppData appData,
+  static List<int> _framesInAnimationRange({
     required GameAnimation animation,
     required int totalFrames,
-    bool writeBack = false,
   }) {
     final int safeTotal = math.max(1, totalFrames);
     final int animationStart = animation.startFrame.clamp(0, safeTotal - 1);
     final int animationEnd =
         animation.endFrame.clamp(animationStart, safeTotal - 1);
-
-    int selectedStart = appData.animationRigSelectionStartFrame;
-    int selectedEnd = appData.animationRigSelectionEndFrame;
-    if (selectedStart < 0 || selectedEnd < 0) {
-      selectedStart = animationStart;
-      selectedEnd = animationEnd;
-    }
-    selectedStart = selectedStart.clamp(animationStart, animationEnd);
-    selectedEnd = selectedEnd.clamp(animationStart, animationEnd);
-    final int normalizedStart = math.min(selectedStart, selectedEnd);
-    final int normalizedEnd = math.max(selectedStart, selectedEnd);
-
-    if (writeBack &&
-        (appData.animationRigSelectionStartFrame != normalizedStart ||
-            appData.animationRigSelectionEndFrame != normalizedEnd)) {
-      appData.animationRigSelectionStartFrame = normalizedStart;
-      appData.animationRigSelectionEndFrame = normalizedEnd;
-    }
-    return _AnimationFrameRange(
-      start: normalizedStart,
-      end: normalizedEnd,
+    return List<int>.generate(
+      animationEnd - animationStart + 1,
+      (int index) => animationStart + index,
+      growable: false,
     );
+  }
+
+  static List<int> _uniqueFramesInRange({
+    required Iterable<int> frames,
+    required int start,
+    required int end,
+  }) {
+    final Set<int> seen = <int>{};
+    final List<int> ordered = <int>[];
+    for (final int frame in frames) {
+      if (frame < start || frame > end) {
+        continue;
+      }
+      if (seen.add(frame)) {
+        ordered.add(frame);
+      }
+    }
+    return ordered;
+  }
+
+  static bool _doubleNearEqual(double a, double b) {
+    return (a - b).abs() <= 0.000001;
+  }
+
+  static bool _rigHitBoxEquivalent(dynamic a, dynamic b) {
+    final double ax = (a.x as num).toDouble();
+    final double ay = (a.y as num).toDouble();
+    final double aw = (a.width as num).toDouble();
+    final double ah = (a.height as num).toDouble();
+    final double bx = (b.x as num).toDouble();
+    final double by = (b.y as num).toDouble();
+    final double bw = (b.width as num).toDouble();
+    final double bh = (b.height as num).toDouble();
+    return a.id == b.id &&
+        a.name == b.name &&
+        a.color == b.color &&
+        _doubleNearEqual(ax, bx) &&
+        _doubleNearEqual(ay, by) &&
+        _doubleNearEqual(aw, bw) &&
+        _doubleNearEqual(ah, bh);
+  }
+
+  static bool _rigEquivalent(
+    GameAnimationFrameRig left,
+    GameAnimationFrameRig right,
+  ) {
+    if (!_doubleNearEqual(left.anchorX, right.anchorX) ||
+        !_doubleNearEqual(left.anchorY, right.anchorY) ||
+        left.anchorColor != right.anchorColor ||
+        left.hitBoxes.length != right.hitBoxes.length) {
+      return false;
+    }
+    for (int i = 0; i < left.hitBoxes.length; i++) {
+      if (!_rigHitBoxEquivalent(left.hitBoxes[i], right.hitBoxes[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static List<int> defaultAnimationRigSelectedFrames({
+    required GameAnimation animation,
+    required int totalFrames,
+  }) {
+    final List<int> frames = _framesInAnimationRange(
+      animation: animation,
+      totalFrames: totalFrames,
+    );
+    if (frames.isEmpty) {
+      return const <int>[];
+    }
+    if (frames.length == 1) {
+      return frames;
+    }
+    final GameAnimationFrameRig firstRig = animation.rigForFrame(frames.first);
+    bool allFramesMatch = true;
+    for (int i = 1; i < frames.length; i++) {
+      final GameAnimationFrameRig nextRig = animation.rigForFrame(frames[i]);
+      if (!_rigEquivalent(firstRig, nextRig)) {
+        allFramesMatch = false;
+        break;
+      }
+    }
+    if (allFramesMatch) {
+      return frames;
+    }
+    return <int>[frames.first];
+  }
+
+  static bool _intListEquals(List<int> a, List<int> b) {
+    if (identical(a, b)) {
+      return true;
+    }
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool setAnimationRigSelectedFrames({
+    required AppData appData,
+    required GameAnimation animation,
+    required Iterable<int> frames,
+    required int totalFrames,
+    bool setActiveToFirst = true,
+  }) {
+    final List<int> validFrames = _framesInAnimationRange(
+      animation: animation,
+      totalFrames: totalFrames,
+    );
+    if (validFrames.isEmpty) {
+      return false;
+    }
+    final int animationStart = validFrames.first;
+    final int animationEnd = validFrames.last;
+    List<int> nextFrames = _uniqueFramesInRange(
+      frames: frames,
+      start: animationStart,
+      end: animationEnd,
+    );
+    if (nextFrames.isEmpty) {
+      nextFrames = defaultAnimationRigSelectedFrames(
+        animation: animation,
+        totalFrames: totalFrames,
+      );
+      nextFrames = _uniqueFramesInRange(
+        frames: nextFrames,
+        start: animationStart,
+        end: animationEnd,
+      );
+    }
+    if (nextFrames.isEmpty) {
+      nextFrames = <int>[animationStart];
+    }
+    int nextStart = nextFrames.first;
+    int nextEnd = nextFrames.first;
+    for (int i = 1; i < nextFrames.length; i++) {
+      final int frame = nextFrames[i];
+      if (frame < nextStart) {
+        nextStart = frame;
+      }
+      if (frame > nextEnd) {
+        nextEnd = frame;
+      }
+    }
+    final int currentActive = appData.animationRigActiveFrame;
+    final int nextActive = setActiveToFirst
+        ? nextFrames.first
+        : (nextFrames.contains(currentActive)
+            ? currentActive
+            : nextFrames.first);
+
+    final bool changed = !_intListEquals(
+          appData.animationRigSelectedFrames,
+          nextFrames,
+        ) ||
+        appData.animationRigSelectionAnimationId != animation.id ||
+        appData.animationRigSelectionStartFrame != nextStart ||
+        appData.animationRigSelectionEndFrame != nextEnd ||
+        appData.animationRigActiveFrame != nextActive;
+    if (!changed) {
+      return false;
+    }
+    appData.animationRigSelectedFrames = List<int>.from(
+      nextFrames,
+      growable: false,
+    );
+    appData.animationRigSelectionAnimationId = animation.id;
+    appData.animationRigSelectionStartFrame = nextStart;
+    appData.animationRigSelectionEndFrame = nextEnd;
+    appData.animationRigActiveFrame = nextActive;
+    return true;
   }
 
   static List<int> animationRigSelectedFrames({
@@ -488,15 +646,67 @@ class LayoutUtils {
     required int totalFrames,
     bool writeBack = false,
   }) {
-    final _AnimationFrameRange range = _animationRigSelectedFrameRange(
-      appData: appData,
+    final List<int> validFrames = _framesInAnimationRange(
       animation: animation,
       totalFrames: totalFrames,
-      writeBack: writeBack,
     );
-    return List<int>.generate(
-      range.end - range.start + 1,
-      (index) => range.start + index,
+    if (validFrames.isEmpty) {
+      return const <int>[];
+    }
+    final int animationStart = validFrames.first;
+    final int animationEnd = validFrames.last;
+    final bool sameAnimationSelection =
+        appData.animationRigSelectionAnimationId == animation.id;
+
+    List<int> selected = sameAnimationSelection
+        ? _uniqueFramesInRange(
+            frames: appData.animationRigSelectedFrames,
+            start: animationStart,
+            end: animationEnd,
+          )
+        : <int>[];
+    if (selected.isEmpty && sameAnimationSelection) {
+      final int selectedStart = appData.animationRigSelectionStartFrame;
+      final int selectedEnd = appData.animationRigSelectionEndFrame;
+      if (selectedStart >= 0 && selectedEnd >= 0) {
+        final int rangeStart = math
+            .min(selectedStart, selectedEnd)
+            .clamp(animationStart, animationEnd);
+        final int rangeEnd = math
+            .max(selectedStart, selectedEnd)
+            .clamp(animationStart, animationEnd);
+        selected = List<int>.generate(
+          rangeEnd - rangeStart + 1,
+          (int index) => rangeStart + index,
+          growable: false,
+        );
+      }
+    }
+    if (selected.isEmpty) {
+      selected = defaultAnimationRigSelectedFrames(
+        animation: animation,
+        totalFrames: totalFrames,
+      );
+      selected = _uniqueFramesInRange(
+        frames: selected,
+        start: animationStart,
+        end: animationEnd,
+      );
+    }
+    if (selected.isEmpty) {
+      selected = <int>[animationStart];
+    }
+    if (writeBack) {
+      setAnimationRigSelectedFrames(
+        appData: appData,
+        animation: animation,
+        frames: selected,
+        totalFrames: totalFrames,
+        setActiveToFirst: false,
+      );
+    }
+    return List<int>.from(
+      selected,
       growable: false,
     );
   }
@@ -506,13 +716,20 @@ class LayoutUtils {
     required GameAnimation animation,
     required int totalFrames,
   }) {
-    final _AnimationFrameRange range = _animationRigSelectedFrameRange(
+    final List<int> selectedFrames = animationRigSelectedFrames(
       appData: appData,
       animation: animation,
       totalFrames: totalFrames,
       writeBack: true,
     );
-    return range.start;
+    if (selectedFrames.isEmpty) {
+      final List<int> validFrames = _framesInAnimationRange(
+        animation: animation,
+        totalFrames: totalFrames,
+      );
+      return validFrames.isEmpty ? 0 : validFrames.first;
+    }
+    return selectedFrames.first;
   }
 
   static Future<ui.Image> drawCanvasImageEmpty(AppData appData) async {
@@ -1409,6 +1626,7 @@ class LayoutUtils {
     final int newY = (worldPos.dy - appData.layerDragOffset.dy).round();
     layers[appData.selectedLayer] = GameLayer(
       name: old.name,
+      gameplayData: old.gameplayData,
       x: newX,
       y: newY,
       depth: old.depth,
@@ -1695,14 +1913,4 @@ class _AnimationGridInfo {
   final int cols;
   final int rows;
   final int totalFrames;
-}
-
-class _AnimationFrameRange {
-  const _AnimationFrameRange({
-    required this.start,
-    required this.end,
-  });
-
-  final int start;
-  final int end;
 }

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter_cupertino_desktop_kit/flutter_cupertino_desktop_kit.dart';
 import 'package:provider/provider.dart';
 import 'app_data.dart';
@@ -42,6 +44,32 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  bool _isMultiSelectModifierPressed() {
+    final HardwareKeyboard keyboard = HardwareKeyboard.instance;
+    final Set<LogicalKeyboardKey> pressed = keyboard.logicalKeysPressed;
+    return keyboard.isMetaPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isControlPressed ||
+        pressed.contains(LogicalKeyboardKey.meta) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.superKey) ||
+        pressed.contains(LogicalKeyboardKey.alt) ||
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight) ||
+        pressed.contains(LogicalKeyboardKey.control) ||
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight);
+  }
+
+  int _firstSelectedIndex(Set<int> selection) {
+    if (selection.isEmpty) {
+      return -1;
+    }
+    final List<int> sorted = selection.toList()..sort();
+    return sorted.first;
   }
 
   List<GameListGroup> _spriteGroups(GameLevel level) {
@@ -356,6 +384,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     required int y,
     required GameAnimation animation,
     required AppData appData,
+    String gameplayData = '',
     String groupId = GameListGroup.mainId,
     bool flipX = false,
     bool flipY = false,
@@ -365,6 +394,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
         appData.mediaAssetByFileName(animation.mediaFile);
     return _SpriteDialogData(
       name: name,
+      gameplayData: gameplayData,
       x: x,
       y: y,
       depth: depth,
@@ -394,6 +424,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     if (animation != null) {
       return _dialogDataFromAnimation(
         name: sprite.name,
+        gameplayData: sprite.gameplayData,
         x: sprite.x,
         y: sprite.y,
         animation: animation,
@@ -407,6 +438,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
 
     return _SpriteDialogData(
       name: sprite.name,
+      gameplayData: sprite.gameplayData,
       x: sprite.x,
       y: sprite.y,
       depth: sprite.depth,
@@ -436,6 +468,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     level.sprites.add(
       GameSprite(
         name: data.name,
+        gameplayData: data.gameplayData,
         animationId: data.animationId,
         x: data.x,
         y: data.y,
@@ -467,6 +500,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
     }
     sprites[index] = GameSprite(
       name: data.name,
+      gameplayData: data.gameplayData,
       animationId: data.animationId,
       x: data.x,
       y: data.y,
@@ -683,7 +717,44 @@ class LayoutSpritesState extends State<LayoutSprites> {
     );
   }
 
-  void _selectSprite(AppData appData, int index, bool isSelected) {
+  void _selectSprite(
+    AppData appData,
+    int index,
+    bool isSelected, {
+    bool additive = false,
+  }) {
+    if (additive &&
+        appData.selectedLevel >= 0 &&
+        appData.selectedLevel < appData.gameData.levels.length) {
+      final int spriteCount =
+          appData.gameData.levels[appData.selectedLevel].sprites.length;
+      final Set<int> nextSelection = appData.selectedSpriteIndices
+          .where((value) => value >= 0 && value < spriteCount)
+          .toSet();
+      final int currentPrimary = appData.selectedSprite;
+      if (currentPrimary >= 0 && currentPrimary < spriteCount) {
+        nextSelection.add(currentPrimary);
+      }
+      final bool removed = nextSelection.remove(index);
+      if (!removed) {
+        nextSelection.add(index);
+      }
+      final int nextPrimary;
+      if (nextSelection.isEmpty) {
+        nextPrimary = -1;
+      } else if (!removed) {
+        nextPrimary = index;
+      } else if (currentPrimary >= 0 &&
+          nextSelection.contains(currentPrimary)) {
+        nextPrimary = currentPrimary;
+      } else {
+        nextPrimary = _firstSelectedIndex(nextSelection);
+      }
+      appData.selectedSprite = nextPrimary;
+      appData.selectedSpriteIndices = nextSelection;
+      appData.update();
+      return;
+    }
     if (isSelected) {
       appData.selectedSprite = -1;
       appData.selectedSpriteIndices = <int>{};
@@ -1108,6 +1179,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
                               appData,
                               spriteIndex,
                               isSelected,
+                              additive: _isMultiSelectModifierPressed(),
                             ),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
@@ -1205,6 +1277,7 @@ class LayoutSpritesState extends State<LayoutSprites> {
 class _SpriteDialogData {
   const _SpriteDialogData({
     required this.name,
+    required this.gameplayData,
     required this.x,
     required this.y,
     required this.depth,
@@ -1218,6 +1291,7 @@ class _SpriteDialogData {
   });
 
   final String name;
+  final String gameplayData;
   final int x;
   final int y;
   final double depth;
@@ -1270,6 +1344,10 @@ class _SpriteFormDialog extends StatefulWidget {
 class _SpriteFormDialogState extends State<_SpriteFormDialog> {
   late final TextEditingController _nameController = TextEditingController(
     text: widget.initialData.name,
+  );
+  late final TextEditingController _gameplayDataController =
+      TextEditingController(
+    text: widget.initialData.gameplayData,
   );
   late final TextEditingController _xController = TextEditingController(
     text: widget.initialData.x.toString(),
@@ -1351,6 +1429,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
     final GameMediaAsset? media = _selectedMedia;
     return _SpriteDialogData(
       name: _nameController.text.trim(),
+      gameplayData: _gameplayDataController.text,
       x: int.tryParse(_xController.text.trim()) ?? 0,
       y: int.tryParse(_yController.text.trim()) ?? 0,
       depth: _parseDepth(),
@@ -1397,6 +1476,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
         onPersist: widget.onLiveChanged!,
         areEqual: (a, b) =>
             a.name == b.name &&
+            a.gameplayData == b.gameplayData &&
             a.x == b.x &&
             a.y == b.y &&
             a.depth == b.depth &&
@@ -1418,6 +1498,7 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
       _editSession!.dispose();
     }
     _nameController.dispose();
+    _gameplayDataController.dispose();
     _xController.dispose();
     _yController.dispose();
     _depthController.dispose();
@@ -1633,34 +1714,69 @@ class _SpriteFormDialogState extends State<_SpriteFormDialog> {
               ),
             ],
           ),
-          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
-            SizedBox(height: spacing.md),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 240,
-                child: EditorLabeledField(
-                  label: widget.groupFieldLabel,
-                  child: CDKButtonSelect(
-                    selectedIndex: widget.groupOptions
-                        .indexWhere((group) => group.id == _selectedGroupId)
-                        .clamp(0, widget.groupOptions.length - 1),
-                    options: widget.groupOptions
-                        .map((group) => group.name.trim().isEmpty
-                            ? GameListGroup.defaultMainName
-                            : group.name)
-                        .toList(growable: false),
-                    onSelected: (int index) {
-                      setState(() {
-                        _selectedGroupId = widget.groupOptions[index].id;
-                      });
-                      _onInputChanged();
-                    },
+          SizedBox(height: spacing.md),
+          if (widget.showGroupSelector && widget.groupOptions.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: EditorLabeledField(
+                    label: widget.groupFieldLabel,
+                    child: CDKButtonSelect(
+                      selectedIndex: widget.groupOptions
+                          .indexWhere((group) => group.id == _selectedGroupId)
+                          .clamp(0, widget.groupOptions.length - 1),
+                      options: widget.groupOptions
+                          .map((group) => group.name.trim().isEmpty
+                              ? GameListGroup.defaultMainName
+                              : group.name)
+                          .toList(growable: false),
+                      onSelected: (int index) {
+                        setState(() {
+                          _selectedGroupId = widget.groupOptions[index].id;
+                        });
+                        _onInputChanged();
+                      },
+                    ),
                   ),
                 ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: EditorLabeledField(
+                    label: 'Gameplay data',
+                    child: CDKFieldText(
+                      placeholder: 'Gameplay data',
+                      controller: _gameplayDataController,
+                      onChanged: (_) => _onInputChanged(),
+                      onSubmitted: (_) {
+                        if (widget.liveEdit) {
+                          _onInputChanged();
+                          return;
+                        }
+                        _confirm();
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            EditorLabeledField(
+              label: 'Gameplay data',
+              child: CDKFieldText(
+                placeholder: 'Gameplay data',
+                controller: _gameplayDataController,
+                onChanged: (_) => _onInputChanged(),
+                onSubmitted: (_) {
+                  if (widget.liveEdit) {
+                    _onInputChanged();
+                    return;
+                  }
+                  _confirm();
+                },
               ),
             ),
-          ],
         ],
       ),
     );

@@ -2,6 +2,7 @@ class GameSprite {
   static const String defaultGroupId = '__main__';
 
   String name;
+  String gameplayData;
   String animationId;
   int x;
   int y;
@@ -15,6 +16,7 @@ class GameSprite {
 
   GameSprite({
     required this.name,
+    this.gameplayData = '',
     required this.animationId,
     required this.x,
     required this.y,
@@ -31,10 +33,14 @@ class GameSprite {
   factory GameSprite.fromJson(Map<String, dynamic> json) {
     final dynamic rawName = json['name'];
     final dynamic rawType = json['type'];
+    final dynamic rawGameplayData = json['gameplayData'];
     final String parsedName =
         rawName is String ? rawName : (rawType is String ? rawType : '');
     return GameSprite(
       name: parsedName,
+      gameplayData: rawGameplayData is String
+          ? rawGameplayData
+          : (rawGameplayData?.toString() ?? ''),
       animationId: (json['animationId'] as String? ?? '').trim(),
       x: json['x'] as int,
       y: json['y'] as int,
@@ -52,6 +58,7 @@ class GameSprite {
   Map<String, dynamic> toJson() {
     return {
       'name': name,
+      'gameplayData': gameplayData,
       'type': name,
       'animationId': animationId,
       'x': x,
@@ -76,6 +83,6 @@ class GameSprite {
 
   @override
   String toString() {
-    return 'GameItem(name: $name, animationId: $animationId, x: $x, y: $y, width: $spriteWidth, height: $spriteHeight, imageFile: $imageFile, flipX: $flipX, flipY: $flipY, depth: $depth, groupId: $groupId)';
+    return 'GameItem(name: $name, gameplayData: $gameplayData, animationId: $animationId, x: $x, y: $y, width: $spriteWidth, height: $spriteHeight, imageFile: $imageFile, flipX: $flipX, flipY: $flipY, depth: $depth, groupId: $groupId)';
   }
 }

@@ -383,6 +383,32 @@ class LayoutUtils {
     return Size(width, height);
   }
 
+  static Offset spriteAnchor(AppData appData, GameSprite sprite) {
+    final GameAnimation? animation = spriteAnimation(appData, sprite);
+    if (animation == null) {
+      return const Offset(
+        GameAnimation.defaultAnchorX,
+        GameAnimation.defaultAnchorY,
+      );
+    }
+    return Offset(
+      animation.anchorX.clamp(0.0, 1.0),
+      animation.anchorY.clamp(0.0, 1.0),
+    );
+  }
+
+  static Rect spriteWorldRect(
+    AppData appData,
+    GameSprite sprite, {
+    Size? frameSize,
+  }) {
+    final Size size = frameSize ?? spriteFrameSize(appData, sprite);
+    final Offset anchor = spriteAnchor(appData, sprite);
+    final double left = sprite.x.toDouble() - (size.width * anchor.dx);
+    final double top = sprite.y.toDouble() - (size.height * anchor.dy);
+    return Rect.fromLTWH(left, top, size.width, size.height);
+  }
+
   static int spriteFrameIndex({
     required AppData appData,
     required GameSprite sprite,
@@ -480,11 +506,16 @@ class LayoutUtils {
         continue;
       }
       final spriteImage = await appData.getImage(imageFile);
-      final double spriteX = sprite.x.toDouble();
-      final spriteY = sprite.y.toDouble();
       final Size frameSize = spriteFrameSize(appData, sprite);
       final double spriteWidth = frameSize.width;
       final double spriteHeight = frameSize.height;
+      final Rect worldRect = spriteWorldRect(
+        appData,
+        sprite,
+        frameSize: frameSize,
+      );
+      final double spriteX = worldRect.left;
+      final double spriteY = worldRect.top;
 
       final int frames = math.max(1, (spriteImage.width / spriteWidth).floor());
       final int frameIndex = spriteFrameIndex(
@@ -943,11 +974,10 @@ class LayoutUtils {
     for (int i = sprites.length - 1; i >= 0; i--) {
       final sprite = sprites[i];
       final Size frameSize = spriteFrameSize(appData, sprite);
-      final rect = Rect.fromLTWH(
-        sprite.x.toDouble(),
-        sprite.y.toDouble(),
-        frameSize.width,
-        frameSize.height,
+      final Rect rect = spriteWorldRect(
+        appData,
+        sprite,
+        frameSize: frameSize,
       );
       if (rect.contains(levelCoords)) {
         return i;

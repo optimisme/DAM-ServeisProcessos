@@ -15,6 +15,7 @@ import 'widgets/edit_session.dart';
 import 'widgets/editor_form_dialog_scaffold.dart';
 import 'widgets/editor_labeled_field.dart';
 import 'widgets/grouped_list.dart';
+import 'widgets/selectable_color_swatch.dart';
 import 'widgets/section_help_button.dart';
 
 class LayoutAnimations extends StatefulWidget {
@@ -110,6 +111,44 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
     return start + offset;
   }
 
+  void _updateAnchorFromPreviewPosition({
+    required AppData appData,
+    required GameAnimation animation,
+    required Size canvasSize,
+    required double frameWidth,
+    required double frameHeight,
+    required Offset localPosition,
+    required bool pushUndoCheckpoint,
+  }) {
+    final Rect frameRect = _animationPreviewFrameRect(
+      size: canvasSize,
+      frameWidth: frameWidth,
+      frameHeight: frameHeight,
+    );
+    if (frameRect.width <= 0 || frameRect.height <= 0) {
+      return;
+    }
+    final double nextAnchorX =
+        ((localPosition.dx - frameRect.left) / frameRect.width).clamp(0.0, 1.0);
+    final double nextAnchorY =
+        ((localPosition.dy - frameRect.top) / frameRect.height).clamp(0.0, 1.0);
+    final bool changedX = (animation.anchorX - nextAnchorX).abs() > 0.0005;
+    final bool changedY = (animation.anchorY - nextAnchorY).abs() > 0.0005;
+    if (!changedX && !changedY) {
+      return;
+    }
+    unawaited(
+      appData.runProjectMutation(
+        debugLabel: 'animation-anchor-drag',
+        pushUndoCheckpoint: pushUndoCheckpoint,
+        mutate: () {
+          animation.anchorX = nextAnchorX;
+          animation.anchorY = nextAnchorY;
+        },
+      ),
+    );
+  }
+
   Widget _buildPreviewPanel(AppData appData, GameAnimation? animation) {
     final spacing = CDKThemeNotifier.spacingTokensOf(context);
     final cdkColors = CDKThemeNotifier.colorTokensOf(context);
@@ -180,6 +219,10 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                   animation: animation,
                   totalFrames: totalFrames,
                 );
+                final double frameWidth = media.tileWidth.toDouble();
+                final double frameHeight = media.tileHeight.toDouble();
+                final Color anchorColor =
+                    LayoutUtils.getColorFromName(animation.anchorColor);
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -188,14 +231,61 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
                       child: Center(
                         child: AspectRatio(
                           aspectRatio: media.tileWidth / media.tileHeight,
-                          child: CustomPaint(
-                            painter: _AnimationFramePreviewPainter(
-                              image: image,
-                              frameWidth: media.tileWidth.toDouble(),
-                              frameHeight: media.tileHeight.toDouble(),
-                              columns: cols,
-                              frameIndex: frameIndex,
-                            ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final Size canvasSize = Size(
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              );
+                              return GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTapDown: (details) {
+                                  _updateAnchorFromPreviewPosition(
+                                    appData: appData,
+                                    animation: animation,
+                                    canvasSize: canvasSize,
+                                    frameWidth: frameWidth,
+                                    frameHeight: frameHeight,
+                                    localPosition: details.localPosition,
+                                    pushUndoCheckpoint: true,
+                                  );
+                                },
+                                onPanStart: (details) {
+                                  _updateAnchorFromPreviewPosition(
+                                    appData: appData,
+                                    animation: animation,
+                                    canvasSize: canvasSize,
+                                    frameWidth: frameWidth,
+                                    frameHeight: frameHeight,
+                                    localPosition: details.localPosition,
+                                    pushUndoCheckpoint: true,
+                                  );
+                                },
+                                onPanUpdate: (details) {
+                                  _updateAnchorFromPreviewPosition(
+                                    appData: appData,
+                                    animation: animation,
+                                    canvasSize: canvasSize,
+                                    frameWidth: frameWidth,
+                                    frameHeight: frameHeight,
+                                    localPosition: details.localPosition,
+                                    pushUndoCheckpoint: false,
+                                  );
+                                },
+                                child: CustomPaint(
+                                  painter: _AnimationFramePreviewPainter(
+                                    image: image,
+                                    frameWidth: frameWidth,
+                                    frameHeight: frameHeight,
+                                    columns: cols,
+                                    frameIndex: frameIndex,
+                                    anchorX: animation.anchorX,
+                                    anchorY: animation.anchorY,
+                                    anchorColor: anchorColor,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ),
@@ -577,6 +667,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         fps: data.fps,
         loop: data.loop,
         groupId: targetGroupId,
+        anchorX: data.anchorX,
+        anchorY: data.anchorY,
+        anchorColor: data.anchorColor,
       ),
     );
     appData.selectedAnimation = -1;
@@ -602,6 +695,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
       fps: data.fps,
       loop: data.loop,
       groupId: previous.groupId,
+      anchorX: data.anchorX,
+      anchorY: data.anchorY,
+      anchorColor: data.anchorColor,
     );
     animations[index] = updated;
     _applyAnimationMediaToSprites(appData, updated);
@@ -716,6 +812,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         fps: 12.0,
         loop: true,
         groupId: GameListGroup.mainId,
+        anchorX: GameAnimation.defaultAnchorX,
+        anchorY: GameAnimation.defaultAnchorY,
+        anchorColor: GameAnimation.defaultAnchorColor,
       ),
       sourceAssets: sourceAssets,
       groupOptions: _animationGroups(appData),
@@ -800,6 +899,9 @@ class _LayoutAnimationsState extends State<LayoutAnimations> {
         fps: animation.fps,
         loop: animation.loop,
         groupId: _effectiveAnimationGroupId(appData, animation),
+        anchorX: animation.anchorX,
+        anchorY: animation.anchorY,
+        anchorColor: animation.anchorColor,
       ),
       sourceAssets: sourceAssets,
       groupOptions: _animationGroups(appData),
@@ -1358,6 +1460,9 @@ class _AnimationDialogData {
     required this.fps,
     required this.loop,
     required this.groupId,
+    required this.anchorX,
+    required this.anchorY,
+    required this.anchorColor,
   });
 
   final String name;
@@ -1367,6 +1472,9 @@ class _AnimationDialogData {
   final double fps;
   final bool loop;
   final String groupId;
+  final double anchorX;
+  final double anchorY;
+  final String anchorColor;
 }
 
 class _AnimationFormDialog extends StatefulWidget {
@@ -1415,9 +1523,16 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
   late final TextEditingController _fpsController = TextEditingController(
     text: widget.initialData.fps.toStringAsFixed(1),
   );
+  late final TextEditingController _anchorXController = TextEditingController(
+    text: widget.initialData.anchorX.toStringAsFixed(3),
+  );
+  late final TextEditingController _anchorYController = TextEditingController(
+    text: widget.initialData.anchorY.toStringAsFixed(3),
+  );
   late bool _loop = widget.initialData.loop;
   late int _selectedAssetIndex = _resolveInitialAssetIndex();
   late String _selectedGroupId = _resolveInitialGroupId();
+  late String _selectedAnchorColor = widget.initialData.anchorColor;
   EditSession<_AnimationDialogData>? _editSession;
 
   int _resolveInitialAssetIndex() {
@@ -1472,14 +1587,29 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
     return value;
   }
 
+  double? _parseAnchorComponent(String raw) {
+    final String normalized = raw.trim().replaceAll(',', '.');
+    final double? value = double.tryParse(normalized);
+    if (value == null || value < 0 || value > 1) {
+      return null;
+    }
+    return value;
+  }
+
   bool get _isValid {
     final int? start = _parseFrame(_startFrameController.text);
     final int? end = _parseFrame(_endFrameController.text);
     final double? fps = _parseFps(_fpsController.text);
+    final double? anchorX = _parseAnchorComponent(_anchorXController.text);
+    final double? anchorY = _parseAnchorComponent(_anchorYController.text);
     if (_nameController.text.trim().isEmpty || _selectedAsset == null) {
       return false;
     }
-    if (start == null || end == null || fps == null) {
+    if (start == null ||
+        end == null ||
+        fps == null ||
+        anchorX == null ||
+        anchorY == null) {
       return false;
     }
     return end >= start;
@@ -1489,6 +1619,10 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
     final GameMediaAsset? asset = _selectedAsset;
     final int start = _parseFrame(_startFrameController.text) ?? 0;
     final int end = _parseFrame(_endFrameController.text) ?? start;
+    final double anchorX = _parseAnchorComponent(_anchorXController.text) ??
+        widget.initialData.anchorX;
+    final double anchorY = _parseAnchorComponent(_anchorYController.text) ??
+        widget.initialData.anchorY;
     return _AnimationDialogData(
       name: _nameController.text.trim(),
       mediaFile: asset?.fileName ?? widget.initialData.mediaFile,
@@ -1497,6 +1631,9 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
       fps: _parseFps(_fpsController.text) ?? 12.0,
       loop: _loop,
       groupId: _selectedGroupId,
+      anchorX: anchorX.clamp(0.0, 1.0),
+      anchorY: anchorY.clamp(0.0, 1.0),
+      anchorColor: _selectedAnchorColor,
     );
   }
 
@@ -1512,6 +1649,12 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
     }
     if (value.fps <= 0) {
       return 'FPS must be greater than 0.';
+    }
+    if (value.anchorX < 0 || value.anchorX > 1) {
+      return 'Anchor X must be between 0 and 1.';
+    }
+    if (value.anchorY < 0 || value.anchorY > 1) {
+      return 'Anchor Y must be between 0 and 1.';
     }
     return null;
   }
@@ -1544,7 +1687,10 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
             a.endFrame == b.endFrame &&
             a.fps == b.fps &&
             a.loop == b.loop &&
-            a.groupId == b.groupId,
+            a.groupId == b.groupId &&
+            a.anchorX == b.anchorX &&
+            a.anchorY == b.anchorY &&
+            a.anchorColor == b.anchorColor,
       );
     }
   }
@@ -1559,6 +1705,8 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
     _startFrameController.dispose();
     _endFrameController.dispose();
     _fpsController.dispose();
+    _anchorXController.dispose();
+    _anchorYController.dispose();
     super.dispose();
   }
 
@@ -1728,6 +1876,75 @@ class _AnimationFormDialogState extends State<_AnimationFormDialog> {
               ),
             ],
           ),
+          if (widget.liveEdit) ...[
+            SizedBox(height: spacing.sm),
+            Row(
+              children: [
+                Flexible(
+                  flex: 1,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: spacing.xs),
+                    child: EditorLabeledField(
+                      label: 'Anchor X',
+                      child: CDKFieldText(
+                        placeholder: '0.0 to 1.0',
+                        controller: _anchorXController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        onChanged: (_) {
+                          setState(() {});
+                          _onInputChanged();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                Flexible(
+                  flex: 1,
+                  child: Padding(
+                    padding: EdgeInsets.only(left: spacing.xs),
+                    child: EditorLabeledField(
+                      label: 'Anchor Y',
+                      child: CDKFieldText(
+                        placeholder: '0.0 to 1.0',
+                        controller: _anchorYController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        onChanged: (_) {
+                          setState(() {});
+                          _onInputChanged();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.sm),
+            EditorLabeledField(
+              label: 'Anchor Color',
+              child: Wrap(
+                spacing: spacing.xs,
+                runSpacing: spacing.xs,
+                children: GameAnimation.anchorColorPalette
+                    .map(
+                      (String colorName) => SelectableColorSwatch(
+                        color: LayoutUtils.getColorFromName(colorName),
+                        selected: _selectedAnchorColor == colorName,
+                        onTap: () {
+                          setState(() {
+                            _selectedAnchorColor = colorName;
+                          });
+                          _onInputChanged();
+                        },
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+            ),
+          ],
           if (widget.showGroupSelector && widget.groupOptions.isNotEmpty) ...[
             SizedBox(height: spacing.md),
             Align(
@@ -1769,6 +1986,9 @@ class _AnimationFramePreviewPainter extends CustomPainter {
     required this.frameHeight,
     required this.columns,
     required this.frameIndex,
+    required this.anchorX,
+    required this.anchorY,
+    required this.anchorColor,
   });
 
   final ui.Image image;
@@ -1776,6 +1996,9 @@ class _AnimationFramePreviewPainter extends CustomPainter {
   final double frameHeight;
   final int columns;
   final int frameIndex;
+  final double anchorX;
+  final double anchorY;
+  final Color anchorColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1809,15 +2032,10 @@ class _AnimationFramePreviewPainter extends CustomPainter {
       return;
     }
 
-    final double scale =
-        math.min(size.width / frameWidth, size.height / frameHeight);
-    final double drawWidth = frameWidth * scale;
-    final double drawHeight = frameHeight * scale;
-    final Rect dst = Rect.fromLTWH(
-      (size.width - drawWidth) / 2,
-      (size.height - drawHeight) / 2,
-      drawWidth,
-      drawHeight,
+    final Rect dst = _animationPreviewFrameRect(
+      size: size,
+      frameWidth: frameWidth,
+      frameHeight: frameHeight,
     );
 
     canvas.drawImageRect(
@@ -1834,6 +2052,35 @@ class _AnimationFramePreviewPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5,
     );
+
+    final Offset anchorCenter = Offset(
+      dst.left + dst.width * anchorX.clamp(0.0, 1.0),
+      dst.top + dst.height * anchorY.clamp(0.0, 1.0),
+    );
+    final double anchorRadius =
+        (math.min(dst.width, dst.height) * 0.07).clamp(4.0, 8.0);
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius + 1.0,
+      Paint()
+        ..color = const Color(0xB3FFFFFF)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius,
+      Paint()
+        ..color = anchorColor
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorCenter,
+      anchorRadius,
+      Paint()
+        ..color = const Color(0xB3000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
   }
 
   @override
@@ -1842,6 +2089,26 @@ class _AnimationFramePreviewPainter extends CustomPainter {
         oldDelegate.frameWidth != frameWidth ||
         oldDelegate.frameHeight != frameHeight ||
         oldDelegate.columns != columns ||
-        oldDelegate.frameIndex != frameIndex;
+        oldDelegate.frameIndex != frameIndex ||
+        oldDelegate.anchorX != anchorX ||
+        oldDelegate.anchorY != anchorY ||
+        oldDelegate.anchorColor != anchorColor;
   }
+}
+
+Rect _animationPreviewFrameRect({
+  required Size size,
+  required double frameWidth,
+  required double frameHeight,
+}) {
+  final double scale =
+      math.min(size.width / frameWidth, size.height / frameHeight);
+  final double drawWidth = frameWidth * scale;
+  final double drawHeight = frameHeight * scale;
+  return Rect.fromLTWH(
+    (size.width - drawWidth) / 2,
+    (size.height - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
 }

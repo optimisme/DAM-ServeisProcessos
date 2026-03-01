@@ -939,9 +939,14 @@ class _ViewportPreviewPainter extends CustomPainter {
       );
       final double cameraPx = cameraX * parallax;
       final double cameraPy = cameraY * parallax;
+      final Rect spriteWorldRect = LayoutUtils.spriteWorldRect(
+        appData,
+        sprite,
+        frameSize: frameSize,
+      );
       final Rect dstRect = Rect.fromLTWH(
-        mapping.contentRect.left + (sprite.x.toDouble() - cameraPx) * scaleX,
-        mapping.contentRect.top + (sprite.y.toDouble() - cameraPy) * scaleY,
+        mapping.contentRect.left + (spriteWorldRect.left - cameraPx) * scaleX,
+        mapping.contentRect.top + (spriteWorldRect.top - cameraPy) * scaleY,
         spriteWidth * scaleX,
         spriteHeight * scaleY,
       );

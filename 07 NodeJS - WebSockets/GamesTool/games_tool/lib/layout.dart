@@ -1078,10 +1078,15 @@ class _LayoutState extends State<Layout> {
     if (frameSize.width <= 0 || frameSize.height <= 0) {
       return null;
     }
+    final Rect worldRect = LayoutUtils.spriteWorldRect(
+      appData,
+      sprite,
+      frameSize: frameSize,
+    );
     final double scale = appData.scaleFactor;
     return Rect.fromLTWH(
-      appData.imageOffset.dx + sprite.x * scale,
-      appData.imageOffset.dy + sprite.y * scale,
+      appData.imageOffset.dx + worldRect.left * scale,
+      appData.imageOffset.dy + worldRect.top * scale,
       frameSize.width * scale,
       frameSize.height * scale,
     );

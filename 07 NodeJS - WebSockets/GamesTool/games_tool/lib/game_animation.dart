@@ -1,5 +1,27 @@
 class GameAnimation {
   static const String defaultGroupId = '__main__';
+  static const double defaultAnchorX = 0.5;
+  static const double defaultAnchorY = 0.5;
+  static const String defaultAnchorColor = 'red';
+  static const List<String> anchorColorPalette = <String>[
+    'red',
+    'deepOrange',
+    'orange',
+    'amber',
+    'yellow',
+    'lime',
+    'lightGreen',
+    'green',
+    'teal',
+    'cyan',
+    'lightBlue',
+    'blue',
+    'indigo',
+    'purple',
+    'pink',
+    'black',
+    'white',
+  ];
 
   String id;
   String name;
@@ -9,6 +31,9 @@ class GameAnimation {
   double fps;
   bool loop;
   String groupId;
+  double anchorX;
+  double anchorY;
+  String anchorColor;
 
   GameAnimation({
     required this.id,
@@ -19,7 +44,13 @@ class GameAnimation {
     required this.fps,
     required this.loop,
     String? groupId,
-  }) : groupId = _normalizeGroupId(groupId);
+    double? anchorX,
+    double? anchorY,
+    String? anchorColor,
+  })  : groupId = _normalizeGroupId(groupId),
+        anchorX = _normalizeAnchorComponent(anchorX, defaultAnchorX),
+        anchorY = _normalizeAnchorComponent(anchorY, defaultAnchorY),
+        anchorColor = _normalizeAnchorColor(anchorColor);
 
   factory GameAnimation.fromJson(Map<String, dynamic> json) {
     final int parsedStart = (json['startFrame'] as num?)?.toInt() ?? 0;
@@ -37,6 +68,11 @@ class GameAnimation {
       fps: parsedFps <= 0 ? 12.0 : parsedFps,
       loop: json['loop'] as bool? ?? true,
       groupId: json['groupId'] as String? ?? defaultGroupId,
+      anchorX:
+          (json['anchorX'] as num?)?.toDouble() ?? GameAnimation.defaultAnchorX,
+      anchorY:
+          (json['anchorY'] as num?)?.toDouble() ?? GameAnimation.defaultAnchorY,
+      anchorColor: json['anchorColor'] as String? ?? defaultAnchorColor,
     );
   }
 
@@ -50,6 +86,9 @@ class GameAnimation {
       'fps': fps,
       'loop': loop,
       'groupId': _normalizeGroupId(groupId),
+      'anchorX': _normalizeAnchorComponent(anchorX, defaultAnchorX),
+      'anchorY': _normalizeAnchorComponent(anchorY, defaultAnchorY),
+      'anchorColor': _normalizeAnchorColor(anchorColor),
     };
   }
 
@@ -59,5 +98,20 @@ class GameAnimation {
       return defaultGroupId;
     }
     return trimmed;
+  }
+
+  static double _normalizeAnchorComponent(double? value, double fallback) {
+    if (value == null || value.isNaN || value.isInfinite) {
+      return fallback;
+    }
+    return value.clamp(0.0, 1.0);
+  }
+
+  static String _normalizeAnchorColor(String? rawColor) {
+    final String normalized = rawColor?.trim() ?? '';
+    if (anchorColorPalette.contains(normalized)) {
+      return normalized;
+    }
+    return defaultAnchorColor;
   }
 }

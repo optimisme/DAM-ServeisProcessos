@@ -320,10 +320,18 @@ class CanvasPainter extends CustomPainter {
             sprite.depth,
             sensitivity: levelParallaxSensitivity,
           );
-          final double spriteX = sprite.x.toDouble() +
-              (vOffset.dx * (spriteParallax - 1.0)) / vScale;
-          final double spriteY = sprite.y.toDouble() +
-              (vOffset.dy * (spriteParallax - 1.0)) / vScale;
+          final Rect spriteRectWorld = LayoutUtils.spriteWorldRect(
+            appData,
+            sprite,
+            frameSize: frameSize,
+          ).shift(
+            Offset(
+              (vOffset.dx * (spriteParallax - 1.0)) / vScale,
+              (vOffset.dy * (spriteParallax - 1.0)) / vScale,
+            ),
+          );
+          final double spriteX = spriteRectWorld.left;
+          final double spriteY = spriteRectWorld.top;
 
           final Rect srcRect =
               Rect.fromLTWH(spriteFrameX, 0, spriteWidth, spriteHeight);

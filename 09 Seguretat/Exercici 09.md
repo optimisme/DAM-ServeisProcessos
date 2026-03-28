@@ -23,7 +23,7 @@ L'aplicació a de denir dues vites:
 
 **Desencriptar** 
 
-- ha de permetre escollir una clau privada però per defecte ha de mostrar la ~/.ssh/id_rsa 
+- ha de permetre escollir una clau privada però per defecte ha de mostrar la ~/.ssh/id_rsa (o fer servir arxius .pem)
 
 - ha de permetre escollir l'arxiu a desencriptar 
 

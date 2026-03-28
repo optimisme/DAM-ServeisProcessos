@@ -24,7 +24,6 @@ if [[ ! -f "$RSA_PATH" ]]; then
   exit 1
 fi
 
-
 bash ../buildFlutterWeb.sh
 
 cd ..

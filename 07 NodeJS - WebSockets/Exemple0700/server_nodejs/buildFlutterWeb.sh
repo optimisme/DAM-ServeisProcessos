@@ -17,7 +17,10 @@ if [[ ! -d "$CLIENT_DIR" ]]; then
 fi
 
 mkdir -p "$PUBLIC_DIR"
-find "$PUBLIC_DIR" -mindepth 1 -maxdepth 1 ! -name 'admin.html' -exec rm -rf {} +
+find "$PUBLIC_DIR" -mindepth 1 -maxdepth 1 \
+  ! -name 'admin.html' \
+  ! -name 'keep' \
+  -exec rm -rf {} +
 
 echo "Compilant Flutter web release a $PUBLIC_DIR..."
 cd "$CLIENT_DIR"

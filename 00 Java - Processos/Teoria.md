@@ -117,7 +117,15 @@ ExecutorService executor = Executors.newFixedThreadPool(10);
 
 Les **Task** són unitats de treball que es poden executar en un fil. N'hi ha de dos tipus:
 
-- **Runnable**: una tasca que no retorna cap resultat ni llença excepcions.
+- **Runnable**: 
+
+* Defineix void run()
+* No retorna cap resultat.
+* No pot declarar excepcions checked directament.
+* És útil per executar una acció en un fil.
+
+
+**Exemple 0001**: Creació de tasques amb **"Runnable"**, sense retorn de valor
 
 ```java
 class Task implements Runnable {
@@ -157,7 +165,14 @@ public static void main(String[] args) {
 }
 ```
 
-**Exemple 0001**: Creació de tasques amb "Runnable", sense retorn de valor
+- **Callable**:
+
+* Defineix T call()
+* Retorna un resultat.
+* Pot llançar excepcions amb throws Exception.
+* Normalment s'executa amb un ExecutorService i obtens el resultat mitjançant un Future<T>.
+
+**Exemple 0002**: Creació de tasques amb **"Callable"** i retorn de valor (un String)
 
 ```java
 public class Task implements Callable<String> {
@@ -205,8 +220,6 @@ public static void main(String[] args) {
 }
 ```
 
-**Exemple 0002**: Creació de tasques amb "Callable" i retorn de valor (un String)
-
 ### Relació entre Executors i Tasks
 
 - **Executors**: Són responsables de gestionar els fils i d'assignar Tasks per a la seva execució. S'encarreguen de crear, gestionar i finalitzar els fils.
@@ -215,7 +228,42 @@ public static void main(String[] args) {
 
 ## Compartir dades
 
-Java proporciona col·leccions dissenyades per ser segures en entorns concurrents, com les implementacions de les interfícies **AtomicReference**, **ConcurrentMap**, **BlockingQueue**, o **ConcurrentLinkedQueue**.
+Java proporciona col·leccions dissenyades per ser segures en entorns concurrents, com les implementacions de les interfícies
+
+- **AtomicReference**: guarda una referència a un objecte, es fa servir quan diversos fils poden modificar la mateixa instància d'un objecte.
+
+```java
+    AtomicReference<String> valor = new AtomicReference<>("A");
+    valor.set("B");
+    String x = valor.get();
+```
+
+
+- **ConcurrentMap**: és una versió de Map preparada per accés concurrent.
+
+```java
+    ConcurrentMap<String, Integer> map = new ConcurrentHashMap<>();
+    map.put("Anna", 10);
+    map.putIfAbsent("Pau", 20);
+```
+
+- **BlockingQueue**: cua pensada per a esquemes productor-consumidor. Si la cua és buida, take() espera; si és plena, put() pot esperar.
+
+```java
+    BlockingQueue<String> cua = new ArrayBlockingQueue<>(10);
+    cua.put("tasca");
+    String tasca = cua.take();
+```
+
+- **ConcurrentLinkedQueue**: cua concurrent no bloquejant. No espera si està buida simplement torna `null`
+
+```java
+    ConcurrentLinkedQueue<String> cua = new ConcurrentLinkedQueue<>();
+    cua.add("A");
+    String valor = cua.poll();
+```
+
+**Exemple**:
 
 ```java
 public static void main(String[] args) throws InterruptedException {
@@ -272,7 +320,7 @@ public static void main(String[] args) throws InterruptedException {
 
 ### Poison Pill
 
-**POISON_PILL** és una tècnica pel qual es passen dades, però es guarda un valor, per donar informació al fil que les processa. En aquest cas, que ha de sortir del bucle de processament perquè no hi ha més dades.
+**POISON_PILL** és una tècnica pel qual es passen dades, però es guarda un valor, per donar informació al fil que les processa. En aquest cas, que la informació és l'avís de sortir del bucle de processament perquè no hi ha més dades.
 
 **Important!** Si hi hagués N processos consumint les dades, caldria afegir N píndoles.
 

@@ -108,6 +108,8 @@ Un semàfor es pot imaginar com un comptador de permisos:
  
  - **Alliberament (release)**: Quan un fil ha acabat d'utilitzar el recurs, allibera un permís amb l'operació de release, la qual cosa incrementa el comptador del semàfor. Si hi ha altres fils esperant, un d'ells podrà accedir al recurs.
 
+És a dir, es bloqueja l'accés al recurs quan és 0.
+
  ```java
 import java.util.concurrent.Semaphore;
 

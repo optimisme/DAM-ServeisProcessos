@@ -10,21 +10,30 @@
 
 # Exercici 0
 
-Una empresa de serveis tecnològics vol optimitzar la gestió de les seves tasques de manteniment de sistemes. Per això, vol desenvolupar una aplicació en Java que pugui executar múltiples tasques en paral·lel, utilitzant un pool de fils per evitar sobrecàrregues en el sistema.
+Imagina que treballes en un projecte per una empresa financera que necessita processar operacions bancàries en temps real. Per millorar la capacitat de resposta del sistema, és necessari implementar un mecanisme que permeti que diferents tasques es coordinin i comparteixin dades de manera segura. Això és crucial per garantir que les operacions es processen correctament i de manera concurrent.
 
 **Objectiu**
 
-Implementa una aplicació que utilitzi un ExecutorService amb un pool de 2 fils per gestionar dues tasques en paral·lel. Aquestes tasques representaran operacions independents que es poden executar simultàniament sense compartir dades. La finalitat és garantir que les operacions es processen de manera eficient, aprofitant el paral·lelisme per reduir el temps total d'execució.
+Implementa un sistema on tres tasques s'executen en paral·lel compartint dades mitjançant una estructura segura per a la concurrència. Almenys una de les tasques ha de ser un Callable que retorni un resultat després de processar les dades compartides. Aquest exercici simula un entorn en què diferents components del sistema financen cooperar per assegurar l'actualització i l'accés consistents a les dades crítiques.
 
 **Requisits**
 
 - Crea una classe Java amb un mètode main.
 
-- Defineix dues tasques (Runnable) que simulin operacions de manteniment, com ara registrar esdeveniments de sistema i comprovar l'estat de la xarxa.
-- Utilitza un ExecutorService amb un pool de 2 fils (newFixedThreadPool(2)).
+- Defineix una estructura de dades concurrent (com ConcurrentHashMap) per compartir informació entre les tasques.
 
-- Envia les tasques a l'executor perquè s'executin en paral·lel.
+- Defineix tres tasques:
 
-- Assegura't de tancar l'executor al final per alliberar els recursos.
+- Una tasca (Runnable) que introdueixi les dades inicials, simulant la recepció d'una operació bancària.
+
+- Una altra tasca (Runnable) que modifiqui aquestes dades, simulant una operació de càlcul d'interessos o comissions.
+
+- Una tercera tasca (Callable) que llegeixi les dades modificades i retorni un resultat final, com ara el saldo actualitzat.
+
+- Utilitza un ExecutorService amb un pool de 3 fils (newFixedThreadPool(3)).
+
+- Recull el resultat de la tasca Callable i mostra'l a la consola, simulant la presentació del resultat final d'una operació bancària al client.
+
+- Tanca l'executor per alliberar els recursos.
 
 **Important**: Fes servir el format MVN habitual, i no t'oblidis dels arxius 'run.ps1' i 'run.sh'

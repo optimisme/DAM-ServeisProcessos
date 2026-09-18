@@ -10,30 +10,27 @@
 
 # Exercici 1
 
-Imagina que treballes en un projecte per una empresa financera que necessita processar operacions bancàries en temps real. Per millorar la capacitat de resposta del sistema, és necessari implementar un mecanisme que permeti que diferents tasques es coordinin i comparteixin dades de manera segura. Això és crucial per garantir que les operacions es processen correctament i de manera concurrent.
+Un projecte de desenvolupament d'una aplicació web requereix processar les sol·licituds d'usuari de manera asíncrona per millorar la resposta del sistema i garantir una experiència fluida. Això implica que les operacions han de ser processades en cadena, passant els resultats d'una etapa a la següent, de manera no bloquejant.
 
 **Objectiu**
 
-Implementa un sistema on tres tasques s'executen en paral·lel compartint dades mitjançant una estructura segura per a la concurrència. Almenys una de les tasques ha de ser un Callable que retorni un resultat després de processar les dades compartides. Aquest exercici simula un entorn en què diferents components del sistema financen cooperar per assegurar l'actualització i l'accés consistents a les dades crítiques.
+Implementa una cadena de tres tasques asíncrones utilitzant CompletableFuture, on les dades es passin d'una tasca a la següent. L'objectiu és simular un procés de tractament de dades en una aplicació web, on cada tasca representa una etapa del processament d'una sol·licitud d'usuari, com ara validar les dades, calcular el resultat, i mostrar la resposta final.
 
 **Requisits**
 
 - Crea una classe Java amb un mètode main.
 
-- Defineix una estructura de dades concurrent (com ConcurrentHashMap) per compartir informació entre les tasques.
+Defineix tres tasques:
 
-- Defineix tres tasques:
 
-- Una tasca (Runnable) que introdueixi les dades inicials, simulant la recepció d'una operació bancària.
+- La primera tasca (supplyAsync) ha de simular la validació de les dades d'una sol·licitud, retornant un valor inicial.
 
-- Una altra tasca (Runnable) que modifiqui aquestes dades, simulant una operació de càlcul d'interessos o comissions.
+- La segona tasca (thenApply) ha de processar aquestes dades, modificant-les per obtenir el resultat calculat.
 
-- Una tercera tasca (Callable) que llegeixi les dades modificades i retorni un resultat final, com ara el saldo actualitzat.
+- La tercera tasca (thenAccept) ha de mostrar el resultat final, simulant la resposta enviada a l'usuari.
 
-- Utilitza un ExecutorService amb un pool de 3 fils (newFixedThreadPool(3)).
+- Utilitza CompletableFuture per encadenar les operacions, assegurant que cada etapa processa les dades de l'etapa anterior.
 
-- Recull el resultat de la tasca Callable i mostra'l a la consola, simulant la presentació del resultat final d'una operació bancària al client.
-
-- Tanca l'executor per alliberar els recursos.
+- Utilitza join() al final per esperar que totes les operacions asíncrones es completin abans de finalitzar el programa.
 
 **Important**: Fes servir el format MVN habitual, i no t'oblidis dels arxius 'run.ps1' i 'run.sh'

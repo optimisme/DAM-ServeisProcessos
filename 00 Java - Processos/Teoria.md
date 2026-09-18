@@ -324,7 +324,8 @@ public static void main(String[] args) throws InterruptedException {
 
 **Important!** Si hi hagués N processos consumint les dades, caldria afegir N píndoles.
 
-```javapublic static void main(String[] args) throws InterruptedException {
+```java
+public static void main(String[] args) throws InterruptedException {
 
     BlockingQueue<Integer> queue = new LinkedBlockingQueue<>();
     ExecutorService pool = Executors.newFixedThreadPool(2);

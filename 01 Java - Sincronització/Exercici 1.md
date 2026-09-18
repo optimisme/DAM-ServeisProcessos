@@ -10,23 +10,23 @@
 
 # Exercici 1
 
-Una empresa vol millorar el rendiment del càlcul de la mitjana, la suma i la desviació estàndard d'un conjunt gran de dades. L'empresa ha decidit dividir el treball en tres fases paral·leles que s'han de sincronitzar abans de mostrar els resultats finals.
+Una aplicació de gestió d'aparcaments ha de controlar l'accés a un aparcament amb capacitat limitada. Els cotxes només poden entrar si hi ha espai disponible, i quan un cotxe surt, un altre pot entrar.
 
 **Objectiu**
 
-Implementa un sistema en Java que simuli el càlcul de la mitjana, la suma i la desviació estàndard en paral·lel. Utilitza una CyclicBarrier per assegurar que tots els càlculs han estat realitzats abans de mostrar els resultats finals.
+Implementa un sistema en Java que simuli l'entrada i sortida de cotxes en un aparcament utilitzant un semàfor per controlar la capacitat.
 
 **Requisits**
 
 - Crea una classe Java amb un mètode main.
 
-- Defineix tres tasques (Runnable) que facin els càlculs de la mitjana, la suma i la desviació estàndard d'un conjunt de dades.
+- Defineix una classe ParkingLot que tingui un semàfor amb un nombre limitat de permisos (igual a la capacitat de l'aparcament).
 
-- Utilitza una CyclicBarrier per sincronitzar les tres tasques, de manera que només es mostrin els resultats finals quan totes hagin acabat.
+- Defineix tasques (Runnable) que simulin l'entrada i sortida de cotxes a l'aparcament. Quan un cotxe entra, adquireix un permís, i quan surt, allibera un permís.
 
-- Quan tots els càlculs hagin completat el seu treball, mostra els resultats finals a la consola.
+- Utilitza un ExecutorService amb un pool de fils per simular l'entrada i sortida de cotxes de manera concurrent.
 
-- Utilitza un ExecutorService amb un pool de fils per executar les tasques en paral·lel.
+- Mostra a la consola cada vegada que un cotxe entra o surt de l'aparcament i quan un cotxe espera perquè l'aparcament està ple.
 
 - Assegura't de tancar l'executor al final.
 

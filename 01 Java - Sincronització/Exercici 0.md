@@ -10,21 +10,21 @@
 
 # Exercici 0
 
-Una empresa està desenvolupant una aplicació basada en microserveis, on cada microservei processa una part específica de les dades. La tasca de cada microservei ha de ser sincronitzada amb les altres per garantir que les dades processades estiguin correctament agregades abans d'enviar una resposta al client.
+Una empresa vol millorar el rendiment del càlcul de la mitjana, la suma i la desviació estàndard d'un conjunt gran de dades. L'empresa ha decidit dividir el treball en tres fases paral·leles que s'han de sincronitzar abans de mostrar els resultats finals.
 
 **Objectiu**
 
-Implementa un sistema en Java que simuli l'execució de tres microserveis diferents que processen dades de manera concurrent. Utilitza una **CyclicBarrier** per sincronitzar aquestes tasques i garantir que totes han acabat el seu treball abans de combinar els resultats finals. Aquesta sincronització és crucial per assegurar que la resposta enviada al client inclou tots els resultats processats correctament.
+Implementa un sistema en Java que simuli el càlcul de la mitjana, la suma i la desviació estàndard en paral·lel. Utilitza una CyclicBarrier per assegurar que tots els càlculs han estat realitzats abans de mostrar els resultats finals.
 
 **Requisits**
 
 - Crea una classe Java amb un mètode main.
 
-- Defineix tres tasques (Runnable) que simulin el processament de dades en tres microserveis diferents. Cadascuna d'elles ha de retornar un resultat parcial.
+- Defineix tres tasques (Runnable) que facin els càlculs de la mitjana, la suma i la desviació estàndard d'un conjunt de dades.
 
-- Utilitza una CyclicBarrier per sincronitzar les tres tasques, de manera que només es procedeixi a la següent fase quan totes hagin acabat.
+- Utilitza una CyclicBarrier per sincronitzar les tres tasques, de manera que només es mostrin els resultats finals quan totes hagin acabat.
 
-- Quan totes les tasques hagin completat el seu treball, combina els resultats parcials en un resultat final i mostra'l a la consola.
+- Quan tots els càlculs hagin completat el seu treball, mostra els resultats finals a la consola.
 
 - Utilitza un ExecutorService amb un pool de fils per executar les tasques en paral·lel.
 

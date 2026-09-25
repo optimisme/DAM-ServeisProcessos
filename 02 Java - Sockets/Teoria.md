@@ -18,7 +18,7 @@ Característiques:
 - Respòn des de la seva adreça IP
 - Està atent a un un port d'accés.
 
-**Exemple:** un servidor web escolta a ws://192.168.1.10:80
+**Exemple:** un servidor web escolta a http://192.168.1.10:80
 
 # Sockets
 
@@ -160,7 +160,7 @@ S'ha de definir el servidor com a classe heredada de *WebSocketServer*
 public class Server extends WebSocketServer
 ```
 
-Com en tots els Clients/Servidors la connexió e fa a partir d'una IP i un Port
+Com en tots els Clients/Servidors la connexió es fa a partir d'una IP i un Port
 ```java
     int port = 3000; // Ajusta si el teu servidor s'executa en un port diferent
     Server server = new Server(new InetSocketAddress(port));
@@ -176,23 +176,21 @@ El servidor es queda a l'espera de rebre connexions i missatges dels clients, ai
 
 Hi ha diferents tipus de missatges:
 
-- **privat**: S'envia un missatge a un client específic
+- **private**: S'envia un missatge a un client específic
 - **broadcast**: S'envia un missatge a tots els clients
 - **bounce**: El missatge es rebota al client que l'ha enviat
+- **clients**: El servidor envia la llista de clients connectats
+- **confirmation**: El servidor confirma una acció (per exemple, un missatge privat enviat)
+- **error**: El servidor informa d'un error (JSON invàlid, destinatari inexistent, etc.)
 
 **Clients**
 
-Pel què fa als clients, han d'heretar de la classe *WebSocketClient*
+Pel què fa als clients, no cal heretar directament de *WebSocketClient*: la classe *UtilsWS* encapsula aquesta connexió i n'amaga la complexitat.
 
+El client ha de dir a quin servidor es vol connectar a través de la IP i port del servidor, i ho fa servir a través de *UtilsWS*:
 ```java
-public class ClientCMD extends WebSocketClient
-```
-
-El client ha de dir a quin servidor es vol connectar a través de la IP i port del servidor.
-```java
-    int port = 3000; 
-    Server server = new Server(new InetSocketAddress(port));
-    server.start();
+    String serverUri = "ws://localhost:3000";
+    UtilsWS wsClient = UtilsWS.getSharedInstance(serverUri);
 ```
 
 Els clients també han de sobreescriure les funcions:

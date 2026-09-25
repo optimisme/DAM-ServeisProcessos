@@ -51,16 +51,6 @@ public class CtrlSockets implements Initializable {
     }
 
     @FXML
-    private void setViewPost() {
-        UtilsViews.setViewAnimating("ViewPost");
-    }
-
-    @FXML
-    private void setViewUpload() {
-        UtilsViews.setViewAnimating("ViewUpload");
-    }
-
-    @FXML
     private void sendMessage () {
         String txt = txtField.getText();
 
@@ -118,6 +108,14 @@ public class CtrlSockets implements Initializable {
             
             txtArea.appendText("\n\nPrivate: " + messageObj.getString("message"));
             txtArea.appendText("\n(from: " + messageObj.getString("origin") + ")");
+
+        } else if (type.equals("confirmation")) {
+
+            txtArea.appendText("\n\n[Confirmation]: " + messageObj.getString("message"));
+
+        } else if (type.equals("error")) {
+
+            txtArea.appendText("\n\n[Error]: " + messageObj.getString("message"));
         }
     }
 }

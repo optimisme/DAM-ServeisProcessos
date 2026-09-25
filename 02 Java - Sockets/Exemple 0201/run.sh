@@ -18,7 +18,7 @@ FX_GRAPHICS_PATH=$(get_latest_version "javafx-graphics")
 
 FX_PATH="${FX_BASE_PATH}:${FX_CONTROLS_PATH}:${FX_FXML_PATH}:${FX_GRAPHICS_PATH}"
 
-if [[ -z "$FX_PATH" ]]; then
+if [[ -z "$FX_BASE_PATH" || -z "$FX_CONTROLS_PATH" || -z "$FX_FXML_PATH" || -z "$FX_GRAPHICS_PATH" ]]; then
     echo "No es pot trobar el mòdul JavaFX al repositori Maven local."
     exit 1
 fi

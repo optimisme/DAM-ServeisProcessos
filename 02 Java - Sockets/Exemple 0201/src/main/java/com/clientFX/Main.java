@@ -49,7 +49,6 @@ public class Main extends Application {
         Scene scene = new Scene(UtilsViews.parentContainer);
         
         stage.setScene(scene);
-        stage.onCloseRequestProperty(); // Call close method when closing window
         stage.setTitle("JavaFX - NodeJS");
         stage.setMinWidth(windowWidth);
         stage.setMinHeight(windowHeight);
@@ -68,7 +67,7 @@ public class Main extends Application {
         if (wsClient != null) {
             wsClient.forceExit();
         }
-        System.exit(1); // Kill all executor services
+        System.exit(0); // Kill all executor services
     }
 
     public static void pauseDuring(long milliseconds, Runnable action) {
@@ -106,7 +105,7 @@ public class Main extends Application {
     private static void wsMessage(String response) {
         Platform.runLater(()->{ 
             // Fer aquí els canvis a la interficie
-            if (UtilsViews.getActiveView() != "ViewSockets") {
+            if (!"ViewSockets".equals(UtilsViews.getActiveView())) {
                 UtilsViews.setViewAnimating("ViewSockets");
             }
             JSONObject msgObj = new JSONObject(response);

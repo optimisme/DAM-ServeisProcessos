@@ -241,6 +241,8 @@ public class Main extends WebSocketServer {
     private static void awaitForever() {
         CountDownLatch latch = new CountDownLatch(1);
         try {
+            // CountDownLatch permet que el fil principal 
+            // s'esperi indefinidament amb latch.await()
             latch.await();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();

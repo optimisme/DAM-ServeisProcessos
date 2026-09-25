@@ -97,20 +97,20 @@ public class Main extends Application {
             String port = ctrlConfig.txtPort.getText();
             wsClient = UtilsWS.getSharedInstance(protocol + "://" + host + ":" + port);
     
+            // Platform.runlater assegura que el codi s'executi 
+            // al fil de la UI, per evitar problemes de concurrència amb JavaFX
             wsClient.onMessage((response) -> { Platform.runLater(() -> { wsMessage(response); }); });
             wsClient.onError((response) -> { Platform.runLater(() -> { wsError(response); }); });
         });
     }
    
     private static void wsMessage(String response) {
-        Platform.runLater(()->{ 
-            // Fer aquí els canvis a la interficie
-            if (!"ViewSockets".equals(UtilsViews.getActiveView())) {
-                UtilsViews.setViewAnimating("ViewSockets");
-            }
-            JSONObject msgObj = new JSONObject(response);
-            ctrlSockets.receiveMessage(msgObj);
-        });
+        // Fer aquí els canvis a la interficie
+        if (!"ViewSockets".equals(UtilsViews.getActiveView())) {
+            UtilsViews.setViewAnimating("ViewSockets");
+        }
+        JSONObject msgObj = new JSONObject(response);
+        ctrlSockets.receiveMessage(msgObj);
     }
 
     private static void wsError(String response) {

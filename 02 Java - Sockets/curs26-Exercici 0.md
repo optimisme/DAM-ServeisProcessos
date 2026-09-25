@@ -31,7 +31,7 @@ El [Sudoku](https://ca.wikipedia.org/wiki/Sudoku) és un joc que té una graella
 </center>
 <br/>
 
-L'objectiu és col·locar un número de l'1 al 9 en cada cel·la de tal manera que mai coincideixin dos números iguals en cada línia horitzontal, vertical o en cada regió.
+L'objectiu és col·locar un número de l'1 al 9 a cada cel·la de tal manera que mai coincideixin dos números iguals a cada línia horitzontal, vertical o a cada regió.
 
 Per fer-lo multijugador el nostre sudoku permetrà jugar-hi tants jugadors com estiguin connectats a la partida, la llista de jugadors es mostrará a la dreta de la finestra, amb la puntuació de cada jugador.
 

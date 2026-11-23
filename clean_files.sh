@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# .clean_files.sh
+# clean_files.sh
 #
 # Deletes compilation output and temporary files from every Java/Maven, Dart,
 # Flutter and NodeJS project in this repository. Everything removed here is
@@ -8,8 +8,8 @@
 # flutter pub get, flutter run, npm install, ...).
 #
 # Usage:
-#   ./.clean_files.sh             delete the files
-#   ./.clean_files.sh --dry-run   only list what would be deleted
+#   ./clean_files.sh             delete the files
+#   ./clean_files.sh --dry-run   only list what would be deleted
 #
 # Safety: anything that contains files tracked by git is never deleted.
 

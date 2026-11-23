@@ -10,75 +10,161 @@
 
 # Exercici 02
 
-L'objectiu d'aquest exercici és fer un joc de línia de comandes amb NodeJS, per practicar JavaScript i orientació a objectes.
+Implementa un 'Buscamines' per linia de comandes amb JavaScript, utilitzant Node.js.
 
-Programa un dels següents jocs.
+- Es generen 8 mines aleatòriament
+- Hi ha almenys 2 mines a cada quadrant del tauler: [0,4]-[5,9] i [A,C]-[D,F]
 
-## Busca tresors
+Aquests són els tipus de casella:
 
-Es genera un tauler bidimensional (matriu) de 8x6.
+- Les caselles `·` estàn per descobrir
+- Les caselles buides amb ` ` indiquen que no hi ha mina (buida)
+- Les caselles numèriques indiquen la quantiat de mines al seu voltant
+- Les caselles `#`indiquen una bandera
+
+Les accions s'escriuen amb:
+
+- **Escollir casella**: la lletra de la fila i el número de la columna (B2, D5, ...)
+- **Posar bandera**: casella i paraula *flag* o *bandera*
+- **Mostrar trucs**: paraules *cheat* o *trampes*
+- **Ajuda**: paraules *help* o *ajuda*, mostren la llista de comandes
+
+Al escollir una casella:
+
+- Si no té mina es destapen les caselles adjecents de manera recursiva
+- Si té mina s'acaba el joc
+
+A les posicions de bandera, NO es destapa automàticament el número de mines al seu voltant. Quan es treu la bandera aquella posició estarà per descobrir com a l'inici del joc.
+
+Al acabar el joc:
+
+- Es mostra el tauler amb les mines destapades 
+- El número de tirades que s'han fet (posar banderes i fer trampes no conten)
+
+## Destapar caselles
+
+Per destapar caselles cal implementar un algorisme recursiu, a linies generals:
+```text
+// Retorna 'true' si explota 'false' altrament
+funció destapaCasella(tauler, x, y, esPrimeraJugada, esJugadaUsuari)
+   si (x, y) és fora dels límits o ja descoberta o té bandera
+       retorna false
+       
+   si (x, y) és bomba
+       si esPrimeraJugada
+           mou la bomba a una posició buida aleatòria
+       sinó si esJugadaUsuari
+           retorna true  // Indica explosió
+       sinó
+           retorna false // No explota durant la recursivitat
+           
+   numMines = comptaMinesAdjacents(tauler, x, y)
+   marca (x, y) com descoberta amb numMines
+   
+   si numMines == 0:
+       per cada (dx, dy) al voltant:
+           destapaCasella(tauler, x + dx, y + dy, false, false)
+           
+   retorna false // No explota
+```
+## Exemple de partida
 
 ```text
- 01234567
-A········
-B········
-C········
-D········
-E········
-F········
-Escriu una comanda: 
+ 0123456789
+A··········
+B··········
+C··········
+D··········
+E··········
+F··········
+Escriu una comanda: C3
 ```
 
-S’amaguen 16 tresors en diverses coordenades aleatòries del tauler.
-
-L'usuari té les següents comandes textuals:
-
-- **ajuda**: paraules *help* o *ajuda*, mostren la llista de comandes
-* **carregar partida "nom_arxiu.json"**: carrega una partida guardada
-* **guardar partida "nom_guardar.json"**: guarda la partida actual
-* **activar/desactivar trampa**: a la dreta del tauler, mostra o amaga un segon tauler amb les caselles destapades
-* **destapar x,y**: on x,y són una casella (ex: B3) **i diu a quina distància està el tresor més proper**
-* **puntuació**: mostra la puntuació actual i les tirades restants. Originalment l'usuari té 32 tirades, que es gasten cada vegada que NO encerta un tresor (és a dir trobar un tresor no gasta tirada). 
-  
-La puntuació és la quantitat de tresors que ha trobat del total, per exemple: Z/32
-
-La partida s'acaba quan:
-
-- L'usuari **acaba les tirades**, que surt el missatge: "Has perdut, queden Z tresors"
-- L'usuari **destapa tots els tresors**, que surt el missatge: "Has guanyat amb només Y tirades"
-
-## Floor is lava
-
-Es genera un tauler bidimensional (matriu) de 8x6.
+Per posar o treure una bandera s'escriu la casella i la paraula: "bandera" o "flag"
 
 ```text
- 01234567
-A········
-B········
-C········
-D········
-E········
-F········
-Escriu una comanda: 
+ 0123456789
+A     1····
+B111  12···
+C··1   1···
+D··21121···
+E··········
+F··········
+Escriu una comanda: E1 flag
 ```
 
-S'amaguen 16 caselles de lava en diverses coordenades aleatòries del tauler. Excepte la *A0* on hi ha l'usuari "T" i la *F7* on hi ha el destí "*".
+```text
+ 0123456789
+A     1····
+B111  12···
+C··1   1···
+D··21121···
+E·#········
+F··········
+Escriu una comanda: E1 bandera
+```
 
-L'usuari té les següents comandes textuals:
+La paraula trampa permet mostrar o amagar el tauler amb les mines, al costat del tauler de joc
 
-- **ajuda**: paraules *help* o *ajuda*, mostren la llista de comandes
-* **carregar partida "nom_arxiu.json"**: carrega una partida guardada
-* **guardar partida "nom_guardar.json"**: guarda la partida actual
-* **activar/desactivar trampa**: a la dreta del tauler, mostra o amaga un segon tauler amb les caselles destapades
-* **caminar "direcció"**: on *"direcció"* pot ser "amunt", "avall", "dreta", "esquerra". 
+```text
+ 0123456789
+A     1····
+B111  12···
+C··1   1···
+D··21121···
+E··········
+F··········
+Escriu una comanda: trampes
+```
 
-  - Si s'intenta sortir del tauler, es veu el missatge: "Has perdut, has caigut per un penyasegat"
-  - Si es cau en una casella de lava "l", es destapa i es veu el missatge: "Has trepitjat lava, perds un punt"
-  - Si es va a una casella lliure, es veu el missatge: "Vas per bon camí, tens lava a x caselles de distància"
+```text
+ 0123456789      0123456789
+A     1····     A     1*···
+B111  12···     B111  12···
+C··1   1···     C·*1   1*··
+D··21121···     D·*21121···
+E··········     E····**····
+F··········     F·*·····*··
+Escriu una comanda: cheat
+```
 
-* **puntuació**: mostra la puntuació actual que correspòn a la distància des de la sortida i les passes actuals. Originalment l'usuari té 32 passes, que es gasten cada vegada que trepitja lava. 
+Escriure només la posició d'una bandera l'escull:
 
-La partida s'acaba quan:
+- Si no hi ha mina destapa les caselles adjacents
+- Si hi ha mina la fa explotar
 
-- L'usuari **acaba els punts**, que surt el missatge: "Has perdut, ja no tens més passes"
-- L'usuari **arriba a la casella F7**, que surt el missatge: "Has guanyat, has trobat el tresor"
+```text
+ 0123456789
+A     1····
+B111  12···
+C··1   1···
+D··21121···
+E·#········
+F··········
+Escriu una comanda: F1
+```
+
+```text
+ 0123456789
+A     1*···
+B111  12···
+C·*1   1*··
+D·*21121···
+E····**····
+F·*·····*··
+Has perdut!
+Número de tirades: 2
+```
+
+### Requisits tècnics
+
+- El programa s'ha d'implementar amb **JavaScript i Node.js**.
+- S'ha d'utilitzar el mòdul natiu `node:readline` per llegir les comandes introduïdes per l'usuari.
+- No es poden utilitzar llibreries externes.
+- El programa s'ha de poder executar amb:
+
+  ```bash
+  node buscamines.js
+  ```
+- El joc ha de continuar demanant comandes fins que el jugador guanyi o perdi.
+- L'algorisme per destapar caselles buides ha de ser **recursiu**.

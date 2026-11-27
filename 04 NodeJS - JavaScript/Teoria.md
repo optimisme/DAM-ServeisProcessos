@@ -36,8 +36,8 @@ A Windows:
 winget install Schniz.fnm
 fnm env --use-on-cd | Out-String | Invoke-Expression
 fnm use --install-if-missing 22
-fnm install latest
-fnm use latest
+fnm install --latest
+fnm use --latest
 ```
 
 ## Nou projecte

@@ -37,7 +37,9 @@ winget install Schniz.fnm
 fnm env --use-on-cd | Out-String | Invoke-Expression
 fnm use --install-if-missing 22
 fnm install --latest
-fnm use --latest
+fnm list --latest
+# escull la última (per exemple X latest)
+fnm use X
 ```
 
 ## Nou projecte

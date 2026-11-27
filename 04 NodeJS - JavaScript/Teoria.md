@@ -38,8 +38,8 @@ fnm env --use-on-cd | Out-String | Invoke-Expression
 fnm use --install-if-missing 22
 fnm install --latest
 fnm list --latest
-# escull la última menys 1 
-# (per exemple X=latest-1, si la latest és la alpha)
+# escull la última menys 1, si la latest és la alpha
+# (per exemple X=latest-1)
 fnm use X
 ```
 
